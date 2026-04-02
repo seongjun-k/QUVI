@@ -1,0 +1,39 @@
+inspect_node:
+  ros__parameters:
+    # ─── 카메라 설정 ───
+    camera_topic: "/camera2/image_raw/compressed"   # 고정 카메라 (검사 챔버)
+    use_compressed: true
+
+    # ─── 기준 이미지 경로 ───
+    reference_image_dir: "/workspace/data/reference_images"
+
+    # ─── CAD 기반 형상 비교 임계값 ───
+    ssim_threshold: 0.85              # SSIM ≥ 0.85이면 PASS
+    area_ratio_min: 0.90              # 면적 비율 최소
+    area_ratio_max: 1.10              # 면적 비율 최대
+    pixel_diff_threshold: 0.10        # 픽셀 차이 비율 ≤ 10%
+
+    # ─── 표면 특징 분석 임계값 ───
+    solidity_min: 0.85                # Solidity 최소 (워핑 감지)
+    solidity_max: 1.00
+    feature_area_ratio_min: 0.90      # 면적 비율 최소 (미출력 감지)
+    feature_area_ratio_max: 1.10
+    hole_count_max: 2                 # 최대 구멍 개수 (레이어 분리)
+    hole_area_ratio_max: 0.05         # 구멍 면적 비율 최대 5%
+    texture_variance_max: 500.0       # 텍스처 분산 최대 (스트링잉)
+    min_hole_area_px: 50              # 구멍 최소 면적 (px²)
+
+    # ─── 턴테이블 촬영 ───
+    turntable_angles: [0, 90, 180, 270]   # 4방향 촬영 각도
+    capture_delay_sec: 0.5                 # 회전 후 안정화 대기 시간
+
+    # ─── 이미지 전처리 ───
+    roi_margin: 20                    # ROI 마진 (px)
+    gaussian_blur_ksize: 5            # 가우시안 블러 커널 크기
+    binary_threshold: 127             # 이진화 임계값
+
+    # ─── 디버그 ───
+    save_inspection_images: true      # 검사 이미지 저장 여부
+    inspection_log_dir: "/workspace/data/inspection_logs"
+    publish_debug_image: true
+    debug_image_topic: "/inspect/debug_image"

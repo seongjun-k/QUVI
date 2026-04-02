@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+
+# ROS 2
+install/
+log/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+docker/.env
+
+# Data (large files)
+data/datasets/yolo/images/
+data/datasets/yolo/labels/
+data/datasets/inspection/images/
+*.pt
+*.onnx
+*.engine
+!src/quvi_yolo/models/.gitkeep
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

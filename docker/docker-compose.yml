@@ -1,0 +1,48 @@
+services:
+  quvi-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: quvi-dev
+    image: quvi:latest
+    
+    # 실시간 스케줄링 및 권한
+    privileged: true
+    network_mode: host
+    
+    # GPU 지원 (NVIDIA)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    
+    # 볼륨 마운트
+    volumes:
+      # 소스 코드 (실시간 반영)
+      - ../src:/workspace/src
+      - ../data:/workspace/data
+      - ../scripts:/workspace/scripts
+      
+      # USB 장치 (카메라, STM32)
+      - /dev:/dev
+      
+      # X11 디스플레이 (GUI)
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ${HOME}/.Xauthority:/root/.Xauthority:rw
+    
+    # 환경 변수
+    environment:
+      - DISPLAY=${DISPLAY}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
+      - ROS_DOMAIN_ID=42
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    
+    # 인터랙티브 모드
+    stdin_open: true
+    tty: true
+    
+    command: bash

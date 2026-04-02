@@ -1,0 +1,25 @@
+yolo_node:
+  ros__parameters:
+    # ─── 카메라 설정 ───
+    camera_topic: "/camera1/image_raw/compressed"
+    use_compressed: true
+
+    # ─── YOLO 모델 설정 ───
+    model_path: ""                    # 빈 문자열이면 yolov8n.pt 기본 사용
+    confidence_threshold: 0.5         # 탐지 신뢰도 임계값
+    iou_threshold: 0.45               # NMS IoU 임계값
+    max_detections: 20                # 최대 탐지 개수
+    target_classes: ["print_object"]  # 탐지할 클래스 (커스텀 학습 전에는 비워두기)
+
+    # ─── 출력물 처리 설정 ───
+    min_bbox_area: 500                # 최소 바운딩 박스 면적 (px²)
+    proximity_warning_px: 60          # 근접 충돌 경고 거리 (px)
+    sort_direction: "left_to_right"   # 픽업 순서 정렬 방향
+
+    # ─── 이미지 처리 ───
+    input_width: 640                  # YOLO 입력 너비
+    input_height: 480                 # YOLO 입력 높이
+
+    # ─── 디버그 ───
+    publish_debug_image: true         # 디버그 이미지 발행 여부
+    debug_image_topic: "/yolo/debug_image"
