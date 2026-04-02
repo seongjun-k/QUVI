@@ -1,0 +1,21 @@
+hmi_node:
+  ros__parameters:
+    # ─── 웹 서버 설정 ───
+    host: "0.0.0.0"
+    port: 5000
+    debug: false
+
+    # ─── 카메라 토픽 ───
+    camera1_topic: "/camera1/image_raw/compressed"
+    camera2_topic: "/camera2/image_raw/compressed"
+    yolo_debug_topic: "/yolo/debug_image"
+    inspect_debug_topic: "/inspect/debug_image"
+
+    # ─── ROS 토픽 ───
+    system_status_topic: "/hmi/status"
+    detection_topic: "/detection/objects"
+    inspection_topic: "/inspection/result"
+
+    # ─── MJPEG 스트리밍 ───
+    jpeg_quality: 70
+    stream_fps: 15

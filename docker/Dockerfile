@@ -45,6 +45,7 @@ RUN pip3 install --break-system-packages --no-cache-dir \
     scipy>=1.12.0 \
     matplotlib>=3.8.0 \
     flask>=3.0.0 \
+    flask-socketio>=5.3.0 \
     PyYAML>=6.0.0 \
     trimesh>=4.0.0 \
     pyrender>=0.1.45

@@ -12,6 +12,7 @@
   <exec_depend>quvi_msgs</exec_depend>
   <exec_depend>quvi_yolo</exec_depend>
   <exec_depend>quvi_inspect</exec_depend>
+  <exec_depend>quvi_hmi</exec_depend>
   <exec_depend>usb_cam</exec_depend>
   <exec_depend>ros2launch</exec_depend>
 

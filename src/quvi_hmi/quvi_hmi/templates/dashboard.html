@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUVI — Quality Vision Dashboard</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+<body>
+
+<!-- ═══ 헤더 ═══ -->
+<header class="header">
+    <div class="header-left">
+        <div class="logo">QUVI<span>Quality Vision</span></div>
+        <div id="systemState" class="status-indicator idle">
+            <div class="status-dot"></div>
+            <span id="stateText">IDLE</span>
+        </div>
+    </div>
+    <div class="header-right">
+        <div id="errorMsg" style="color:var(--accent-red);font-size:12px;display:none;"></div>
+        <div class="clock" id="clock"></div>
+    </div>
+</header>
+
+<!-- ═══ 컨트롤 바 ═══ -->
+<div class="control-bar">
+    <button class="btn btn-start" onclick="sendCommand('start')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        시작
+    </button>
+    <button class="btn btn-stop" onclick="sendCommand('stop')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+        정지
+    </button>
+    <div class="control-divider"></div>
+    <button class="btn btn-estop" onclick="sendCommand('estop')">
+        ⊘ E-STOP
+    </button>
+    <div class="control-divider"></div>
+    <button class="btn" onclick="sendCommand('reset')">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+        리셋
+    </button>
+    <div class="control-divider"></div>
+    <button class="btn" onclick="triggerDetection()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg>
+        수동 탐지
+    </button>
+    <button class="btn" onclick="triggerInspection()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        수동 검사
+    </button>
+</div>
+
+<!-- ═══ 메인 그리드 ═══ -->
+<div class="main-grid">
+
+    <!-- 통계 카드 행 -->
+    <div class="stats-row">
+        <div class="stat-card">
+            <div class="stat-value blue" id="statTotal">0</div>
+            <div class="stat-label">총 출력물</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value green" id="statProcessed">0</div>
+            <div class="stat-label">처리 완료</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value green" id="statPass">0</div>
+            <div class="stat-label">합격 (PASS)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value red" id="statFail">0</div>
+            <div class="stat-label">불합격 (FAIL)</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value purple" id="statPassRate">0%</div>
+            <div class="stat-label">합격률</div>
+        </div>
+    </div>
+
+    <!-- 카메라 스트림 -->
+    <div class="camera-grid">
+        <div class="camera-feed">
+            <img src="/stream/camera1" alt="핸드캠" loading="lazy">
+            <div class="camera-label">📷 핸드캠 — Zone 1 (Pickup)</div>
+            <div class="camera-status" id="cam1Status"></div>
+        </div>
+        <div class="camera-feed">
+            <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
+            <div class="camera-label">📷 고정캠 — Zone 2 (Inspection)</div>
+            <div class="camera-status" id="cam2Status"></div>
+        </div>
+        <div class="camera-feed">
+            <img src="/stream/yolo_debug" alt="YOLO 탐지" loading="lazy">
+            <div class="camera-label">🔍 YOLO 탐지 결과</div>
+        </div>
+        <div class="camera-feed">
+            <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
+            <div class="camera-label">🔬 검사 판정 결과</div>
+        </div>
+    </div>
+
+    <!-- 최신 검사 결과 패널 -->
+    <div class="card inspection-panel">
+        <div class="card-header">
+            <span class="card-title">최신 검사 결과</span>
+            <span id="latestBadge" class="result-badge" style="display:none;">—</span>
+        </div>
+        <div class="card-body" style="padding:16px;">
+            <!-- 결과 없을 때 -->
+            <div id="noResult" style="text-align:center;color:var(--text-muted);padding:24px 0;">
+                아직 검사 결과가 없습니다
+            </div>
+
+            <!-- 결과 있을 때 -->
+            <div id="latestResult" style="display:none;">
+                <!-- 메트릭 그리드 -->
+                <div class="metrics-grid" id="metricsGrid">
+                    <div class="metric-item">
+                        <div class="metric-label">Solidity (워핑)</div>
+                        <div class="metric-value" id="mSolidity">—</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">면적 비율 (미출력)</div>
+                        <div class="metric-value" id="mAreaRatio">—</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">구멍 수 (레이어 분리)</div>
+                        <div class="metric-value" id="mHoleCount">—</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">구멍 면적비</div>
+                        <div class="metric-value" id="mHoleArea">—</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">텍스처 분산 (스트링잉)</div>
+                        <div class="metric-value" id="mTexture">—</div>
+                    </div>
+                    <div class="metric-item">
+                        <div class="metric-label">검사 소요시간</div>
+                        <div class="metric-value" id="mTime">—</div>
+                    </div>
+                </div>
+
+                <!-- SSIM 바 -->
+                <div class="ssim-bar-container" style="margin-top:16px;">
+                    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
+                        SSIM (4방향) — 임계값 0.85
+                    </div>
+                    <div id="ssimBars"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 오른쪽: 서브시스템 + 통계 차트 -->
+    <div style="display:flex;flex-direction:column;gap:16px;">
+        <!-- 서브시스템 상태 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">서브시스템</span>
+            </div>
+            <div class="card-body">
+                <div class="subsystem-grid">
+                    <div class="subsystem-item">
+                        <div class="subsystem-dot" id="subYolo"></div>
+                        <span class="subsystem-name">YOLO 탐지</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <div class="subsystem-dot" id="subGrasp"></div>
+                        <span class="subsystem-name">ACT 파지</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <div class="subsystem-dot" id="subInspect"></div>
+                        <span class="subsystem-name">검사 판정</span>
+                    </div>
+                    <div class="subsystem-item">
+                        <div class="subsystem-dot" id="subMotor"></div>
+                        <span class="subsystem-name">모터 제어</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 합격률 차트 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">합격/불합격 비율</span>
+            </div>
+            <div class="card-body">
+                <div class="chart-container">
+                    <div class="donut-wrapper">
+                        <canvas id="donutChart" width="140" height="140"></canvas>
+                        <div class="donut-center">
+                            <div class="rate" id="donutRate">0%</div>
+                            <div class="label">합격률</div>
+                        </div>
+                    </div>
+                    <div class="chart-legend">
+                        <div class="legend-item">
+                            <div class="legend-color pass"></div>
+                            <span>PASS <strong id="legendPass">0</strong></span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color fail"></div>
+                            <span>FAIL <strong id="legendFail">0</strong></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 검사 히스토리 테이블 -->
+    <div class="card" style="grid-column: 1 / -1;">
+        <div class="card-header">
+            <span class="card-title">검사 히스토리</span>
+            <span style="font-size:12px;color:var(--text-muted);" id="historyCount">0건</span>
+        </div>
+        <div class="card-body" style="padding:0;max-height:300px;overflow-y:auto;">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>시간</th>
+                        <th>판정</th>
+                        <th>SSIM (평균)</th>
+                        <th>Solidity</th>
+                        <th>구멍</th>
+                        <th>텍스처</th>
+                        <th>소요시간</th>
+                        <th>불량 사유</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <tr>
+                        <td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">
+                            검사 기록이 없습니다
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<!-- ═══ JavaScript ═══ -->
+<script src="/static/js/dashboard.js"></script>
+</body>
+</html>
