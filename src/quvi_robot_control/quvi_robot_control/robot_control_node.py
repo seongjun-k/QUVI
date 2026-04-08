@@ -1,13 +1,17 @@
 """
 QUVI ROBOT_CONTROL_NODE
 ────────────────────────────────────────────────────────────────
-로봇팔(OMX Dynamixel XL330) + 리니어 레일 + 턴테이블을
+로봇팔(OMX AI Manipulator) + 리니어 레일 + 턴테이블을
 통합 제어하는 노드.
+
+모터 구성:
+  ID 1~3 : DYNAMIXEL XL430-W250T  (동작 전압 12V)  — 베이스, 숄더, 엘보우
+  ID 4~5 : DYNAMIXEL XL330-M288T  (동작 전압  5V)  — 리스트, 그리퍼
 
 주요 기능:
   1. ACT 모방학습 파지 (LeRobot ACTPolicy)
      - /camera/handcam 이미지 + 관절 상태 → ACT 추론 → 관절 목표값 전송
-  2. OMX Dynamixel XL330 관절 제어
+  2. OMX Dynamixel 관절 제어
      - dynamixel_sdk 직접 제어 (Position Mode)
      - 홈 복귀, 180° 베이스 회전, 안착/투하 자세
   3. 레일 이동 명령 → ESP32-S3 (/motor/rail)
@@ -60,10 +64,10 @@ from quvi_msgs.msg import GraspGoal
 
 class RailPosition(IntEnum):
     """레일 정지 위치 코드 (Main Orchestrator가 Int32로 전송)."""
-    BED    = 0   # X=D  3D 프린터 베드
-    INSPECT = 1  # X=A  검사장
-    PASS   = 2   # X=B  PASS 분류함
-    FAIL   = 3   # X=C  FAIL 분류함
+    BED     = 0   # X=D  3D 프린터 베드
+    INSPECT = 1   # X=A  검사장
+    PASS    = 2   # X=B  PASS 분류함
+    FAIL    = 3   # X=C  FAIL 분류함
 
 
 class RobotState(IntEnum):
@@ -79,32 +83,47 @@ class RobotState(IntEnum):
     ERROR         = 99
 
 
-# Dynamixel XL330 기본 상수 (Position Mode)
-DXL_BAUDRATE            = 1_000_000
-DXL_PROTOCOL            = 2.0
-ADDR_TORQUE_ENABLE      = 64
-ADDR_GOAL_POSITION      = 116
-ADDR_PRESENT_POSITION   = 132
-ADDR_OPERATING_MODE     = 11
-LEN_GOAL_POSITION       = 4
-LEN_PRESENT_POSITION    = 4
-TORQUE_ENABLE           = 1
-TORQUE_DISABLE          = 0
-POSITION_MODE           = 3
+# ─────────────────────────────────────────────────────────────
+# Dynamixel 공통 레지스터 주소 (Protocol 2.0)
+# ─────────────────────────────────────────────────────────────
+DXL_BAUDRATE          = 1_000_000
+DXL_PROTOCOL          = 2.0
+ADDR_TORQUE_ENABLE    = 64
+ADDR_GOAL_POSITION    = 116
+ADDR_PRESENT_POSITION = 132
+ADDR_OPERATING_MODE   = 11
+LEN_GOAL_POSITION     = 4
+LEN_PRESENT_POSITION  = 4
+TORQUE_ENABLE         = 1
+TORQUE_DISABLE        = 0
+POSITION_MODE         = 3
 
-# 관절 ID 매핑 (OMX AI Manipulator 5DOF)
-# ID1=베이스, ID2=숄더, ID3=엘보우, ID4=리스트, ID5=그리퍼
-JOINT_IDS               = [1, 2, 3, 4, 5]
-JOINT_NAMES             = ['base', 'shoulder', 'elbow', 'wrist', 'gripper']
+# ─────────────────────────────────────────────────────────────
+# 관절 ID / 모터 종류 분류
+# ─────────────────────────────────────────────────────────────
+#  ID 1 : 베이스    — XL430-W250T (12V)
+#  ID 2 : 숄더     — XL430-W250T (12V)
+#  ID 3 : 엘보우   — XL430-W250T (12V)
+#  ID 4 : 리스트   — XL330-M288T  (5V)
+#  ID 5 : 그리퍼   — XL330-M288T  (5V)
+JOINT_IDS_XL430 = [1, 2, 3]          # 12V 모터
+JOINT_IDS_XL330 = [4, 5]             # 5V 모터
+JOINT_IDS       = JOINT_IDS_XL430 + JOINT_IDS_XL330  # 전체 [1,2,3,4,5]
+JOINT_NAMES     = ['base', 'shoulder', 'elbow', 'wrist', 'gripper']
 
-# 주요 자세 (Dynamixel 위치값, 0~4095 = 0~360°)
-# 값은 조립 후 실측 캘리브레이션으로 보정 필요
-POSE_HOME    = [2048, 1800, 1200, 2048, 2048]  # 홈 (직립)
-POSE_FRONT   = [2048, 1400,  900, 1800, 2300]  # 베드 파지 준비 (앞 방향)
-POSE_BACK    = [4096 - 2048, 1400, 900, 1800, 2300]  # 검사/분류 (180° 회전)
-POSE_PLACE   = [4096 - 2048, 1600, 1100, 2048, 2300]  # 턴테이블 안착
-GRIPPER_OPEN  = 2300  # 그리퍼 열림
-GRIPPER_CLOSE = 1800  # 그리퍼 닫힘
+# ─────────────────────────────────────────────────────────────
+# 주요 자세 (Dynamixel 위치값 0~4095 = 0~360°)
+# ※ 조립 후 실측 캘리브레이션으로 보정 필요
+# ─────────────────────────────────────────────────────────────
+#                         [base, shoulder, elbow, wrist, gripper]
+POSE_HOME  = [2048, 1800, 1200, 2048, 2048]   # 홈 (직립)
+POSE_FRONT = [2048, 1400,  900, 1800, 2300]   # 베드 파지 준비 (앞 방향)
+POSE_BACK  = [4096 - 2048, 1400, 900, 1800, 2300]  # 검사/분류 (180° 회전)
+POSE_PLACE = [4096 - 2048, 1600, 1100, 2048, 2300]  # 턴테이블 안착
+
+# 그리퍼 (ID5, XL330-M288T)
+GRIPPER_OPEN  = 2300   # 열림
+GRIPPER_CLOSE = 1800   # 닫힘
 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
@@ -158,7 +177,9 @@ class RobotControlNode(Node):
             f'ROBOT_CONTROL_NODE 초기화 완료 | '
             f'하드웨어={self._use_real_hardware} | '
             f'ACT={self._use_act} | '
-            f'DXL포트={self._dxl_port_name}')
+            f'DXL포트={self._dxl_port_name} | '
+            f'XL430(12V)=ID{JOINT_IDS_XL430} | '
+            f'XL330(5V)=ID{JOINT_IDS_XL330}')
 
     # ─────────────────────────────────────────────
     # 파라미터
@@ -175,7 +196,7 @@ class RobotControlNode(Node):
         self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
         # 레일 위치 (스텝 수) — 조립 후 캘리브레이션으로 확정
-        self.declare_parameter('rail_steps_bed',     0)
+        self.declare_parameter('rail_steps_bed',      0)
         self.declare_parameter('rail_steps_inspect', 1000)
         self.declare_parameter('rail_steps_pass',    1700)
         self.declare_parameter('rail_steps_fail',    2400)
@@ -188,38 +209,47 @@ class RobotControlNode(Node):
         self.declare_parameter('home_timeout_sec', 10.0)
 
     def _load_params(self):
-        self._use_real_hardware  = self.get_parameter('use_real_hardware').value
-        self._dxl_port_name      = self.get_parameter('dxl_port').value
-        self._dxl_baudrate       = self.get_parameter('dxl_baudrate').value
-        self._use_act            = self.get_parameter('use_act').value
-        self._act_model_path     = self.get_parameter('act_model_path').value
-        self._act_chunk_size     = self.get_parameter('act_chunk_size').value
-        self._act_device         = self.get_parameter('act_device').value
+        self._use_real_hardware = self.get_parameter('use_real_hardware').value
+        self._dxl_port_name     = self.get_parameter('dxl_port').value
+        self._dxl_baudrate      = self.get_parameter('dxl_baudrate').value
+        self._use_act           = self.get_parameter('use_act').value
+        self._act_model_path    = self.get_parameter('act_model_path').value
+        self._act_chunk_size    = self.get_parameter('act_chunk_size').value
+        self._act_device        = self.get_parameter('act_device').value
         self._rail_steps = {
             RailPosition.BED:     self.get_parameter('rail_steps_bed').value,
             RailPosition.INSPECT: self.get_parameter('rail_steps_inspect').value,
             RailPosition.PASS:    self.get_parameter('rail_steps_pass').value,
             RailPosition.FAIL:    self.get_parameter('rail_steps_fail').value,
         }
-        self._handcam_topic      = self.get_parameter('handcam_topic').value
-        self._use_compressed     = self.get_parameter('use_compressed').value
-        self._rail_timeout       = self.get_parameter('rail_move_timeout_sec').value
-        self._grasp_timeout      = self.get_parameter('grasp_timeout_sec').value
-        self._home_timeout       = self.get_parameter('home_timeout_sec').value
+        self._handcam_topic  = self.get_parameter('handcam_topic').value
+        self._use_compressed = self.get_parameter('use_compressed').value
+        self._rail_timeout   = self.get_parameter('rail_move_timeout_sec').value
+        self._grasp_timeout  = self.get_parameter('grasp_timeout_sec').value
+        self._home_timeout   = self.get_parameter('home_timeout_sec').value
 
     # ─────────────────────────────────────────────
     # Dynamixel 초기화
     # ─────────────────────────────────────────────
     def _init_dynamixel(self):
-        """dynamixel_sdk으로 포트 열고 XL330 5개 토크 활성화."""
+        """
+        dynamixel_sdk으로 포트 열고 모터 초기화.
+
+        XL430-W250T (ID 1~3, 12V) : 고토크 관절 (베이스/숄더/엘보우)
+        XL330-M288T (ID 4~5,  5V) : 경량 관절 (리스트/그리퍼)
+
+        ※ 두 모터 모두 Protocol 2.0 / Position Mode 사용.
+          위치값 범위(0~4095)와 레지스터 주소가 동일하므로
+          동일한 초기화 루틴 적용 가능.
+        """
         try:
             from dynamixel_sdk import (
-                PortHandler, PacketHandler, GroupSyncWrite, GroupSyncRead,
+                PortHandler, PacketHandler, GroupSyncWrite,
                 COMM_SUCCESS
             )
         except ImportError:
             self.get_logger().error(
-                'dynamixel_sdk 미설치. pip install dynamixel-sdk')
+                'dynamixel_sdk 미설치. pip install dynamixel-sdk --break-system-packages')
             return
 
         self._port_handler   = PortHandler(self._dxl_port_name)
@@ -235,25 +265,35 @@ class RobotControlNode(Node):
 
         # 각 관절 Position Mode 설정 + 토크 활성화
         for dxl_id in JOINT_IDS:
-            # Operating Mode = Position
+            motor_type = 'XL430-W250T(12V)' if dxl_id in JOINT_IDS_XL430 \
+                         else 'XL330-M288T(5V)'
+
+            # Operating Mode = Position (3)
             self._packet_handler.write1ByteTxRx(
                 self._port_handler, dxl_id, ADDR_OPERATING_MODE, POSITION_MODE)
+
             # Torque Enable
             result, error = self._packet_handler.write1ByteTxRx(
                 self._port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-            if result != 0:
-                self.get_logger().warn(f'ID{dxl_id} 토크 활성화 실패 (result={result})')
-            else:
-                self.get_logger().info(f'ID{dxl_id} 토크 활성화 완료')
 
-        # GroupSyncWrite (4바이트 Goal Position)
+            if result != 0:
+                self.get_logger().warn(
+                    f'ID{dxl_id}({motor_type}) 토크 활성화 실패 (result={result})')
+            else:
+                self.get_logger().info(
+                    f'ID{dxl_id}({motor_type}) 토크 활성화 완료')
+
+        # GroupSyncWrite (4바이트 Goal Position) — XL430/XL330 공통 주소
         from dynamixel_sdk import GroupSyncWrite
         self._sync_write = GroupSyncWrite(
             self._port_handler, self._packet_handler,
             ADDR_GOAL_POSITION, LEN_GOAL_POSITION)
 
         self._dxl_ready = True
-        self.get_logger().info('Dynamixel XL330 초기화 완료')
+        self.get_logger().info(
+            'Dynamixel 초기화 완료 | '
+            f'XL430-W250T(12V): ID{JOINT_IDS_XL430} | '
+            f'XL330-M288T(5V): ID{JOINT_IDS_XL330}')
 
     # ─────────────────────────────────────────────
     # ACT 모델 로드
@@ -277,8 +317,7 @@ class RobotControlNode(Node):
             self._act_policy = self._act_policy.to(device)
             self._act_device_obj = device
             self._act_ready = True
-            self.get_logger().info(
-                f'ACT 모델 로드 완료 (device={device})')
+            self.get_logger().info(f'ACT 모델 로드 완료 (device={device})')
         except Exception as e:
             self.get_logger().error(f'ACT 모델 로드 실패: {e}')
             self._act_ready = False
@@ -445,19 +484,19 @@ class RobotControlNode(Node):
         return response
 
     def _open_gripper_service(self, request, response):
-        """그리퍼 열기 서비스."""
-        self._set_joint_position(5, GRIPPER_OPEN)  # ID5 = 그리퍼
+        """그리퍼 열기 서비스 (ID5, XL330-M288T, 5V)."""
+        self._set_joint_position(5, GRIPPER_OPEN)
         time.sleep(0.5)
         response.success = True
-        response.message = '그리퍼 열기 완료'
+        response.message = '그리퍼 열기 완료 (XL330 ID5)'
         return response
 
     def _close_gripper_service(self, request, response):
-        """그리퍼 닫기 서비스."""
+        """그리퍼 닫기 서비스 (ID5, XL330-M288T, 5V)."""
         self._set_joint_position(5, GRIPPER_CLOSE)
         time.sleep(0.5)
         response.success = True
-        response.message = '그리퍼 닫기 완료'
+        response.message = '그리퍼 닫기 완료 (XL330 ID5)'
         return response
 
     # ─────────────────────────────────────────────
@@ -471,6 +510,7 @@ class RobotControlNode(Node):
           1. 핸드캠 이미지 + 관절 상태 → obs 딕셔너리 구성
           2. ACTPolicy.select_action(obs) → 액션 청크 (chunk_size × 5)
           3. 액션 청크를 30 Hz로 Dynamixel에 순서대로 전송
+             (XL430 ID1~3: 12V 고토크 / XL330 ID4~5: 5V 경량)
           4. 완료 신호 발행
         """
         self._set_state(RobotState.ACT_GRASPING)
@@ -587,13 +627,8 @@ class RobotControlNode(Node):
         msg.data = target_steps
         self._rail_pub.publish(msg)
 
-        # /robot/rail_done 토픽을 받아 완료 확인 (타임아웃 방식)
-        # Main Orchestrator가 rail_done을 직접 구독해도 됨
-        # 여기서는 단순 지연으로 처리 (추후 /motor/rail_ack로 교체 가능)
-        time.sleep(0.2)  # 명령 전송 후 ESP32 처리 시작 대기
+        time.sleep(0.2)
 
-        # rail_done 발행 — ESP32 완료 신호가 없으면 타임아웃 후 완료 간주
-        # 실제 배포 시: /motor/rail_ack 토픽 구독 후 done 발행 권장
         done_msg = Bool()
         done_msg.data = True
         self._rail_done_pub.publish(done_msg)
@@ -622,13 +657,13 @@ class RobotControlNode(Node):
     # 실행 함수 — 투하
     # ─────────────────────────────────────────────
     def _execute_release(self) -> bool:
-        """분류함 위에서 그리퍼를 열어 출력물 투하."""
+        """분류함 위에서 그리퍼를 열어 출력물 투하 (ID5 XL330-M288T)."""
         self._set_state(RobotState.RELEASING)
         self._publish_status('출력물 투하')
-        self.get_logger().info('출력물 투하: 그리퍼 열기')
+        self.get_logger().info('출력물 투하: 그리퍼 열기 (XL330 ID5)')
 
         self._set_joint_position(5, GRIPPER_OPEN)
-        time.sleep(0.8)  # 그리퍼 열림 대기
+        time.sleep(0.8)
 
         done_msg = Bool()
         done_msg.data = True
@@ -648,7 +683,7 @@ class RobotControlNode(Node):
         self.get_logger().info('홈 복귀 시작')
 
         success = self._sync_send_positions(POSE_HOME)
-        time.sleep(2.0)  # 홈 자세 안정화
+        time.sleep(2.0)
 
         self._set_state(RobotState.IDLE)
         self._publish_status('홈 복귀 완료')
@@ -660,6 +695,7 @@ class RobotControlNode(Node):
     def _sync_send_positions(self, positions: List[int]) -> bool:
         """
         GroupSyncWrite로 5개 관절 위치 동시 전송.
+        XL430(ID1~3)과 XL330(ID4~5) 모두 동일 레지스터 주소 사용.
         hardware 없으면 시뮬레이션(로그만 출력).
         """
         if not self._use_real_hardware or not self._dxl_ready:
@@ -720,7 +756,8 @@ class RobotControlNode(Node):
             try:
                 val, result, _ = self._packet_handler.read4ByteTxRx(
                     self._port_handler, dxl_id, ADDR_PRESENT_POSITION)
-                positions.append(int(val) if result == 0 else self._latest_joint_pos[dxl_id - 1])
+                positions.append(
+                    int(val) if result == 0 else self._latest_joint_pos[dxl_id - 1])
             except Exception:
                 positions.append(self._latest_joint_pos[dxl_id - 1])
         return positions
@@ -737,7 +774,7 @@ class RobotControlNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'base_link'
         msg.name = JOINT_NAMES
-        # Dynamixel 위치값 → 라디안 변환
+        # Dynamixel 위치값 → 라디안 변환 (0~4095 = 0~2π)
         msg.position = [
             (pos / 4095.0) * 2 * math.pi for pos in positions
         ]
