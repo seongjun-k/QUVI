@@ -251,9 +251,7 @@ function drawDonut(pass, fail) {
 
 // ─── 제어 API ───
 async function sendCommand(cmd) {
-    if (cmd === 'estop') {
-        if (!confirm('비상정지를 실행합니까?')) return;
-    }
+
     try {
         const res = await fetch(`/api/command/${cmd}`, { method: 'POST' });
         const data = await res.json();

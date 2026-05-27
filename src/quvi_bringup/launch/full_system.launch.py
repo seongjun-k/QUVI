@@ -62,6 +62,23 @@ def generate_launch_description():
         output='screen',
     )
 
+    # ─── MAIN_ORCHESTRATOR_NODE ───
+    main_orchestrator_node = Node(
+        package='quvi_robot_control',
+        executable='main_orchestrator_node',
+        name='main_orchestrator_node',
+        parameters=[{
+            'px_to_mm_x': 0.5,
+            'px_to_mm_y': 0.5,
+            'offset_x': 100.0,
+            'offset_y': 100.0,
+            'target_z': 15.0,
+            'step_delay_sec': 2.0,
+            'loop_rate_hz': 10.0,
+        }],
+        output='screen',
+    )
+
     return LaunchDescription([
         hmi_port_arg,
         handcam_arg,
@@ -72,4 +89,5 @@ def generate_launch_description():
 
         vision_launch,
         hmi_node,
+        main_orchestrator_node,
     ])

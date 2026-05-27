@@ -108,7 +108,7 @@ def generate_launch_description():
         parameters=[{
             'camera_topic': '/camera2/image_raw/compressed',
             'use_compressed': True,
-            'reference_image_dir': '/workspace/data/reference_images',
+            'reference_image_dir': '/home/ksj/QUVI/data/reference_images',
             'ssim_threshold': 0.85,
             'area_ratio_min': 0.90,
             'area_ratio_max': 1.10,
@@ -124,7 +124,7 @@ def generate_launch_description():
             'turntable_angles': [0, 90, 180, 270],
             'capture_delay_sec': 0.5,
             'save_inspection_images': True,
-            'inspection_log_dir': '/workspace/data/inspection_logs',
+            'inspection_log_dir': '/home/ksj/QUVI/data/inspection_logs',
             'publish_debug_image': True,
         }],
         output='screen',

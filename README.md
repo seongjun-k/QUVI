@@ -18,17 +18,15 @@
 | **카메라** | InnoMaker USB U20CAM-1080P × 2 |
 | **AI** | YOLOv8n + ACT + SSIM + 표면 특징 분석 |
 
-## ROS 2 노드
+## ROS 2 노드 및 패키지 구성
 
-| 노드 | 역할 |
-|------|------|
-| `MAIN_CONTROLLER` | 전체 시퀀스 관리, 상태 머신 |
-| `YOLO_NODE` | 출력물 감지, 좌표 목록 발행 |
-| `GRASP_NODE` | ACT 파지 모델 실행, 로봇팔 제어 |
-| `INSPECT_NODE` | 양불 판정 (CAD 비교 + 표면 특징) |
-| `SORT_NODE` | 분류 명령 발행 |
-| `MOTOR_CONTROL` | STM32 통신, 레일/턴테이블 제어 |
-| `HMI_NODE` | 대시보드 표시 |
+| 패키지명 | 실행 노드명 | 역할 |
+|----------|------------|------|
+| `quvi_robot_control` | `main_orchestrator_node` | 전체 자율 제어 및 유한상태머신(FSM) 시퀀스 제어 |
+| `quvi_robot_control` | `robot_control_node` | OMX 로봇팔 다이나믹셀 제어, LeRobot ACT 모방학습 파지 구동 및 ESP32 통신 중계 |
+| `quvi_yolo` | `yolo_node` | YOLOv8n 기반 3D 프린터 베드 위 출력물 감지, 좌표 목록 및 근접 충돌 방지 경고 발행 |
+| `quvi_inspect` | `inspect_node` | 양불 판정 (CAD 정사영 실루엣 비교 및 solidity/hole 등 표면 특징 데이터 이중 검증) |
+| `quvi_hmi` | `hmi_node` | Flask + SocketIO 기반 실시간 웹 대시보드(모니터링, 다중 MJPEG 스트리밍 및 수동 제어 브리지) |
 
 ## 빠른 시작 (Docker)
 
