@@ -50,6 +50,8 @@ from typing import List, Optional
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.callback_groups import ReentrantCallbackGroup
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, JointState
 from std_msgs.msg import Bool, Int32, String
@@ -158,6 +160,9 @@ class RobotControlNode(Node):
         self._leader_port_handler = None
         self._leader_packet_handler = None
 
+        # ─── 콜백 그룹 (블로킹 서비스/텔레옵과 타이머가 서로를 막지 않도록) ───
+        self._cb_group = ReentrantCallbackGroup()
+
         # ─── Dynamixel 초기화 ───
         self._dxl_port = None
         self._packet_handler = None
@@ -177,7 +182,8 @@ class RobotControlNode(Node):
 
         # ─── 관절 상태 발행 타이머 (30 Hz) ───
         self._joint_pub_timer = self.create_timer(
-            1.0 / ACT_CONTROL_HZ, self._publish_joint_states)
+            1.0 / ACT_CONTROL_HZ, self._publish_joint_states,
+            callback_group=self._cb_group)
 
         self.get_logger().info(
             f'ROBOT_CONTROL_NODE 초기화 완료 | '
@@ -367,7 +373,8 @@ class RobotControlNode(Node):
 
         self._teleop_cmd_sub = self.create_subscription(
             Bool, '/robot/teleop_command',
-            self._teleop_cmd_callback, 10)
+            self._teleop_cmd_callback, 10,
+            callback_group=self._cb_group)
 
         # ── Publishers ──
         self._joint_state_pub = self.create_publisher(
@@ -393,16 +400,20 @@ class RobotControlNode(Node):
 
         # ── Services ──
         self._act_grasp_srv = self.create_service(
-            Trigger, '/robot/act_grasp', self._act_grasp_service)
+            Trigger, '/robot/act_grasp', self._act_grasp_service,
+            callback_group=self._cb_group)
 
         self._go_home_srv = self.create_service(
-            Trigger, '/robot/go_home', self._go_home_service)
+            Trigger, '/robot/go_home', self._go_home_service,
+            callback_group=self._cb_group)
 
         self._open_gripper_srv = self.create_service(
-            Trigger, '/robot/open_gripper', self._open_gripper_service)
+            Trigger, '/robot/open_gripper', self._open_gripper_service,
+            callback_group=self._cb_group)
 
         self._close_gripper_srv = self.create_service(
-            Trigger, '/robot/close_gripper', self._close_gripper_service)
+            Trigger, '/robot/close_gripper', self._close_gripper_service,
+            callback_group=self._cb_group)
 
     # ─────────────────────────────────────────────
     # 카메라 콜백
@@ -981,8 +992,12 @@ class RobotControlNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = RobotControlNode()
+    # 블로킹 서비스(ACT 파지/홈 복귀)와 30Hz 타이머, 텔레옵 명령이
+    # 서로를 막지 않도록 MultiThreadedExecutor 사용.
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

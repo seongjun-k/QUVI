@@ -32,6 +32,22 @@ def generate_launch_description():
         'fixed_cam_device', default_value='/dev/video2',
         description='고정 카메라 장치 경로')
 
+    use_real_hardware_arg = DeclareLaunchArgument(
+        'use_real_hardware', default_value='true',
+        description='실제 Dynamixel 하드웨어 사용 여부 (false=시뮬레이션)')
+
+    use_act_arg = DeclareLaunchArgument(
+        'use_act', default_value='false',
+        description='ACT 모방학습 정책 로드 여부')
+
+    follower_port_arg = DeclareLaunchArgument(
+        'dxl_port', default_value='/dev/ttyFollower',
+        description='팔로워 암 Dynamixel 포트')
+
+    leader_port_arg = DeclareLaunchArgument(
+        'leader_dxl_port', default_value='/dev/ttyLeader',
+        description='리더 암 Dynamixel 포트 (텔레오퍼레이션)')
+
     # ─── Vision Pipeline 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -62,6 +78,22 @@ def generate_launch_description():
         output='screen',
     )
 
+    # ─── ROBOT_CONTROL_NODE (로봇팔 + 텔레오퍼레이션) ───
+    robot_control_node = Node(
+        package='quvi_robot_control',
+        executable='robot_control_node',
+        name='robot_control_node',
+        parameters=[{
+            'use_real_hardware': LaunchConfiguration('use_real_hardware'),
+            'use_act': LaunchConfiguration('use_act'),
+            'dxl_port': LaunchConfiguration('dxl_port'),
+            'leader_dxl_port': LaunchConfiguration('leader_dxl_port'),
+            'handcam_topic': '/camera1/image_raw/compressed',
+            'use_compressed': True,
+        }],
+        output='screen',
+    )
+
     # ─── MAIN_ORCHESTRATOR_NODE ───
     main_orchestrator_node = Node(
         package='quvi_robot_control',
@@ -83,11 +115,16 @@ def generate_launch_description():
         hmi_port_arg,
         handcam_arg,
         fixed_cam_arg,
+        use_real_hardware_arg,
+        use_act_arg,
+        follower_port_arg,
+        leader_port_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
 
         vision_launch,
         hmi_node,
+        robot_control_node,
         main_orchestrator_node,
     ])
