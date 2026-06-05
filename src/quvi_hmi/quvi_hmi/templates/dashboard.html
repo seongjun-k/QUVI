@@ -44,9 +44,13 @@
                     <div class="status-dot"></div>
                     <span id="stateText">IDLE</span>
                 </div>
+                <div id="stageText" class="stage-pill">진행 단계 대기</div>
             </div>
             <div class="header-right">
-                <div id="errorMsg" style="color:var(--accent-red);font-size:12px;display:none;"></div>
+                <div id="errorMsg" class="header-error" style="display:none;"></div>
+                <div id="connBadge" class="conn-badge offline">
+                    <span class="conn-dot"></span><span id="connText">서버 연결 대기</span>
+                </div>
                 <div class="clock" id="clock"></div>
             </div>
         </header>
@@ -289,6 +293,7 @@
                                 <span class="status-label">동작 상태:</span>
                                 <span id="teleopStateBadge" class="teleop-state-badge off">OFF</span>
                             </div>
+                            <div id="teleopHint" class="teleop-hint">리더 암을 연결한 뒤 토글을 켜세요.</div>
 
                             <div class="toggle-container">
                                 <span class="toggle-label">텔레오퍼레이션 활성화</span>

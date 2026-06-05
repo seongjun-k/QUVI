@@ -6,12 +6,22 @@
 // ─── WebSocket 연결 ───
 const socket = io();
 
+function setConnBadge(online) {
+    const badge = document.getElementById('connBadge');
+    const text = document.getElementById('connText');
+    if (!badge || !text) return;
+    badge.className = 'conn-badge ' + (online ? 'online' : 'offline');
+    text.textContent = online ? '서버 연결됨' : '서버 연결 끊김';
+}
+
 socket.on('connect', () => {
     console.log('[QUVI] WebSocket 연결됨');
+    setConnBadge(true);
 });
 
 socket.on('disconnect', () => {
     console.log('[QUVI] WebSocket 연결 끊김');
+    setConnBadge(false);
 });
 
 // ─── 실시간 업데이트 수신 ───
@@ -36,8 +46,11 @@ function updateStatus(status) {
     stateEl.className = 'status-indicator';
     if (state === 'IDLE') stateEl.classList.add('idle');
     else if (state === 'ERROR') stateEl.classList.add('error');
-    else if (state === 'DONE') stateEl.classList.add('done');
+    else if (state === 'DONE' || state === 'FINISHED') stateEl.classList.add('done');
     else stateEl.classList.add('running');
+
+    // 진행 단계 라벨 (사람이 읽기 쉬운 한국어)
+    updateStageLabel(state);
 
     // 에러 메시지
     if (status.error_message) {
@@ -60,18 +73,70 @@ function updateStatus(status) {
     // 텔레오퍼레이션 상태 동기화
     const teleopToggle = document.getElementById('teleopToggle');
     const teleopBadge = document.getElementById('teleopStateBadge');
-    
+
     if (teleopToggle && teleopBadge) {
         const isActive = status.teleop_active || (state === 'TELEOPING');
+        // /robot/status 가 "텔레옵 에러"를 알리면 에러 상태로 구분 표시
+        const isTeleopError = !!(status.error_message &&
+            /텔레옵|teleop|리더/i.test(status.error_message));
+
         teleopToggle.checked = isActive;
-        
-        if (isActive) {
-            teleopBadge.textContent = 'ON';
-            teleopBadge.className = 'teleop-state-badge on';
-        } else {
-            teleopBadge.textContent = 'OFF';
-            teleopBadge.className = 'teleop-state-badge off';
-        }
+        setTeleopBadge(isActive ? 'on' : (isTeleopError ? 'error' : 'off'));
+    }
+}
+
+// ─── 진행 단계 라벨 ───
+const STAGE_LABELS = {
+    'INIT': '시스템 초기화 중',
+    'IDLE': '대기 중',
+    'DETECTING': '출력물 탐지 중',
+    'GRASPING': 'ACT 파지 진행 중',
+    'INSPECTING': '품질 검사 중',
+    'SORTING': '분류 이동 중',
+    'RELEASING': '출력물 투하 중',
+    'HOMING': '홈 복귀 중',
+    'TELEOPING': '텔레오퍼레이션 동작 중',
+    'FINISHED': '작업 완료',
+    'DONE': '작업 완료',
+    'ERROR': '오류 발생 — 확인 필요',
+};
+
+function updateStageLabel(state) {
+    const el = document.getElementById('stageText');
+    if (!el) return;
+    // "DETECTING_WAIT" 같은 세부 상태도 접두어로 매칭
+    let label = STAGE_LABELS[state];
+    if (!label) {
+        const prefix = Object.keys(STAGE_LABELS).find(k => state.startsWith(k));
+        label = prefix ? STAGE_LABELS[prefix] : state;
+    }
+    el.textContent = label;
+    el.className = 'stage-pill';
+    if (state === 'ERROR') el.classList.add('error');
+    else if (state === 'TELEOPING') el.classList.add('teleop');
+    else if (state === 'IDLE' || state === 'INIT') el.classList.add('idle');
+    else if (state === 'FINISHED' || state === 'DONE') el.classList.add('done');
+    else el.classList.add('running');
+}
+
+// ─── 텔레옵 배지/힌트 (on | off | error) ───
+function setTeleopBadge(mode) {
+    const badge = document.getElementById('teleopStateBadge');
+    const hint = document.getElementById('teleopHint');
+    if (!badge) return;
+
+    if (mode === 'on') {
+        badge.textContent = 'ON';
+        badge.className = 'teleop-state-badge on';
+        if (hint) hint.textContent = '리더 암을 움직이면 팔로워가 30Hz로 따라갑니다.';
+    } else if (mode === 'error') {
+        badge.textContent = 'ERROR';
+        badge.className = 'teleop-state-badge error';
+        if (hint) hint.textContent = '리더 암 연결/포트 오류입니다. E-STOP 후 연결을 확인하세요.';
+    } else {
+        badge.textContent = 'OFF';
+        badge.className = 'teleop-state-badge off';
+        if (hint) hint.textContent = '리더 암을 연결한 뒤 토글을 켜세요.';
     }
 }
 
@@ -359,21 +424,13 @@ async function toggleTeleop(enable) {
         const data = await res.json();
         console.log(`[QUVI] 텔레오퍼레이션 응답:`, data);
         
-        // UI 즉시 업데이트 (배지 색상 변경)
-        const teleopBadge = document.getElementById('teleopStateBadge');
-        if (teleopBadge) {
-            if (enable) {
-                teleopBadge.textContent = 'ON';
-                teleopBadge.className = 'teleop-state-badge on';
-            } else {
-                teleopBadge.textContent = 'OFF';
-                teleopBadge.className = 'teleop-state-badge off';
-            }
-        }
+        // UI 즉시 업데이트 (배지 색상 변경) — 이후 status_update가 최종 동기화
+        setTeleopBadge(enable ? 'on' : 'off');
     } catch (e) {
         console.error('[QUVI] 텔레오퍼레이션 토글 실패:', e);
-        // 실패 시 스위치 롤백
+        // 실패 시 스위치 롤백 + 에러 표시
         const teleopToggle = document.getElementById('teleopToggle');
         if (teleopToggle) teleopToggle.checked = !enable;
+        setTeleopBadge('error');
     }
 }
