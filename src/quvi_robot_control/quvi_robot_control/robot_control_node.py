@@ -163,6 +163,12 @@ class RobotControlNode(Node):
         # ─── 콜백 그룹 (블로킹 서비스/텔레옵과 타이머가 서로를 막지 않도록) ───
         self._cb_group = ReentrantCallbackGroup()
 
+        # ─── Dynamixel 포트 접근 직렬화 락 ───
+        # MultiThreadedExecutor 환경에서 30Hz joint 발행 타이머(read)와
+        # ACT/텔레옵 루프(write)가 동일 시리얼 포트에 동시 접근하면
+        # 패킷이 섞일 수 있으므로 모든 저수준 I/O 를 이 락으로 직렬화한다.
+        self._dxl_io_lock = threading.Lock()
+
         # ─── Dynamixel 초기화 ───
         self._dxl_port = None
         self._packet_handler = None
@@ -213,8 +219,8 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_steps_inspect', 1000)
         self.declare_parameter('rail_steps_pass',    1700)
         self.declare_parameter('rail_steps_fail',    2400)
-        # 카메라
-        self.declare_parameter('handcam_topic', '/camera/handcam/compressed')
+        # 카메라 (usb_cam camera1 네임스페이스와 일치하도록 기본값 설정)
+        self.declare_parameter('handcam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('use_compressed', True)
         # 동작 타임아웃 (초)
         self.declare_parameter('rail_move_timeout_sec', 30.0)
@@ -437,10 +443,20 @@ class RobotControlNode(Node):
     # 명령 콜백 (토픽 기반 — 비동기)
     # ─────────────────────────────────────────────
     def _grasp_cmd_callback(self, msg: GraspGoal):
-        """파지 명령 수신 → ACT 파지 실행 (별도 스레드)."""
+        """파지 명령 수신 → ACT 파지 실행 (별도 스레드).
+
+        주의: ACT(visuomotor)는 핸드캠 이미지+관절상태로 end-to-end 추론하므로
+        목표 좌표(target_x/y)를 직접 사용하지 않는다. 좌표는 베드 위 어떤
+        출력물을 대상으로 하는지에 대한 참고/로깅 용도이며, 향후 좌표 기반
+        프리포지셔닝(레일/베이스 이동)을 붙일 때 사용할 수 있다.
+        """
         if self._get_state() != RobotState.IDLE:
             self.get_logger().warn('파지 명령 무시: 현재 동작 중')
             return
+        self.get_logger().info(
+            f'파지 목표 수신(참고): idx={msg.object_index} '
+            f'x={msg.target_x:.1f} y={msg.target_y:.1f} '
+            f'(ACT visuomotor 추론 사용, 좌표는 직접 미사용)')
         t = threading.Thread(
             target=self._execute_act_grasp, daemon=True)
         t.start()
@@ -727,18 +743,19 @@ class RobotControlNode(Node):
             return True
 
         try:
-            self._sync_write.clearParam()
-            for dxl_id, goal in zip(JOINT_IDS, positions):
-                goal = int(np.clip(goal, 0, 4095))
-                data = [
-                    (goal >> 0)  & 0xFF,
-                    (goal >> 8)  & 0xFF,
-                    (goal >> 16) & 0xFF,
-                    (goal >> 24) & 0xFF,
-                ]
-                self._sync_write.addParam(dxl_id, data)
+            with self._dxl_io_lock:
+                self._sync_write.clearParam()
+                for dxl_id, goal in zip(JOINT_IDS, positions):
+                    goal = int(np.clip(goal, 0, 4095))
+                    data = [
+                        (goal >> 0)  & 0xFF,
+                        (goal >> 8)  & 0xFF,
+                        (goal >> 16) & 0xFF,
+                        (goal >> 24) & 0xFF,
+                    ]
+                    self._sync_write.addParam(dxl_id, data)
 
-            result = self._sync_write.txPacket()
+                result = self._sync_write.txPacket()
             if result != 0:
                 self.get_logger().warn(f'SyncWrite 실패 (result={result})')
                 return False
@@ -759,8 +776,9 @@ class RobotControlNode(Node):
             return True
 
         try:
-            result, _ = self._packet_handler.write4ByteTxRx(
-                self._port_handler, dxl_id, ADDR_GOAL_POSITION, position)
+            with self._dxl_io_lock:
+                result, _ = self._packet_handler.write4ByteTxRx(
+                    self._port_handler, dxl_id, ADDR_GOAL_POSITION, position)
             idx = dxl_id - 1
             if 0 <= idx < 5:
                 self._latest_joint_pos[idx] = position
@@ -777,8 +795,9 @@ class RobotControlNode(Node):
         positions = []
         for dxl_id in JOINT_IDS:
             try:
-                val, result, _ = self._packet_handler.read4ByteTxRx(
-                    self._port_handler, dxl_id, ADDR_PRESENT_POSITION)
+                with self._dxl_io_lock:
+                    val, result, _ = self._packet_handler.read4ByteTxRx(
+                        self._port_handler, dxl_id, ADDR_PRESENT_POSITION)
                 positions.append(
                     int(val) if result == 0 else self._latest_joint_pos[dxl_id - 1])
             except Exception:

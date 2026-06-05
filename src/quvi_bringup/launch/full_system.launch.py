@@ -13,6 +13,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogI
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -66,7 +67,7 @@ def generate_launch_description():
         name='hmi_node',
         parameters=[{
             'host': '0.0.0.0',
-            'port': 5000,
+            'port': ParameterValue(LaunchConfiguration('hmi_port'), value_type=int),
             'debug': False,
             'camera1_topic': '/camera1/image_raw/compressed',
             'camera2_topic': '/camera2/image_raw/compressed',

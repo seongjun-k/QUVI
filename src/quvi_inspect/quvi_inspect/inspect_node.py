@@ -83,6 +83,7 @@ class InspectNode(Node):
         self._captured_images: Dict[int, np.ndarray] = {}  # {angle: image}
         self._inspection_active = False
         self._current_object_index = 0
+        self._capture_timers: set = set()  # 진행 중인 one-shot 캡처 타이머
 
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
@@ -194,18 +195,38 @@ class InspectNode(Node):
             self._latest_frame = frame
 
     def _turntable_callback(self, msg: Int32):
-        """턴테이블 현재 각도 수신 → 해당 각도 이미지 캡처."""
+        """턴테이블 현재 각도 수신 → 안정화 후 비동기 캡처 예약.
+
+        콜백 내부에서 blocking sleep 을 호출하면 단일 스레드 executor 의
+        이미지 콜백까지 멈추므로, one-shot 타이머로 캡처를 지연 실행한다.
+        """
         self._current_angle = msg.data
         if self._inspection_active and msg.data in self._angles:
-            # 안정화 대기 후 캡처
-            time.sleep(self._cap_delay)
-            if self._latest_frame is not None:
-                self._captured_images[msg.data] = self._latest_frame.copy()
-                self.get_logger().info(f'캡처 완료: {msg.data}°')
+            self._schedule_capture(msg.data)
 
-                # 4방향 모두 캡처 완료 시 검사 실행
-                if len(self._captured_images) == len(self._angles):
-                    self._run_inspection()
+    def _schedule_capture(self, angle: int):
+        """capture_delay_sec 후 한 번만 실행되는 캡처 타이머 등록."""
+        def _do_capture():
+            timer.cancel()
+            self._capture_timers.discard(timer)
+            self._capture_angle(angle)
+
+        timer = self.create_timer(self._cap_delay, _do_capture)
+        self._capture_timers.add(timer)
+
+    def _capture_angle(self, angle: int):
+        """안정화 대기 후 현재 프레임을 해당 각도로 캡처."""
+        if not self._inspection_active:
+            return
+        if self._latest_frame is not None:
+            self._captured_images[angle] = self._latest_frame.copy()
+            self.get_logger().info(f'캡처 완료: {angle}°')
+
+            # 4방향 모두 캡처 완료 시 검사 실행
+            if len(self._captured_images) == len(self._angles):
+                self._run_inspection()
+        else:
+            self.get_logger().warn(f'{angle}° 캡처 실패: 카메라 프레임 없음')
 
     def _trigger_callback(self, msg: Bool):
         """검사 트리거 수신."""
@@ -653,8 +674,12 @@ class InspectNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = InspectNode()
+    # 캡처 지연 타이머와 이미지/트리거 콜백이 서로를 막지 않도록 멀티스레드 실행.
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

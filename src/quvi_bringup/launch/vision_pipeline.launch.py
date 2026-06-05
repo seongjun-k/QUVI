@@ -20,7 +20,18 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _default_data_dir() -> str:
+    """데이터 디렉토리 기본값 계산.
+
+    절대경로 하드코딩 대신 환경변수 QUVI_DATA_DIR > 컨테이너 표준 경로
+    /workspace/data 순으로 결정한다. launch arg(data_dir)로 override 가능.
+    """
+    return os.environ.get('QUVI_DATA_DIR', '/workspace/data')
+
+
 def generate_launch_description():
+
+    default_data_dir = _default_data_dir()
 
     # ─── Launch Arguments ───
     handcam_device_arg = DeclareLaunchArgument(
@@ -30,6 +41,28 @@ def generate_launch_description():
     fixed_cam_device_arg = DeclareLaunchArgument(
         'fixed_cam_device', default_value='/dev/video2',
         description='고정 카메라(Zone 2 검사 챔버) USB 장치 경로')
+
+    data_dir_arg = DeclareLaunchArgument(
+        'data_dir', default_value=default_data_dir,
+        description='기준/로그 데이터 루트 (기본: $QUVI_DATA_DIR 또는 /workspace/data)')
+
+    reference_dir_arg = DeclareLaunchArgument(
+        'reference_image_dir',
+        default_value=[LaunchConfiguration('data_dir'), '/reference_images'],
+        description='기준 이미지(STL 렌더링) 디렉토리')
+
+    inspection_log_dir_arg = DeclareLaunchArgument(
+        'inspection_log_dir',
+        default_value=[LaunchConfiguration('data_dir'), '/inspection_logs'],
+        description='검사 로그 저장 디렉토리')
+
+    handcam_topic_arg = DeclareLaunchArgument(
+        'handcam_topic', default_value='/camera1/image_raw/compressed',
+        description='YOLO/로봇이 구독할 핸드캠 압축 이미지 토픽')
+
+    inspect_topic_arg = DeclareLaunchArgument(
+        'inspect_topic', default_value='/camera2/image_raw/compressed',
+        description='검사 노드가 구독할 검사챔버 압축 이미지 토픽')
 
     yolo_config_arg = DeclareLaunchArgument(
         'yolo_config', default_value='',
@@ -85,7 +118,7 @@ def generate_launch_description():
         executable='yolo_node',
         name='yolo_node',
         parameters=[{
-            'camera_topic': '/camera1/image_raw/compressed',
+            'camera_topic': LaunchConfiguration('handcam_topic'),
             'use_compressed': True,
             'confidence_threshold': 0.5,
             'iou_threshold': 0.45,
@@ -106,9 +139,9 @@ def generate_launch_description():
         executable='inspect_node',
         name='inspect_node',
         parameters=[{
-            'camera_topic': '/camera2/image_raw/compressed',
+            'camera_topic': LaunchConfiguration('inspect_topic'),
             'use_compressed': True,
-            'reference_image_dir': '/home/ksj/QUVI/data/reference_images',
+            'reference_image_dir': LaunchConfiguration('reference_image_dir'),
             'ssim_threshold': 0.85,
             'area_ratio_min': 0.90,
             'area_ratio_max': 1.10,
@@ -124,7 +157,7 @@ def generate_launch_description():
             'turntable_angles': [0, 90, 180, 270],
             'capture_delay_sec': 0.5,
             'save_inspection_images': True,
-            'inspection_log_dir': '/home/ksj/QUVI/data/inspection_logs',
+            'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
             'publish_debug_image': True,
         }],
         output='screen',
@@ -134,6 +167,11 @@ def generate_launch_description():
         # Arguments
         handcam_device_arg,
         fixed_cam_device_arg,
+        data_dir_arg,
+        reference_dir_arg,
+        inspection_log_dir_arg,
+        handcam_topic_arg,
+        inspect_topic_arg,
         yolo_config_arg,
         inspect_config_arg,
 

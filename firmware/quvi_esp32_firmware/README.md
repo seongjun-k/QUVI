@@ -64,7 +64,7 @@ Open your Arduino IDE Library Manager (`Ctrl+Shift+I`) and install:
    - Install it via **Sketch** -> **Include Library** -> **Add .ZIP Library**.
 
 ### Step 2: Choose Communication Mode
-Open [Config.h](file:///home/ksj/QUVI/firmware/quvi_esp32_firmware/Config.h):
+Open [Config.h](./Config.h):
 - **For ROS 2 Native Integration (Recommended):** Leave `#define USE_MICRO_ROS` active.
 - **For Plug-and-Play Testing / UART Bridge:** Comment out `//#define USE_MICRO_ROS`. This will fallback to a fast ASCII Serial CLI monitor.
 
@@ -102,9 +102,11 @@ When micro-ROS mode is active, the board acts as a native ROS 2 publisher/subscr
 
 1. **Launch the micro-ROS Agent on the Ubuntu Host (Docker Container):**
    ```bash
-   ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 115200
+   ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 921600
    ```
-   *(Replace `/dev/ttyACM0` with the actual device port of your LOLIN S3).*
+   *(Replace `/dev/ttyACM0` with the actual device port of your LOLIN S3. The
+   baudrate `921600` must match `MICRO_ROS_BAUDRATE` in `Config.h`. A helper
+   script is provided: `scripts/run_microros_agent.sh`.)*
 
 2. **Verify topics are visible in ROS 2:**
    ```bash
