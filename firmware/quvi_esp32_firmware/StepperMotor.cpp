@@ -29,7 +29,7 @@ void StepperMotor::begin() {
     pinMode(_dirPin, OUTPUT);
     pinMode(_enaPin, OUTPUT);
     
-    digitalWrite(_pulPin, LOW);
+    digitalWrite(_pulPin, HIGH); // Common Anode: Active LOW, so write HIGH for idle (inactive)
     digitalWrite(_dirPin, LOW);
     
     // Disable by default (Active LOW for TB6600, so write HIGH to disable)
@@ -154,9 +154,10 @@ bool StepperMotor::update() {
         }
 
         // Generate Step Pulse (TB6600 requires at least 2.2us pulse width)
-        digitalWrite(_pulPin, HIGH);
-        delayMicroseconds(5);
+        // Common Anode: LOW = Active, HIGH = Inactive
         digitalWrite(_pulPin, LOW);
+        delayMicroseconds(5);
+        digitalWrite(_pulPin, HIGH);
 
         // Update Position
         if (_targetPos > _currentPos) {
@@ -234,9 +235,9 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // ==========================================
     digitalWrite(_dirPin, homingDir ? HIGH : LOW);
     while (!isLimitPressed()) {
-        digitalWrite(_pulPin, HIGH);
-        delayMicroseconds(5);
         digitalWrite(_pulPin, LOW);
+        delayMicroseconds(5);
+        digitalWrite(_pulPin, HIGH);
         delayMicroseconds(coarseDelay);
         yield(); // Feed ESP32 watchdog
     }
@@ -246,9 +247,9 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // ==========================================
     digitalWrite(_dirPin, !homingDir ? HIGH : LOW); // Reverse direction
     for (long i = 0; i < backoffSteps; i++) {
-        digitalWrite(_pulPin, HIGH);
-        delayMicroseconds(5);
         digitalWrite(_pulPin, LOW);
+        delayMicroseconds(5);
+        digitalWrite(_pulPin, HIGH);
         delayMicroseconds(fineDelay);
         yield();
     }
@@ -259,9 +260,9 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // ==========================================
     digitalWrite(_dirPin, homingDir ? HIGH : LOW);
     while (!isLimitPressed()) {
-        digitalWrite(_pulPin, HIGH);
-        delayMicroseconds(5);
         digitalWrite(_pulPin, LOW);
+        delayMicroseconds(5);
+        digitalWrite(_pulPin, HIGH);
         delayMicroseconds(fineDelay);
         yield();
     }
@@ -272,9 +273,9 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // Move slightly off the limit switch so it isn't constantly pressed
     digitalWrite(_dirPin, !homingDir ? HIGH : LOW); // Reverse
     for (int i = 0; i < 50; i++) {
-        digitalWrite(_pulPin, HIGH);
-        delayMicroseconds(5);
         digitalWrite(_pulPin, LOW);
+        delayMicroseconds(5);
+        digitalWrite(_pulPin, HIGH);
         delayMicroseconds(fineDelay);
         yield();
     }

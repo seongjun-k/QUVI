@@ -76,6 +76,7 @@ class HmiNode(Node):
             'grasp_ready': False,
             'inspect_ready': False,
             'motor_ready': False,
+            'teleop_active': False,
             'error_message': '',
         }
         self._latest_detections = []
@@ -118,6 +119,7 @@ class HmiNode(Node):
         self._cmd_pub = self.create_publisher(String, '/hmi/command', 10)
         self._trigger_pub = self.create_publisher(Bool, '/detection/trigger', 10)
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
+        self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -285,6 +287,27 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             return jsonify({'error': f'Unknown command: {cmd}'}), 400
         hmi_node.send_command(cmd.upper())
         return jsonify({'ok': True, 'command': cmd})
+
+    @app.route('/api/teleop/<action>', methods=['POST'])
+    def api_teleop(action):
+        if action == 'on':
+            msg = Bool()
+            msg.data = True
+            hmi_node._teleop_pub.publish(msg)
+            with hmi_node._lock:
+                hmi_node._system_status['teleop_active'] = True
+                hmi_node._system_status['current_state'] = 'TELEOPING'
+            return jsonify({'ok': True, 'teleop': 'on'})
+        elif action == 'off':
+            msg = Bool()
+            msg.data = False
+            hmi_node._teleop_pub.publish(msg)
+            with hmi_node._lock:
+                hmi_node._system_status['teleop_active'] = False
+                hmi_node._system_status['current_state'] = 'IDLE'
+            return jsonify({'ok': True, 'teleop': 'off'})
+        else:
+            return jsonify({'error': f'Invalid teleop action: {action}'}), 400
 
     @app.route('/api/trigger/detection', methods=['POST'])
     def api_trigger_detection():

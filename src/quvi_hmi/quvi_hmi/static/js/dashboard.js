@@ -56,6 +56,23 @@ function updateStatus(status) {
     setSubsystem('subGrasp', status.grasp_ready);
     setSubsystem('subInspect', status.inspect_ready);
     setSubsystem('subMotor', status.motor_ready);
+
+    // 텔레오퍼레이션 상태 동기화
+    const teleopToggle = document.getElementById('teleopToggle');
+    const teleopBadge = document.getElementById('teleopStateBadge');
+    
+    if (teleopToggle && teleopBadge) {
+        const isActive = status.teleop_active || (state === 'TELEOPING');
+        teleopToggle.checked = isActive;
+        
+        if (isActive) {
+            teleopBadge.textContent = 'ON';
+            teleopBadge.className = 'teleop-state-badge on';
+        } else {
+            teleopBadge.textContent = 'OFF';
+            teleopBadge.className = 'teleop-state-badge off';
+        }
+    }
 }
 
 function setSubsystem(id, online) {
@@ -316,3 +333,47 @@ loadInitialData();
 
 // 초기 도넛 차트 그리기
 drawDonut(0, 0);
+
+// ─── 탭 전환 함수 ───
+function switchTab(tabName) {
+    // 탭 판넬 전환
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+    const targetTab = document.getElementById(`tab-${tabName}`);
+    if (targetTab) targetTab.classList.add('active');
+
+    // 네비게이션 아이템 활성화
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const targetMenu = document.getElementById(`menu-${tabName}`);
+    if (targetMenu) targetMenu.classList.add('active');
+
+    console.log(`[QUVI] 탭 전환: ${tabName}`);
+}
+
+// ─── 텔레오퍼레이션 토글 API 호출 ───
+async function toggleTeleop(enable) {
+    const action = enable ? 'on' : 'off';
+    console.log(`[QUVI] 텔레오퍼레이션 요청: ${action}`);
+    
+    try {
+        const res = await fetch(`/api/teleop/${action}`, { method: 'POST' });
+        const data = await res.json();
+        console.log(`[QUVI] 텔레오퍼레이션 응답:`, data);
+        
+        // UI 즉시 업데이트 (배지 색상 변경)
+        const teleopBadge = document.getElementById('teleopStateBadge');
+        if (teleopBadge) {
+            if (enable) {
+                teleopBadge.textContent = 'ON';
+                teleopBadge.className = 'teleop-state-badge on';
+            } else {
+                teleopBadge.textContent = 'OFF';
+                teleopBadge.className = 'teleop-state-badge off';
+            }
+        }
+    } catch (e) {
+        console.error('[QUVI] 텔레오퍼레이션 토글 실패:', e);
+        // 실패 시 스위치 롤백
+        const teleopToggle = document.getElementById('teleopToggle');
+        if (teleopToggle) teleopToggle.checked = !enable;
+    }
+}

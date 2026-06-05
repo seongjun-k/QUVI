@@ -80,6 +80,7 @@ class RobotState(IntEnum):
     PLACING       = 5
     RELEASING     = 6
     TURNTABLE     = 7
+    TELEOPING     = 8
     ERROR         = 99
 
 
@@ -152,6 +153,11 @@ class RobotControlNode(Node):
         self._handcam_lock = threading.Lock()
         self._bridge = CvBridge()
 
+        # ─── 텔레오퍼레이션 상태 ───
+        self._teleop_running = False
+        self._leader_port_handler = None
+        self._leader_packet_handler = None
+
         # ─── Dynamixel 초기화 ───
         self._dxl_port = None
         self._packet_handler = None
@@ -187,7 +193,8 @@ class RobotControlNode(Node):
     def _declare_params(self):
         # 하드웨어
         self.declare_parameter('use_real_hardware', True)
-        self.declare_parameter('dxl_port', '/dev/ttyACM0')
+        self.declare_parameter('dxl_port', '/dev/ttyFollower')
+        self.declare_parameter('leader_dxl_port', '/dev/ttyLeader')
         self.declare_parameter('dxl_baudrate', DXL_BAUDRATE)
         # ACT
         self.declare_parameter('use_act', True)
@@ -211,6 +218,7 @@ class RobotControlNode(Node):
     def _load_params(self):
         self._use_real_hardware = self.get_parameter('use_real_hardware').value
         self._dxl_port_name     = self.get_parameter('dxl_port').value
+        self._leader_port_name  = self.get_parameter('leader_dxl_port').value
         self._dxl_baudrate      = self.get_parameter('dxl_baudrate').value
         self._use_act           = self.get_parameter('use_act').value
         self._act_model_path    = self.get_parameter('act_model_path').value
@@ -356,6 +364,10 @@ class RobotControlNode(Node):
         self._home_cmd_sub = self.create_subscription(
             Bool, '/robot/home_command',
             self._home_cmd_callback, 10)
+
+        self._teleop_cmd_sub = self.create_subscription(
+            Bool, '/robot/teleop_command',
+            self._teleop_cmd_callback, 10)
 
         # ── Publishers ──
         self._joint_state_pub = self.create_publisher(
@@ -801,6 +813,10 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def destroy_node(self):
         """노드 종료 시 토크 비활성화."""
+        # 텔레옵이 돌고 있다면 정지
+        if self._teleop_running:
+            self._stop_teleop()
+
         if self._use_real_hardware and self._dxl_ready:
             self.get_logger().info('Dynamixel 토크 비활성화')
             for dxl_id in JOINT_IDS:
@@ -812,6 +828,153 @@ class RobotControlNode(Node):
                     pass
             self._port_handler.closePort()
         super().destroy_node()
+
+    # ─────────────────────────────────────────────
+    # 텔레오퍼레이션 제어 함수
+    # ─────────────────────────────────────────────
+    def _teleop_cmd_callback(self, msg: Bool):
+        """텔레오퍼레이션 ON/OFF 명령 수신."""
+        if msg.data:
+            t = threading.Thread(target=self._start_teleop, daemon=True)
+            t.start()
+        else:
+            t = threading.Thread(target=self._stop_teleop, daemon=True)
+            t.start()
+
+    def _start_teleop(self) -> bool:
+        """리더-팔로워 텔레오퍼레이션 시작."""
+        if self._get_state() == RobotState.TELEOPING:
+            return True
+        if self._get_state() != RobotState.IDLE:
+            self.get_logger().warn('텔레옵 무시: 현재 로봇이 IDLE 상태가 아님')
+            return False
+
+        self._set_state(RobotState.TELEOPING)
+        self._publish_status('텔레오퍼레이션 활성화')
+        self.get_logger().info('텔레오퍼레이션 시작 중...')
+
+        if self._use_real_hardware:
+            try:
+                from dynamixel_sdk import PortHandler, PacketHandler
+                self._leader_port_handler = PortHandler(self._leader_port_name)
+                self._leader_packet_handler = PacketHandler(DXL_PROTOCOL)
+
+                if not self._leader_port_handler.openPort():
+                    self.get_logger().error(f'리더 암 다이나믹셀 포트 열기 실패: {self._leader_port_name}')
+                    self._set_state(RobotState.IDLE)
+                    self._publish_status('텔레옵 에러: 리더 포트 열기 실패')
+                    return False
+
+                if not self._leader_port_handler.setBaudRate(self._dxl_baudrate):
+                    self.get_logger().error('리더 암 다이나믹셀 보드레이트 설정 실패')
+                    self._leader_port_handler.closePort()
+                    self._leader_port_handler = None
+                    self._set_state(RobotState.IDLE)
+                    self._publish_status('텔레옵 에러: 보드레이트 설정 실패')
+                    return False
+
+                # 리더 암 모터 토크 해제 (Torque Disable) -> 사람이 손으로 조작 가능하도록 함
+                for dxl_id in JOINT_IDS:
+                    self._leader_packet_handler.write1ByteTxRx(
+                        self._leader_port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
+                    self.get_logger().info(f'리더 암 ID{dxl_id} 토크 해제 완료')
+
+                # 팔로워 암 모터 토크 활성화 (다시 한 번 확인)
+                if self._dxl_ready:
+                    for dxl_id in JOINT_IDS:
+                        self._packet_handler.write1ByteTxRx(
+                            self._port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
+
+            except Exception as e:
+                self.get_logger().error(f'리더 암 초기화 중 오류: {e}')
+                if self._leader_port_handler:
+                    try:
+                        self._leader_port_handler.closePort()
+                    except Exception:
+                        pass
+                self._leader_port_handler = None
+                self._leader_packet_handler = None
+                self._set_state(RobotState.IDLE)
+                self._publish_status(f'텔레옵 에러: {e}')
+                return False
+
+        self._teleop_running = True
+        self._teleop_thread = threading.Thread(target=self._teleop_loop, daemon=True)
+        self._teleop_thread.start()
+        self.get_logger().info('텔레오퍼레이션 루프 시작됨')
+        return True
+
+    def _stop_teleop(self) -> bool:
+        """리더-팔로워 텔레오퍼레이션 종료."""
+        if not self._teleop_running:
+            return True
+
+        self.get_logger().info('텔레오퍼레이션 종료 중...')
+        self._teleop_running = False
+        if hasattr(self, '_teleop_thread') and self._teleop_thread.is_alive():
+            self._teleop_thread.join(timeout=1.0)
+
+        if self._use_real_hardware and self._leader_port_handler:
+            try:
+                # 리더 암 모터 토크 다시 활성화하여 락(고정) 처리 -> 갑자기 아래로 툭 떨어지는 것을 방지
+                if self._leader_packet_handler:
+                    for dxl_id in JOINT_IDS:
+                        self._leader_packet_handler.write1ByteTxRx(
+                            self._leader_port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
+                        self.get_logger().info(f'리더 암 ID{dxl_id} 토크 복구 완료')
+                
+                # 리더 암 포트 닫기
+                self._leader_port_handler.closePort()
+                self.get_logger().info('리더 암 포트 닫힘')
+            except Exception as e:
+                self.get_logger().error(f'리더 암 포트 닫기 중 오류: {e}')
+
+        self._leader_port_handler = None
+        self._leader_packet_handler = None
+
+        self._set_state(RobotState.IDLE)
+        self._publish_status('텔레오퍼레이션 종료')
+        return True
+
+    def _teleop_loop(self):
+        """리더-팔로워 동기화 제어 주기 루프 (30Hz)."""
+        dt = 1.0 / ACT_CONTROL_HZ
+        sim_angle = 0.0
+
+        while self._teleop_running and rclpy.ok():
+            start_time = time.time()
+            positions = []
+
+            if self._use_real_hardware and self._leader_port_handler and self._leader_packet_handler:
+                for dxl_id in JOINT_IDS:
+                    try:
+                        val, result, error = self._leader_packet_handler.read4ByteTxRx(
+                            self._leader_port_handler, dxl_id, ADDR_PRESENT_POSITION)
+                        if result == 0:
+                            positions.append(int(val))
+                        else:
+                            positions.append(self._latest_joint_pos[dxl_id - 1])
+                    except Exception:
+                        positions.append(self._latest_joint_pos[dxl_id - 1])
+            else:
+                # 시뮬레이션 모드: 부드러운 사인파 형태의 모의 각도 전송
+                sim_angle += 0.05
+                base_sim = 2048 + int(500 * math.sin(sim_angle))
+                shoulder_sim = 1800 + int(300 * math.cos(sim_angle))
+                elbow_sim = 1200 + int(200 * math.sin(sim_angle * 1.5))
+                wrist_sim = 2048
+                gripper_sim = GRIPPER_OPEN if math.sin(sim_angle * 0.5) > 0 else GRIPPER_CLOSE
+                positions = [base_sim, shoulder_sim, elbow_sim, wrist_sim, gripper_sim]
+
+            # 팔로워에 동시 전송
+            if len(positions) == 5:
+                self._sync_send_positions(positions)
+
+            # 30Hz 제어 속도 타이밍 대기
+            elapsed = time.time() - start_time
+            sleep_time = dt - elapsed
+            if sleep_time > 0:
+                time.sleep(sleep_time)
 
 
 # ─────────────────────────────────────────────────────────────

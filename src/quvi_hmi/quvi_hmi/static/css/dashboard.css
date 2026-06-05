@@ -562,6 +562,277 @@ body {
 .legend-color.pass { background: var(--accent-green); }
 .legend-color.fail { background: var(--accent-red); }
 
+/* ─── 앱 레이아웃 (사이드바 도입) ─── */
+.app-container {
+    display: flex;
+    min-height: 100vh;
+    width: 100vw;
+    overflow: hidden;
+}
+
+.sidebar {
+    width: 260px;
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px;
+    flex-shrink: 0;
+}
+
+.sidebar .logo {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent-blue);
+    margin-bottom: 32px;
+    padding-left: 8px;
+}
+
+.sidebar .logo span {
+    color: var(--text-secondary);
+    font-weight: 400;
+    font-size: 11px;
+    margin-left: 8px;
+    display: block;
+    letter-spacing: 0.5px;
+    margin-top: 4px;
+}
+
+.nav-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    color: var(--text-secondary);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    transition: all 0.2s ease;
+}
+
+.nav-item svg {
+    flex-shrink: 0;
+    stroke: currentColor;
+    fill: none;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+}
+
+.nav-item.active {
+    background: rgba(88, 166, 255, 0.12);
+    color: var(--accent-blue);
+    font-weight: 600;
+}
+
+.main-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100vh;
+    overflow-y: auto;
+}
+
+/* ─── 탭 시스템 ─── */
+.tab-pane {
+    display: none;
+}
+
+.tab-pane.active {
+    display: block;
+}
+
+/* ─── 텔레오퍼레이션 뷰 ─── */
+.teleop-container {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.teleop-header {
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 16px;
+}
+
+.teleop-header h2 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.teleop-header p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+
+.teleop-grid {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 20px;
+}
+
+.teleop-control-card {
+    display: flex;
+    flex-direction: column;
+}
+
+.teleop-control-body {
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.teleop-status-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.teleop-status-display .status-label {
+    font-size: 14px;
+    color: var(--text-secondary);
+}
+
+.teleop-state-badge {
+    padding: 4px 14px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.teleop-state-badge.off {
+    background: rgba(248, 81, 73, 0.1);
+    color: var(--accent-red);
+    border: 1px solid rgba(248, 81, 73, 0.2);
+}
+
+.teleop-state-badge.on {
+    background: rgba(63, 185, 80, 0.1);
+    color: var(--accent-green);
+    border: 1px solid rgba(63, 185, 80, 0.2);
+    box-shadow: 0 0 8px rgba(63, 185, 80, 0.2);
+}
+
+.toggle-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.toggle-label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* 스위치 슬라이더 스타일 */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 26px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: var(--text-muted);
+    transition: .3s;
+    border: 1px solid var(--border);
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 18px;
+    width: 18px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .3s;
+}
+
+input:checked + .slider {
+    background-color: var(--accent-green);
+    border-color: var(--accent-green);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--accent-green);
+}
+
+input:checked + .slider:before {
+    transform: translateX(24px);
+}
+
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
+.warning-box {
+    background: rgba(210, 153, 34, 0.06);
+    border: 1px solid rgba(210, 153, 34, 0.15);
+    border-radius: var(--radius);
+    padding: 16px;
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.warning-box strong {
+    color: var(--accent-yellow);
+    display: block;
+    margin-bottom: 8px;
+    font-size: 13px;
+}
+
+.warning-box ul {
+    padding-left: 16px;
+    color: var(--text-secondary);
+}
+
+.warning-box li {
+    margin-bottom: 6px;
+}
+
+.main-teleop-feed {
+    width: 100%;
+    aspect-ratio: 16/9;
+}
+
 /* ─── 반응형 ─── */
 @media (max-width: 1200px) {
     .stats-row {
@@ -573,9 +844,33 @@ body {
     .main-grid {
         grid-template-columns: 1fr;
     }
+    .teleop-grid {
+        grid-template-columns: 1fr;
+    }
 }
 
 @media (max-width: 768px) {
+    .app-container {
+        flex-direction: column;
+    }
+    .sidebar {
+        width: 100%;
+        height: auto;
+        padding: 16px;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+    }
+    .sidebar .logo {
+        margin-bottom: 16px;
+    }
+    .nav-menu {
+        flex-direction: row;
+        overflow-x: auto;
+    }
+    .main-container {
+        height: auto;
+        overflow-y: visible;
+    }
     .stats-row {
         grid-template-columns: repeat(2, 1fr);
     }
