@@ -250,10 +250,18 @@ class HmiNode(Node):
 
 def create_flask_app(hmi_node: HmiNode) -> tuple:
     """Flask 앱 + SocketIO 생성."""
-    # 템플릿/static 경로
-    pkg_dir = os.path.dirname(os.path.abspath(__file__))
-    template_dir = os.path.join(pkg_dir, 'templates')
-    static_dir = os.path.join(pkg_dir, 'static')
+    from ament_index_python.packages import get_package_share_directory
+    
+    # ROS 2 share 디렉토리에서 리소스 경로 탐색 (setup.py가 리소스를 배치하는 정확한 위치)
+    try:
+        pkg_share_dir = get_package_share_directory('quvi_hmi')
+        template_dir = os.path.join(pkg_share_dir, 'templates')
+        static_dir = os.path.join(pkg_share_dir, 'static')
+    except Exception:
+        # 폴백: 로컬 소스 코드 파일 기준 경로
+        pkg_dir = os.path.dirname(os.path.abspath(__file__))
+        template_dir = os.path.join(pkg_dir, 'templates')
+        static_dir = os.path.join(pkg_dir, 'static')
 
     app = Flask(__name__,
                 template_folder=template_dir,

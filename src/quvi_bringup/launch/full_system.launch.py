@@ -26,11 +26,11 @@ def generate_launch_description():
         description='HMI Web UI 포트')
 
     handcam_arg = DeclareLaunchArgument(
-        'handcam_device', default_value='/dev/video0',
+        'handcam_device', default_value='/dev/video4',
         description='핸드캠 장치 경로')
 
     fixed_cam_arg = DeclareLaunchArgument(
-        'fixed_cam_device', default_value='/dev/video2',
+        'fixed_cam_device', default_value='/dev/video0',
         description='고정 카메라 장치 경로')
 
     use_real_hardware_arg = DeclareLaunchArgument(
@@ -89,6 +89,8 @@ def generate_launch_description():
             'use_act': LaunchConfiguration('use_act'),
             'dxl_port': LaunchConfiguration('dxl_port'),
             'leader_dxl_port': LaunchConfiguration('leader_dxl_port'),
+            'dxl_baudrate': 1000000,
+            'act_device': 'cpu',
             'handcam_topic': '/camera1/image_raw/compressed',
             'use_compressed': True,
         }],

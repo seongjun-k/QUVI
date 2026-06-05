@@ -31,24 +31,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     usbutils \
     # OpenGL 및 비전 렌더링용 의존 라이브러리 추가
-    libgl1-mesa-glx \
     libglib2.0-0 \
     mesa-utils \
-    libgl1-mesa-dev \
+    libgl1 \
     libglu1-mesa-dev \
     libosmesa6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── Python 패키지 ───
 # 1단계: 대용량 PyTorch 및 Torchvision을 타임아웃 방지 옵션을 주어 먼저 분리 설치
-RUN pip3 install --break-system-packages --no-cache-dir --default-timeout=1000 \
+RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir --default-timeout=1000 \
     torch>=2.1.0 \
     torchvision>=0.16.0
 
 # 2단계: 나머지 파이썬 의존성 패키지 설치
-RUN pip3 install --break-system-packages --no-cache-dir \
+RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
+    "setuptools<80" \
     opencv-python-headless>=4.9.0 \
-    numpy>=1.26.0 \
     scikit-image>=0.22.0 \
     ultralytics>=8.1.0 \
     pyserial>=3.5 \

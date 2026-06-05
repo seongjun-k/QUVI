@@ -104,27 +104,27 @@ POSITION_MODE         = 3
 # ─────────────────────────────────────────────────────────────
 # 관절 ID / 모터 종류 분류
 # ─────────────────────────────────────────────────────────────
-#  ID 1 : 베이스    — XL430-W250T (12V)
-#  ID 2 : 숄더     — XL430-W250T (12V)
-#  ID 3 : 엘보우   — XL430-W250T (12V)
-#  ID 4 : 리스트   — XL330-M288T  (5V)
-#  ID 5 : 그리퍼   — XL330-M288T  (5V)
-JOINT_IDS_XL430 = [1, 2, 3]          # 12V 모터
-JOINT_IDS_XL330 = [4, 5]             # 5V 모터
-JOINT_IDS       = JOINT_IDS_XL430 + JOINT_IDS_XL330  # 전체 [1,2,3,4,5]
-JOINT_NAMES     = ['base', 'shoulder', 'elbow', 'wrist', 'gripper']
+# 관절 및 ID 매핑 (리더: 1~6, 팔로워: 11~16)
+LEADER_IDS_XL430  = [1, 2, 3]        # 리더 12V 모터 (베이스/숄더/엘보우)
+LEADER_IDS_XL330  = [4, 5, 6]        # 리더 5V 모터 (리스트1/리스트2/그리퍼)
+LEADER_IDS        = LEADER_IDS_XL430 + LEADER_IDS_XL330  # [1, 2, 3, 4, 5, 6]
+
+FOLLOWER_IDS_XL430 = [11, 12, 13]    # 팔로워 12V 모터 (베이스/숄더/엘보우)
+FOLLOWER_IDS_XL330 = [14, 15, 16]    # 팔로워 5V 모터 (리스트1/리스트2/그리퍼)
+FOLLOWER_IDS       = FOLLOWER_IDS_XL430 + FOLLOWER_IDS_XL330  # [11, 12, 13, 14, 15, 16]
+
+JOINT_NAMES       = ['base', 'shoulder', 'elbow', 'wrist_pitch', 'wrist_roll', 'gripper']
 
 # ─────────────────────────────────────────────────────────────
 # 주요 자세 (Dynamixel 위치값 0~4095 = 0~360°)
-# ※ 조립 후 실측 캘리브레이션으로 보정 필요
 # ─────────────────────────────────────────────────────────────
-#                         [base, shoulder, elbow, wrist, gripper]
-POSE_HOME  = [2048, 1800, 1200, 2048, 2048]   # 홈 (직립)
-POSE_FRONT = [2048, 1400,  900, 1800, 2300]   # 베드 파지 준비 (앞 방향)
-POSE_BACK  = [4096 - 2048, 1400, 900, 1800, 2300]  # 검사/분류 (180° 회전)
-POSE_PLACE = [4096 - 2048, 1600, 1100, 2048, 2300]  # 턴테이블 안착
+#                         [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
+POSE_HOME  = [2048, 1800, 1200, 2048, 2048, 2048]   # 홈 (직립)
+POSE_FRONT = [2048, 1400,  900, 1800, 2048, 2300]   # 베드 파지 준비 (앞 방향)
+POSE_BACK  = [2048, 1400,  900, 1800, 2048, 2300]   # 검사/분류 (180° 회전)
+POSE_PLACE = [2048, 1600, 1100, 2048, 2048, 2300]   # 턴테이블 안착
 
-# 그리퍼 (ID5, XL330-M288T)
+# 그리퍼 (ID 6 / ID 16, XL330-M288T)
 GRIPPER_OPEN  = 2300   # 열림
 GRIPPER_CLOSE = 1800   # 닫힘
 
@@ -151,7 +151,7 @@ class RobotControlNode(Node):
         self._state_lock = threading.Lock()
 
         self._latest_handcam: Optional[np.ndarray] = None
-        self._latest_joint_pos: List[int] = [2048] * 5   # Dynamixel 위치값
+        self._latest_joint_pos: List[int] = [2048] * 6   # Dynamixel 위치값 (6자유도)
         self._handcam_lock = threading.Lock()
         self._bridge = CvBridge()
 
@@ -196,8 +196,8 @@ class RobotControlNode(Node):
             f'하드웨어={self._use_real_hardware} | '
             f'ACT={self._use_act} | '
             f'DXL포트={self._dxl_port_name} | '
-            f'XL430(12V)=ID{JOINT_IDS_XL430} | '
-            f'XL330(5V)=ID{JOINT_IDS_XL330}')
+            f'XL430(12V)=ID{FOLLOWER_IDS_XL430} | '
+            f'XL330(5V)=ID{FOLLOWER_IDS_XL330}')
 
     # ─────────────────────────────────────────────
     # 파라미터
@@ -283,9 +283,9 @@ class RobotControlNode(Node):
             self.get_logger().error('Dynamixel 보드레이트 설정 실패')
             return
 
-        # 각 관절 Position Mode 설정 + 토크 활성화
-        for dxl_id in JOINT_IDS:
-            motor_type = 'XL430-W250T(12V)' if dxl_id in JOINT_IDS_XL430 \
+        # 각 관절 Position Mode 설정 + 토크 활성화 (팔로워 ID 11~16)
+        for dxl_id in FOLLOWER_IDS:
+            motor_type = 'XL430-W250T(12V)' if dxl_id in FOLLOWER_IDS_XL430 \
                          else 'XL330-M288T(5V)'
 
             # Operating Mode = Position (3)
@@ -312,8 +312,8 @@ class RobotControlNode(Node):
         self._dxl_ready = True
         self.get_logger().info(
             'Dynamixel 초기화 완료 | '
-            f'XL430-W250T(12V): ID{JOINT_IDS_XL430} | '
-            f'XL330-M288T(5V): ID{JOINT_IDS_XL330}')
+            f'XL430-W250T(12V): ID{FOLLOWER_IDS_XL430} | '
+            f'XL330-M288T(5V): ID{FOLLOWER_IDS_XL330}')
 
     # ─────────────────────────────────────────────
     # ACT 모델 로드
@@ -523,19 +523,19 @@ class RobotControlNode(Node):
         return response
 
     def _open_gripper_service(self, request, response):
-        """그리퍼 열기 서비스 (ID5, XL330-M288T, 5V)."""
-        self._set_joint_position(5, GRIPPER_OPEN)
+        """그리퍼 열기 서비스 (ID 16, XL330-M288T, 5V)."""
+        self._set_joint_position(16, GRIPPER_OPEN)
         time.sleep(0.5)
         response.success = True
-        response.message = '그리퍼 열기 완료 (XL330 ID5)'
+        response.message = '그리퍼 열기 완료 (XL330 ID16)'
         return response
 
     def _close_gripper_service(self, request, response):
-        """그리퍼 닫기 서비스 (ID5, XL330-M288T, 5V)."""
-        self._set_joint_position(5, GRIPPER_CLOSE)
+        """그리퍼 닫기 서비스 (ID 16, XL330-M288T, 5V)."""
+        self._set_joint_position(16, GRIPPER_CLOSE)
         time.sleep(0.5)
         response.success = True
-        response.message = '그리퍼 닫기 완료 (XL330 ID5)'
+        response.message = '그리퍼 닫기 완료 (XL330 ID16)'
         return response
 
     # ─────────────────────────────────────────────
@@ -701,7 +701,7 @@ class RobotControlNode(Node):
         self._publish_status('출력물 투하')
         self.get_logger().info('출력물 투하: 그리퍼 열기 (XL330 ID5)')
 
-        self._set_joint_position(5, GRIPPER_OPEN)
+        self._set_joint_position(16, GRIPPER_OPEN)
         time.sleep(0.8)
 
         done_msg = Bool()
@@ -733,9 +733,8 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _sync_send_positions(self, positions: List[int]) -> bool:
         """
-        GroupSyncWrite로 5개 관절 위치 동시 전송.
-        XL430(ID1~3)과 XL330(ID4~5) 모두 동일 레지스터 주소 사용.
-        hardware 없으면 시뮬레이션(로그만 출력).
+        GroupSyncWrite로 6개 관절 위치 동시 전송.
+        리더(1~6)와 매칭되는 팔로워(11~16)에 Goal Position 적용.
         """
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
@@ -745,7 +744,7 @@ class RobotControlNode(Node):
         try:
             with self._dxl_io_lock:
                 self._sync_write.clearParam()
-                for dxl_id, goal in zip(JOINT_IDS, positions):
+                for dxl_id, goal in zip(FOLLOWER_IDS, positions):
                     goal = int(np.clip(goal, 0, 4095))
                     data = [
                         (goal >> 0)  & 0xFF,
@@ -770,8 +769,8 @@ class RobotControlNode(Node):
     def _set_joint_position(self, dxl_id: int, position: int) -> bool:
         """단일 관절 위치 전송."""
         if not self._use_real_hardware or not self._dxl_ready:
-            idx = dxl_id - 1
-            if 0 <= idx < 5:
+            idx = FOLLOWER_IDS.index(dxl_id) if dxl_id in FOLLOWER_IDS else -1
+            if idx != -1:
                 self._latest_joint_pos[idx] = position
             return True
 
@@ -779,8 +778,8 @@ class RobotControlNode(Node):
             with self._dxl_io_lock:
                 result, _ = self._packet_handler.write4ByteTxRx(
                     self._port_handler, dxl_id, ADDR_GOAL_POSITION, position)
-            idx = dxl_id - 1
-            if 0 <= idx < 5:
+            idx = FOLLOWER_IDS.index(dxl_id) if dxl_id in FOLLOWER_IDS else -1
+            if idx != -1:
                 self._latest_joint_pos[idx] = position
             return result == 0
         except Exception as e:
@@ -793,15 +792,15 @@ class RobotControlNode(Node):
             return list(self._latest_joint_pos)
 
         positions = []
-        for dxl_id in JOINT_IDS:
+        for i, dxl_id in enumerate(FOLLOWER_IDS):
             try:
                 with self._dxl_io_lock:
                     val, result, _ = self._packet_handler.read4ByteTxRx(
                         self._port_handler, dxl_id, ADDR_PRESENT_POSITION)
                 positions.append(
-                    int(val) if result == 0 else self._latest_joint_pos[dxl_id - 1])
+                    int(val) if result == 0 else self._latest_joint_pos[i])
             except Exception:
-                positions.append(self._latest_joint_pos[dxl_id - 1])
+                positions.append(self._latest_joint_pos[i])
         return positions
 
     # ─────────────────────────────────────────────
@@ -904,14 +903,14 @@ class RobotControlNode(Node):
                     return False
 
                 # 리더 암 모터 토크 해제 (Torque Disable) -> 사람이 손으로 조작 가능하도록 함
-                for dxl_id in JOINT_IDS:
+                for dxl_id in LEADER_IDS:
                     self._leader_packet_handler.write1ByteTxRx(
                         self._leader_port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
                     self.get_logger().info(f'리더 암 ID{dxl_id} 토크 해제 완료')
 
                 # 팔로워 암 모터 토크 활성화 (다시 한 번 확인)
                 if self._dxl_ready:
-                    for dxl_id in JOINT_IDS:
+                    for dxl_id in FOLLOWER_IDS:
                         self._packet_handler.write1ByteTxRx(
                             self._port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
 
@@ -948,7 +947,7 @@ class RobotControlNode(Node):
             try:
                 # 리더 암 모터 토크 다시 활성화하여 락(고정) 처리 -> 갑자기 아래로 툭 떨어지는 것을 방지
                 if self._leader_packet_handler:
-                    for dxl_id in JOINT_IDS:
+                    for dxl_id in LEADER_IDS:
                         self._leader_packet_handler.write1ByteTxRx(
                             self._leader_port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
                         self.get_logger().info(f'리더 암 ID{dxl_id} 토크 복구 완료')
@@ -976,28 +975,31 @@ class RobotControlNode(Node):
             positions = []
 
             if self._use_real_hardware and self._leader_port_handler and self._leader_packet_handler:
-                for dxl_id in JOINT_IDS:
+                for dxl_id in LEADER_IDS:
                     try:
                         val, result, error = self._leader_packet_handler.read4ByteTxRx(
                             self._leader_port_handler, dxl_id, ADDR_PRESENT_POSITION)
                         if result == 0:
                             positions.append(int(val))
                         else:
-                            positions.append(self._latest_joint_pos[dxl_id - 1])
+                            idx = LEADER_IDS.index(dxl_id)
+                            positions.append(self._latest_joint_pos[idx])
                     except Exception:
-                        positions.append(self._latest_joint_pos[dxl_id - 1])
+                        idx = LEADER_IDS.index(dxl_id)
+                        positions.append(self._latest_joint_pos[idx])
             else:
                 # 시뮬레이션 모드: 부드러운 사인파 형태의 모의 각도 전송
                 sim_angle += 0.05
                 base_sim = 2048 + int(500 * math.sin(sim_angle))
                 shoulder_sim = 1800 + int(300 * math.cos(sim_angle))
                 elbow_sim = 1200 + int(200 * math.sin(sim_angle * 1.5))
-                wrist_sim = 2048
+                wrist_p = 2048
+                wrist_r = 2048
                 gripper_sim = GRIPPER_OPEN if math.sin(sim_angle * 0.5) > 0 else GRIPPER_CLOSE
-                positions = [base_sim, shoulder_sim, elbow_sim, wrist_sim, gripper_sim]
+                positions = [base_sim, shoulder_sim, elbow_sim, wrist_p, wrist_r, gripper_sim]
 
-            # 팔로워에 동시 전송
-            if len(positions) == 5:
+            # 팔로워에 동시 전송 (6자유도 매핑)
+            if len(positions) == 6:
                 self._sync_send_positions(positions)
 
             # 30Hz 제어 속도 타이밍 대기

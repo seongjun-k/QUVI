@@ -17,7 +17,6 @@ setup(
     maintainer_email='team@quvi.local',
     description='QUVI 로봇팔 + 레일 + 턴테이블 제어 노드',
     license='MIT',
-    tests_require=['pytest'],
     entry_points={
         'console_scripts': [
             'robot_control_node = quvi_robot_control.robot_control_node:main',

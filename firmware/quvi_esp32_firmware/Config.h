@@ -28,19 +28,19 @@
 #define ONBOARD_LED_PIN       38  // Built-in WS2812B RGB LED on LOLIN S3
 
 // Safety & System
-#define ESTOP_PIN             9   // Emergency Stop Switch (GPIO 9, Active LOW with Internal Pull-Up)
+#define ESTOP_PIN             11  // Emergency Stop Switch (GPIO 11, Active LOW with Internal Pull-Up)
 
-// LINEAR RAIL (TB6600 Stepper Driver)
-#define RAIL_PUL_PIN          1   // Pulse/Step signal
-#define RAIL_DIR_PIN          2   // Direction signal
-#define RAIL_ENA_PIN          3   // Enable signal (Active LOW)
-#define RAIL_LIMIT_PIN        4   // Limit switch at motor side (left) (Active LOW with Internal Pull-Up)
+// LINEAR RAIL (TB6600 Stepper Driver - EN pin removed)
+#define RAIL_PUL_PIN          5   // Pulse/Step signal
+#define RAIL_DIR_PIN          6   // Direction signal
+#define RAIL_ENA_PIN          -1  // Enable signal removed (always enabled)
+#define RAIL_LIMIT_PIN        7   // Limit switch at motor side (Active LOW with Internal Pull-Up)
 
-// TURNTABLE (TB6600 Stepper Driver)
-#define TURN_PUL_PIN          5   // Pulse/Step signal
-#define TURN_DIR_PIN          6   // Direction signal
-#define TURN_ENA_PIN          7   // Enable signal (Active LOW)
-#define TURN_LIMIT_PIN        8   // Optional Turntable Index/Limit Switch (Active LOW with Internal Pull-Up)
+// TURNTABLE (TB6600 Stepper Driver - EN pin removed)
+#define TURN_PUL_PIN          8   // Pulse/Step signal
+#define TURN_DIR_PIN          9   // Direction signal
+#define TURN_ENA_PIN          -1  // Enable signal removed (always enabled)
+#define TURN_LIMIT_PIN        10  // Optional Turntable Index/Limit Switch (Active LOW with Internal Pull-Up)
 
 // =============================================================================
 // MOTOR & GEOMETRIC CONSTANTS
@@ -49,8 +49,11 @@
 #define STEPPER_STEPS_PER_REV 200   // Standard 1.8 degree stepper motor
 
 // 1. Linear Rail Configuration
-#define RAIL_MICROSTEPPING    16    // Configured on TB6600 DIP switches (e.g. 16 means 3200 steps/rev)
-#define RAIL_STEPS_PER_MM     40.0  // Steps per millimeter calibration factor (adjust based on lead screw / belt pitch)
+#define RAIL_MICROSTEPPING    16    // Configured on TB6600 DIP switches (16 microsteps)
+#define RAIL_PULLEY_TEETH     20    // 20T Pulley
+#define RAIL_BELT_PITCH       2.0f  // GT2 Belt Pitch (2mm)
+#define RAIL_MM_PER_REV       (RAIL_PULLEY_TEETH * RAIL_BELT_PITCH) // 40.0mm per rev
+#define RAIL_STEPS_PER_MM     ((float)(STEPPER_STEPS_PER_REV * RAIL_MICROSTEPPING) / RAIL_MM_PER_REV) // 80.0 steps/mm
 
 // 2. Turntable Configuration
 #define TURN_MICROSTEPPING    16    // Configured on TB6600 DIP switches (e.g. 16 means 3200 steps/rev)
@@ -65,13 +68,13 @@
 // MOTION STYLES & CALIBRATION (TRAPEZOIDAL CONTROL)
 // =============================================================================
 // Speed & Acceleration Limits
-#define RAIL_MAX_SPEED        3000.0 // Maximum speed in steps/sec
+#define RAIL_MAX_SPEED        8000.0 // Maximum speed in steps/sec (equivalent to 100mm/s)
 #define RAIL_ACCELERATION     5000.0 // Acceleration rate in steps/sec^2
 #define TURN_MAX_SPEED        1500.0 // Maximum speed in steps/sec (turntable)
 #define TURN_ACCELERATION     2000.0 // Acceleration rate in steps/sec^2
 
 // Homing Calibration Parameters (Rail)
-// The limit switch is on the motor side (left side). Homing CCW (towards motor).
+// The limit switch is on the motor side (left side).
 #define RAIL_HOMING_DIR       LOW    // Direction value to move towards the motor (LOW or HIGH)
 #define RAIL_RUNNING_DIR      HIGH   // Direction value to move away from motor (positive step increment)
 
@@ -87,6 +90,6 @@
 
 // Soft Position Limits (in steps, after successful Homing)
 #define RAIL_MIN_LIMIT        0
-#define RAIL_MAX_LIMIT        5000   // Prevents rail from hitting the far right physical end stop
+#define RAIL_MAX_LIMIT        33600  // 420.0f mm * 80.0 steps/mm = 33600 steps
 
 #endif // CONFIG_H
