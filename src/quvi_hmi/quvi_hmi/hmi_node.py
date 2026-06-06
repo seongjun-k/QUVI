@@ -29,8 +29,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from cv_bridge import CvBridge
-from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import Bool, String
+from sensor_msgs.msg import CompressedImage, Image, JointState
+from std_msgs.msg import Bool, String, Int32
 
 from quvi_msgs.msg import InspectionResult, ObjectArray, SystemStatus
 
@@ -78,6 +78,9 @@ class HmiNode(Node):
             'motor_ready': False,
             'teleop_active': False,
             'error_message': '',
+            'joint_positions': [0.0] * 6,
+            'rail_position': 0,
+            'turntable_angle': 0,
         }
         self._latest_detections = []
         self._inspection_history = []  # 최근 100건
@@ -95,6 +98,12 @@ class HmiNode(Node):
             ObjectArray, '/detection/objects', self._detection_cb, 10)
         self.create_subscription(
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
+        self.create_subscription(
+            JointState, '/robot/joint_states', self._joint_states_cb, 10)
+        self.create_subscription(
+            Int32, '/robot/rail_command', self._rail_command_cb, 10)
+        self.create_subscription(
+            Int32, '/motor/turntable', self._turntable_cb, 10)
 
         # 카메라 스트림
         cam1_topic = self.get_parameter('camera1_topic').value
@@ -127,18 +136,29 @@ class HmiNode(Node):
     # ─── ROS 콜백 ───
     def _status_cb(self, msg: SystemStatus):
         with self._lock:
-            self._system_status = {
-                'current_state': msg.current_state,
-                'total_objects': msg.total_objects,
-                'processed_count': msg.processed_count,
-                'pass_count': msg.pass_count,
-                'fail_count': msg.fail_count,
-                'yolo_ready': msg.yolo_ready,
-                'grasp_ready': msg.grasp_ready,
-                'inspect_ready': msg.inspect_ready,
-                'motor_ready': msg.motor_ready,
-                'error_message': msg.error_message,
-            }
+            self._system_status['current_state'] = msg.current_state
+            self._system_status['total_objects'] = msg.total_objects
+            self._system_status['processed_count'] = msg.processed_count
+            self._system_status['pass_count'] = msg.pass_count
+            self._system_status['fail_count'] = msg.fail_count
+            self._system_status['yolo_ready'] = msg.yolo_ready
+            self._system_status['grasp_ready'] = msg.grasp_ready
+            self._system_status['inspect_ready'] = msg.inspect_ready
+            self._system_status['motor_ready'] = msg.motor_ready
+            self._system_status['error_message'] = msg.error_message
+
+    def _joint_states_cb(self, msg: JointState):
+        with self._lock:
+            # ROS 2 JointState positions are floats
+            self._system_status['joint_positions'] = list(msg.position)
+
+    def _rail_command_cb(self, msg: Int32):
+        with self._lock:
+            self._system_status['rail_position'] = msg.data
+
+    def _turntable_cb(self, msg: Int32):
+        with self._lock:
+            self._system_status['turntable_angle'] = msg.data
 
     def _detection_cb(self, msg: ObjectArray):
         with self._lock:

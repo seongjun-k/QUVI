@@ -31,6 +31,14 @@
                 </svg>
                 리더 암 조종 (Teleop)
             </a>
+            <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                </svg>
+                시스템 상태
+            </a>
         </nav>
     </aside>
 
@@ -323,6 +331,230 @@
                             <div class="camera-feed main-teleop-feed">
                                 <img src="/stream/camera1" alt="핸드캠" loading="lazy">
                                 <div class="camera-label">📷 조종용 실시간 핸드캠 피드</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 탭 3: 시스템 상태 뷰 ═══ -->
+        <div id="tab-status" class="tab-pane">
+            <div class="status-tab-container">
+                <!-- 상단 카드 그리드 -->
+                <div class="status-grid">
+                    <!-- 로봇암 관절 상태 카드 -->
+                    <div class="card status-card">
+                        <div class="card-header">
+                            <span class="card-title">🤖 로봇암 관절 각도 (6축)</span>
+                            <span class="card-subtitle-addon" id="jointSyncTime">정상</span>
+                        </div>
+                        <div class="card-body status-card-body">
+                            <div class="joint-list">
+                                <!-- Joint 1 (Base) -->
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 1 (Base)</span>
+                                        <span class="joint-value-deg" id="j0_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j0_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <!-- Joint 2 (Shoulder) -->
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 2 (Shoulder)</span>
+                                        <span class="joint-value-deg" id="j1_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j1_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <!-- Joint 3 (Elbow) -->
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 3 (Elbow)</span>
+                                        <span class="joint-value-deg" id="j2_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j2_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <!-- Joint 4 (Wrist Pitch) -->
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 4 (Wrist Pitch)</span>
+                                        <span class="joint-value-deg" id="j3_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j3_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <!-- Joint 5 (Wrist Roll) -->
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 5 (Wrist Roll)</span>
+                                        <span class="joint-value-deg" id="j4_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j4_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <!-- Joint 6 (Gripper) -->
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 6 (Gripper)</span>
+                                        <span class="joint-value-deg" id="j5_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill gripper-bar" id="j5_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">CLOSE (1800)</div>
+                                        <div class="joint-limit-label right">OPEN (2300)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 오른쪽 영역: 레일 + 턴테이블 -->
+                    <div class="status-right-column">
+                        <!-- 리니어 레일 상태 카드 -->
+                        <div class="card status-card">
+                            <div class="card-header">
+                                <span class="card-title">🚊 리니어 레일 (Linear Rail)</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="rail-track-container">
+                                    <!-- 레일 트랙 선 -->
+                                    <div class="rail-track">
+                                        <div class="rail-carriage" id="railCarriage">
+                                            <div class="carriage-icon">🤖</div>
+                                        </div>
+                                    </div>
+                                    <!-- 구역 표시핀들 -->
+                                    <div class="rail-stations">
+                                        <div class="rail-station" id="station_bed">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">BED (D)</span>
+                                            <span class="station-step">0</span>
+                                        </div>
+                                        <div class="rail-station" id="station_inspect">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">INSPECT (A)</span>
+                                            <span class="station-step">1000</span>
+                                        </div>
+                                        <div class="rail-station" id="station_pass">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">PASS (B)</span>
+                                            <span class="station-step">1700</span>
+                                        </div>
+                                        <div class="rail-station" id="station_fail">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">FAIL (C)</span>
+                                            <span class="station-step">2400</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rail-info-box" style="margin-top:16px;">
+                                    <span class="info-label">현재 목표 레일 위치:</span>
+                                    <span class="info-value" id="railStepsText">BED (0 steps)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 턴테이블 상태 카드 -->
+                        <div class="card status-card">
+                            <div class="card-header">
+                                <span class="card-title">🔄 턴테이블 회전 (Turntable)</span>
+                            </div>
+                            <div class="card-body turntable-card-body">
+                                <div class="turntable-visual">
+                                    <!-- 원형 나침반/다이얼 디자인 -->
+                                    <div class="turntable-dial" id="turntableDial">
+                                        <div class="dial-arrow">▲</div>
+                                        <div class="dial-ticks">
+                                            <span class="tick tick-0">0°</span>
+                                            <span class="tick tick-90">90°</span>
+                                            <span class="tick tick-180">180°</span>
+                                            <span class="tick tick-270">270°</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="turntable-info-box">
+                                    <span class="info-label">회전 각도:</span>
+                                    <span class="info-value" id="turntableAngleText">0°</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 하단 FSM 순서도 카드 -->
+                <div class="card status-card" style="margin-top:16px;">
+                    <div class="card-header">
+                        <span class="card-title">⛓️ 시스템 상태 시퀀스 (FSM Flow)</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="fsm-flow-container">
+                            <div class="fsm-node" id="fsm_INIT">
+                                <div class="fsm-node-circle">INIT</div>
+                                <div class="fsm-node-label">초기화</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_IDLE">
+                                <div class="fsm-node-circle">IDLE</div>
+                                <div class="fsm-node-label">대기 중</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_DETECTING">
+                                <div class="fsm-node-circle">DETECT</div>
+                                <div class="fsm-node-label">출력물 탐지</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_GRASPING">
+                                <div class="fsm-node-circle">GRASP</div>
+                                <div class="fsm-node-label">ACT 파지</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_INSPECTING">
+                                <div class="fsm-node-circle">INSPECT</div>
+                                <div class="fsm-node-label">품질 검사</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_SORTING">
+                                <div class="fsm-node-circle">SORT</div>
+                                <div class="fsm-node-label">분류 이동</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_RELEASING">
+                                <div class="fsm-node-circle">RELEASE</div>
+                                <div class="fsm-node-label">출력물 투하</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_HOMING">
+                                <div class="fsm-node-circle">HOME</div>
+                                <div class="fsm-node-label">홈 복귀</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_TELEOPING">
+                                <div class="fsm-node-circle">TELEOP</div>
+                                <div class="fsm-node-label">수동 조종</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_FINISHED">
+                                <div class="fsm-node-circle">FINISHED</div>
+                                <div class="fsm-node-label">완료</div>
                             </div>
                         </div>
                     </div>

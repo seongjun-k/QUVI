@@ -1033,3 +1033,378 @@ input:checked + .slider:before {
         padding: 8px 14px;
     }
 }
+
+/* ─── 시스템 상태 탭 스타일 (System Status) ─── */
+.status-tab-container {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.status-right-column {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.status-card {
+    height: 100%;
+}
+
+.status-card-body {
+    max-height: 480px;
+    overflow-y: auto;
+}
+
+.card-subtitle-addon {
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(139, 148, 158, 0.1);
+    color: var(--text-secondary);
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+/* 1. 관절 상태 */
+.joint-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.joint-item {
+    display: flex;
+    flex-direction: column;
+}
+
+.joint-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.joint-name {
+    color: var(--text-secondary);
+}
+
+.joint-value-deg {
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.joint-bar-wrapper {
+    position: relative;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.04);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    margin-bottom: 4px;
+}
+
+.joint-bar-fill {
+    height: 100%;
+    background: var(--accent-blue);
+    width: 0%;
+    transition: width 0.15s ease-out, background-color 0.3s;
+}
+
+.joint-bar-fill.gripper-bar {
+    background: var(--accent-purple);
+}
+
+.joint-bar-fill.gripper-bar.open {
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(63, 185, 80, 0.4);
+}
+
+.joint-bar-fill.gripper-bar.closed {
+    background: var(--accent-blue);
+}
+
+.joint-limit-label {
+    position: absolute;
+    font-size: 9px;
+    color: var(--text-muted);
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    font-family: var(--font-mono);
+}
+
+.joint-limit-label.left {
+    left: 8px;
+}
+
+.joint-limit-label.right {
+    right: 8px;
+}
+
+/* 2. 리니어 레일 */
+.rail-track-container {
+    padding: 24px 8px 8px 8px;
+    position: relative;
+}
+
+.rail-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    position: relative;
+    margin-bottom: 24px;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.5);
+}
+
+.rail-carriage {
+    position: absolute;
+    top: -12px;
+    transform: translateX(-50%);
+    transition: left 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+    z-index: 5;
+}
+
+.carriage-icon {
+    font-size: 18px;
+    filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));
+    animation: carriage-bounce 2s infinite ease-in-out;
+}
+
+@keyframes carriage-bounce {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+}
+
+.rail-stations {
+    display: flex;
+    justify-content: space-between;
+    position: relative;
+    margin-top: -12px;
+}
+
+.rail-station {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    color: var(--text-secondary);
+    transition: color 0.3s;
+    width: 60px;
+    text-align: center;
+}
+
+.rail-station.active {
+    color: var(--accent-green);
+    font-weight: 600;
+}
+
+.rail-station .station-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border);
+    border: 2px solid var(--bg-card);
+    transform: translateY(-13px);
+    transition: background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+}
+
+.rail-station.active .station-dot {
+    background-color: var(--accent-green);
+    border-color: var(--accent-green);
+    box-shadow: 0 0 10px var(--accent-green);
+}
+
+.rail-station .station-name {
+    font-size: 10px;
+    margin-top: -4px;
+    white-space: nowrap;
+}
+
+.rail-station .station-step {
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    margin-top: 2px;
+}
+
+.rail-info-box, .turntable-info-box {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    border-radius: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.info-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.info-value {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+/* 3. 턴테이블 */
+.turntable-card-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px 16px;
+}
+
+.turntable-visual {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    margin-bottom: 16px;
+}
+
+.turntable-dial {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 4px solid var(--border);
+    background: rgba(255, 255, 255, 0.01);
+    position: relative;
+    transition: transform 0.6s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: inset 0 0 12px rgba(0,0,0,0.6);
+}
+
+.dial-arrow {
+    position: absolute;
+    top: 4px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: var(--accent-blue);
+    font-size: 12px;
+    font-weight: bold;
+    text-shadow: 0 0 6px var(--accent-blue);
+}
+
+.dial-ticks {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+}
+
+.dial-ticks .tick {
+    position: absolute;
+    font-size: 9px;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+}
+
+.tick-0 {
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.tick-90 {
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.tick-180 {
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.tick-270 {
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+/* 4. FSM 흐름 */
+.fsm-flow-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 4px;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 4px;
+}
+
+.fsm-node {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+    min-width: 64px;
+}
+
+.fsm-node-circle {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.03);
+    border: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 8px;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    color: var(--text-secondary);
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    box-shadow: var(--shadow);
+}
+
+.fsm-node.active .fsm-node-circle {
+    background: rgba(63, 185, 80, 0.08);
+    border-color: var(--accent-green);
+    color: var(--accent-green);
+    box-shadow: 0 0 12px rgba(63, 185, 80, 0.4);
+    transform: scale(1.08);
+}
+
+.fsm-node-label {
+    font-size: 10px;
+    margin-top: 6px;
+    color: var(--text-secondary);
+    text-align: center;
+    white-space: nowrap;
+}
+
+.fsm-node.active .fsm-node-label {
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.fsm-arrow {
+    color: var(--text-muted);
+    font-size: 12px;
+    user-select: none;
+}
+
+/* ─── 시스템 상태 탭 반응형 ─── */
+@media (max-width: 1200px) {
+    .status-grid {
+        grid-template-columns: 1fr;
+    }
+    .fsm-flow-container {
+        justify-content: flex-start;
+        padding-bottom: 12px;
+    }
+}

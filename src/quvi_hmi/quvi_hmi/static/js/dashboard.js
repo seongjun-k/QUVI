@@ -83,6 +83,141 @@ function updateStatus(status) {
         teleopToggle.checked = isActive;
         setTeleopBadge(isActive ? 'on' : (isTeleopError ? 'error' : 'off'));
     }
+
+    // ─── 시스템 상태 탭 업데이트 ───
+    updateStatusTab(status);
+}
+
+// ─── 시스템 상태 탭 상세 업데이트 ───
+function updateStatusTab(status) {
+    // 1. 관절 상태 (Joint States)
+    if (status.joint_positions && Array.isArray(status.joint_positions)) {
+        status.joint_positions.forEach((rad, idx) => {
+            if (idx >= 6) return;
+            
+            const valEl = document.getElementById(`j${idx}_val`);
+            const barEl = document.getElementById(`j${idx}_bar`);
+            if (!valEl || !barEl) return;
+            
+            if (idx === 5) {
+                // 그리퍼 (ID 6, 1800 ~ 2300 ticks)
+                const ticks = Math.round((rad * 4095.0) / (2 * Math.PI));
+                valEl.textContent = `${ticks} ticks`;
+                
+                // 퍼센트 계산
+                let pct = ((ticks - 1800) / (2300 - 1800)) * 100;
+                pct = Math.max(0, Math.min(100, pct));
+                barEl.style.width = `${pct}%`;
+                
+                // 그리퍼 상태 색상 힌트
+                if (ticks <= 1850) {
+                    barEl.className = "joint-bar-fill gripper-bar closed";
+                } else if (ticks >= 2250) {
+                    barEl.className = "joint-bar-fill gripper-bar open";
+                } else {
+                    barEl.className = "joint-bar-fill gripper-bar";
+                }
+            } else {
+                // 일반 관절 (0 ~ 360 -> -180 ~ +180)
+                let deg = (rad * 180 / Math.PI) - 180;
+                // 주기화 (-180 ~ 180 범위로 안착)
+                while (deg < -180) deg += 360;
+                while (deg > 180) deg -= 360;
+                
+                valEl.textContent = `${deg.toFixed(1)}°`;
+                
+                const pct = ((deg + 180) / 360) * 100;
+                barEl.style.width = `${pct}%`;
+            }
+        });
+        
+        // 동기화 시간 업데이트
+        const syncTimeEl = document.getElementById('jointSyncTime');
+        if (syncTimeEl) {
+            syncTimeEl.textContent = '실시간 (30Hz)';
+            syncTimeEl.style.color = 'var(--accent-green)';
+        }
+    }
+
+    // 2. 리니어 레일 위치 (Linear Rail)
+    if (status.rail_position !== undefined) {
+        const railPos = parseInt(status.rail_position);
+        const stepsMap = [0, 1000, 1700, 2400];
+        const namesMap = ['BED (D)', 'INSPECT (A)', 'PASS (B)', 'FAIL (C)'];
+        
+        const currentStep = stepsMap[railPos] !== undefined ? stepsMap[railPos] : 0;
+        const currentName = namesMap[railPos] !== undefined ? namesMap[railPos] : 'UNKNOWN';
+        
+        // Carriage 위치 계산 (0스텝 -> 7.5%, 2400스텝 -> 92.5%)
+        const carriage = document.getElementById('railCarriage');
+        if (carriage) {
+            const pct = (currentStep / 2400) * 85 + 7.5;
+            carriage.style.left = `${pct}%`;
+        }
+        
+        // 역 정보 텍스트 표시
+        const infoEl = document.getElementById('railStepsText');
+        if (infoEl) {
+            infoEl.innerHTML = `<strong>${currentName}</strong> (${currentStep} steps)`;
+        }
+        
+        // 구역 표시핀 하이라이트
+        const stationIds = ['station_bed', 'station_inspect', 'station_pass', 'station_fail'];
+        stationIds.forEach((id, idx) => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (idx === railPos) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            }
+        });
+    }
+
+    // 3. 턴테이블 회전 각도 (Turntable)
+    if (status.turntable_angle !== undefined) {
+        const angle = parseInt(status.turntable_angle);
+        
+        const dial = document.getElementById('turntableDial');
+        if (dial) {
+            dial.style.transform = `rotate(${angle}deg)`;
+        }
+        
+        const textEl = document.getElementById('turntableAngleText');
+        if (textEl) {
+            textEl.textContent = `${angle}°`;
+        }
+    }
+
+    // 4. FSM Flow 하이라이트
+    if (status.current_state) {
+        const state = status.current_state;
+        const fsmNodes = ['INIT', 'IDLE', 'DETECTING', 'GRASPING', 'INSPECTING', 'SORTING', 'RELEASING', 'HOMING', 'TELEOPING', 'FINISHED'];
+        
+        let activeNode = null;
+        for (const node of fsmNodes) {
+            if (state.startsWith(node)) {
+                activeNode = `fsm_${node}`;
+                break;
+            }
+        }
+        
+        if (state === 'DONE') activeNode = 'fsm_FINISHED';
+        
+        // FSM 노드들의 active 클래스 토글
+        fsmNodes.forEach(node => {
+            const nodeId = `fsm_${node}`;
+            const el = document.getElementById(nodeId);
+            if (el) {
+                if (nodeId === activeNode) {
+                    el.classList.add('active');
+                } else {
+                    el.classList.remove('active');
+                }
+            }
+        });
+    }
 }
 
 // ─── 진행 단계 라벨 ───
