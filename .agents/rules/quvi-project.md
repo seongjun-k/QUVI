@@ -1,56 +1,58 @@
 ---
 activation: alwaysOn
 ---
-# QUVI 프로젝트 규칙
+# QUVI 프로젝트 개발 및 AI 에이전트 규칙
 
-## 커뮤니케이션
-- 한국어로 답변
-- 이모티콘 사용 금지
-- 완료 표현 과장 금지
-- 불필요한 배경 설명 생략, 코드/핵심만
-- 코드 제공 시 실행 경로(또는 작업 디렉터리) 항상 명시
+본 문서는 QUVI 프로젝트를 개발하는 모든 AI 에이전트가 준수해야 하는 운영 지침 및 코딩 표준을 정의합니다. 에이전트는 모든 동작과 응답에서 본 규칙을 최우선으로 준수해야 합니다.
 
-## 환경
-- OS: Ubuntu 24.04 (Noble Numbat) / ROS 2 Jazzy Jalisco
-- 개발 환경: Docker 컨테이너 (`quvi-dev`) 사용 (NVIDIA GPU 연동 지원)
-- 작업 경로: 
-  - 호스트: `~/QUVI/`
-  - 컨테이너 내부: `/workspace/` (호스트의 소스 코드, 데이터, 스크립트가 볼륨 마운트됨)
-- 실행 전 필수: `source /opt/ros/jazzy/setup.bash` 및 `source /workspace/install/setup.bash`
+## 1. 커뮤니케이션 및 응답 스타일 규칙
+* **한국어 사용**: 모든 설명과 답변은 명확하고 격식 있는 한국어로 작성합니다.
+* **이모티콘 사용 금지**: 답변 내용(마크다운 문서, 출력 로그 포함)에 어떠한 이모티콘(예: ❌, ⭕, 💡, 🛠️ 등)도 사용하지 않습니다.
+* **핵심 위주 기술**: 불필요한 배경 설명, 서론, 결론, 인사말 등은 생략하고 코드와 핵심 사실 위주로 간결하게 답변합니다.
+* **동작 과장 금지**: 완료된 작업에 대해 과장된 표현(예: "완벽하게 해결했습니다", "엄청난 개선이 이루어졌습니다" 등)을 피하고 객관적인 사실만 명시합니다.
+* **경로 명시**: 코드를 제공하거나 실행 명령어를 제시할 때, 실행 경로(Cwd) 및 파일의 절대 경로를 항상 구체적으로 링크와 함께 명시합니다.
 
-## 빌드 및 실행
-- 빌드: Docker 컨테이너 내부 `/workspace`에서 수행
+## 2. 코딩 전 사고 및 설계 규칙 (Think Before Coding)
+* **가정 배제 및 질문**: 명확하지 않은 사양은 임의로 가정하지 않습니다. 의문이 있거나 여러 해석이 가능할 경우 반드시 구현 전에 질문하여 확인합니다.
+* **트레이드오프 제시**: 다양한 구현 방향이 존재할 경우 독단적으로 선택하지 않고 각 방법의 장단점을 명시적으로 제시하여 동의를 구합니다.
+* **단순화 제안**: 요구사항이 지나치게 복잡하거나 과다할 경우, 더 단순한 대안을 제시하여 설계를 가다듬습니다.
+
+## 3. 단순성 및 최소 구현 규칙 (Simplicity First)
+* **최소한의 코드 구현**: 요구되지 않은 불필요한 기능(과도한 추상화, 단일 사용 코드의 일반화, 유연성/설정성 과잉 설계)을 구현하지 않습니다.
+* **코드 크기 최적화**: 더 간결하게 작성할 수 있는 로직은 최소 분량의 깔끔한 코드로 다시 작성합니다.
+* **예외 처리 범위 제한**: 실제로 발생 불가능한 상황에 대한 투기적인 예외 처리를 남발하지 않습니다.
+
+## 4. 외과수술식 수정 및 범위 보존 규칙 (Surgical Changes)
+* **최소 범위 수정**: 구현해야 할 기능의 대상 범위만 정확히 수정합니다.
+* **인접 코드 보존**: 관련 없는 주변 코드, 주석, 포맷을 임의로 수정하거나 '개선'하지 않으며, 기존 스타일을 그대로 유지합니다.
+* **자기 정리(Clean up your own mess)**: 본인의 수정 작업으로 인해 미사용 상태가 된 import, 변수, 함수 등은 즉시 제거합니다. 단, 기존에 존재하던 미사용 코드는 명시적 요청이 없는 한 손대지 않습니다.
+* **편집 도구 우선**: 전체 파일을 오버라이트하는 대신 replace_file_content 또는 multi_replace_file_content 등의 편집 도구로 최소 블록 단위 수정을 수행합니다.
+
+## 5. 목표 지향적 검증 및 실행 규칙 (Goal-Driven Execution)
+* **검증 가능한 목표 설정**: 작업을 수행하기 전 구체적인 성공 기준(예: "특정 입력값에 대한 검증 통과", "동작 완료 플래그 정상 수신")을 먼저 정의합니다.
+* **다단계 작업 계획 수립**: 다단계 작업의 경우 각 단계마다 수행 내용과 검증 방식을 담은 간결한 계획을 수립하고 진행합니다.
+  ```
+  1. [수행 단계] → 검증: [확인 방법]
+  2. [수행 단계] → 검증: [확인 방법]
+  ```
+* **수정 후 빌드 검증**: 코드나 설정을 변경한 뒤에는 반드시 컨테이너 내부의 /workspace 경로에서 빌드를 수행하여 정상 컴파일 여부를 확인합니다.
   ```bash
   cd /workspace && colcon build --symlink-install
   ```
-- 소스: `source /workspace/install/setup.bash`
-- 전체 시스템 실행: `ros2 launch quvi_bringup full_system.launch.py`
-- 비전 파이프라인 단독 실행: `ros2 launch quvi_bringup vision_pipeline.launch.py`
-- 코드 수정 후 반드시 `colcon build` 안내
+* **소스 적용**: 빌드가 성공하면 source install/setup.bash 명령을 수행하도록 안내합니다.
+* **에러 로그 확인**: 빌드나 실행에 실패한 경우 추측하지 않고 실제 에러 출력과 로그를 확인하여 원인을 진단합니다.
 
-## 하드웨어 및 센서
-- 로봇팔: OMX 5DOF (Dynamixel XL430/XL330), LeRobot ACT 모방학습 파지 모델 연동
-- 레일: NEMA17 + TB6600, GT2 벨트, 0.2mm/스텝 (ESP32-S3를 통해 제어)
-- ESP32-S3: micro-ROS over USB (`/dev/ttyUSB0`, 921600 baud)
-- 핸드캠 (Zone 1): `/dev/video0` (1920x1080, MJPEG, AutoFocus OFF)
-- 사이드캠 (Zone 2): `/dev/video2` (1920x1080, MJPEG, AutoFocus OFF, Focus=80)
-- 턴테이블: NEMA17 #2, 90°=400스텝 (1/8 마이크로스텝)
-
-## ROS 2 패키지 및 노드 구조
-- `quvi_yolo` / `yolo_node.py` (`yolo_node`) → YOLOv8n 객체 감지 및 베드 위 출력물 좌표 발행
-- `quvi_inspect` / `inspect_node.py` (`inspect_node`) → OpenCV/SSIM 양불 판정 (CAD STL 렌더링 비교 + 표면 분석)
-- `quvi_robot_control` / `robot_control_node.py` (`robot_control_node`) → OMX 로봇팔 + 리니어 레일 + 턴테이블 통합 제어 및 ESP32 통신
-- `quvi_hmi` / `hmi_node.py` (`hmi_node`) → Flask + WebSocket 기반 Web GUI 대시보드 (기본 포트 5000)
-- `quvi_bringup` → Launch 파일 및 전체 시스템 기동 관리
-- `quvi_msgs` → 커스텀 메시지 및 서비스 정의 (`SystemStatus`, `InspectionResult`, `ObjectArray`, `GraspGoal` 등)
-- *참고: 전체 상태머신을 담당할 메인 오케스트레이터 노드(`main_orchestrator_node.py`)는 설계상 정의되어 있으나 실구현 또는 추가 통합이 필요할 수 있습니다.*
-
-## 코딩 규칙
-- Python 3 우선 (ROS 2 노드 개발)
-- MCU 코드는 Arduino C++ (ESP32-S3)
-- ROS 2 토픽/서비스 이름은 `snake_case` 사용
-- 불필요한 주석 없이 핵심 로직 중심의 간결한 코드 작성
-
-## 계획 수립
-- 복잡한 아키텍처나 주요 로직 변경 전 `implementation_plan.md` 작성 후 승인 요청
-- 단순 수정, 명령어 실행, 질문 답변은 즉시 처리
+## 6. QUVI 개발 환경 고유 규칙
+* **OS 및 미들웨어**: Ubuntu 24.04 (Noble Numbat) / ROS 2 Jazzy Jalisco
+* **실행 환경**: Docker 컨테이너 quvi-dev 내부 (/workspace)
+* **실행 명령어**:
+  * 전체 시스템 실행: ros2 launch quvi_bringup full_system.launch.py
+  * 비전 파이프라인 실행: ros2 launch quvi_bringup vision_pipeline.launch.py
+* **하드웨어 인터페이스 설정**:
+  * 로봇팔: OMX 5DOF (Dynamixel XL430/XL330), LeRobot ACT 모방학습 파지 모델 연동
+  * 리니어 레일: ESP32-S3 제어 (0.2mm/스텝)
+  * ESP32-S3: micro-ROS over USB (/dev/ttyUSB0, 921600 baud)
+  * 핸드캠 (Zone 1): /dev/video0 (1920x1080, MJPEG, AutoFocus OFF)
+  * 사이드캠 (Zone 2): /dev/video2 (1920x1080, MJPEG, AutoFocus OFF, Focus=80)
+  * 턴테이블: NEMA17 (90°=400스텝)
+* **ROS 2 토픽/서비스 네이밍**: 모든 토픽과 서비스 이름은 snake_case로 일관되게 명명합니다.

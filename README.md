@@ -96,7 +96,7 @@ source install/setup.bash
 
 ### 4. 전체 시스템 런칭 (HMI 웹 포함)
 ```bash
-ros2 launch quvi_bringup quvi_system.launch.py
+ros2 launch quvi_bringup full_system.launch.py
 ```
 * 웹 브라우저를 열고 `http://localhost:5000`에 접속하여 HMI 대시보드를 모니터링합니다.
 

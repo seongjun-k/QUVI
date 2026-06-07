@@ -5,17 +5,24 @@ QUVI ROBOT_CONTROL_NODE
 통합 제어하는 노드.
 
 모터 구성:
-  ID 1~3 : DYNAMIXEL XL430-W250T  (동작 전압 12V)  — 베이스, 숄더, 엘보우
-  ID 4~5 : DYNAMIXEL XL330-M288T  (동작 전압  5V)  — 리스트, 그리퍼
+  리더  ID 1~6 : DYNAMIXEL XL330-M288T / XL330-M077T (5V)
+  팔로워 ID 11~13: DYNAMIXEL XL430-W250T (12V) — 베이스, 숄더, 엘보우
+  팔로워 ID 14~16: DYNAMIXEL XL330-M288T (5V)  — 리스트, 그리퍼
+
+모터 제어:
+  lerobot 공식 OmxFollower / OmxLeader 코드를 그대로 사용.
+  - DynamixelMotorsBus (GroupSyncRead/Write, 캘리브레이션, 정규화)
+  - OmxFollower (팔로워 로봇: connect, get_observation, send_action)
+  - OmxLeader  (리더 텔레오퍼레이터: connect, get_action)
 
 주요 기능:
   1. ACT 모방학습 파지 (LeRobot ACTPolicy)
      - /camera/handcam 이미지 + 관절 상태 → ACT 추론 → 관절 목표값 전송
-  2. OMX Dynamixel 관절 제어
-     - dynamixel_sdk 직접 제어 (Position Mode)
-     - 홈 복귀, 180° 베이스 회전, 안착/투하 자세
-  3. 레일 이동 명령 → ESP32-S3 (/motor/rail)
-  4. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable)
+  2. OMX Dynamixel 관절 제어 (lerobot 공식 API)
+     - 홈 복귀, 자세 이동, 그리퍼 제어
+  3. 리더-팔로워 텔레오퍼레이션 (lerobot OmxLeader → OmxFollower)
+  4. 레일 이동 명령 → ESP32-S3 (/motor/rail)
+  5. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable)
 
 ROS 2 인터페이스 (Subscriber):
   /camera/handcam/compressed  sensor_msgs/CompressedImage   핸드캠 이미지
@@ -42,9 +49,11 @@ ROS 2 서비스 (Server):
 """
 
 import math
+import sys
 import threading
 import time
 from enum import IntEnum
+from pathlib import Path
 from typing import List, Optional
 
 import numpy as np
@@ -58,6 +67,18 @@ from std_msgs.msg import Bool, Int32, String
 from std_srvs.srv import Trigger
 
 from quvi_msgs.msg import GraspGoal
+
+# ─────────────────────────────────────────────────────────────
+# lerobot 공식 코드 import
+# ─────────────────────────────────────────────────────────────
+LEROBOT_SRC = str(Path(__file__).resolve().parents[3] / 'lerobot' / 'src')
+if LEROBOT_SRC not in sys.path:
+    sys.path.insert(0, LEROBOT_SRC)
+
+from lerobot.robots.omx_follower import OmxFollower
+from lerobot.robots.omx_follower.config_omx_follower import OmxFollowerConfig
+from lerobot.teleoperators.omx_leader import OmxLeader
+from lerobot.teleoperators.omx_leader.config_omx_leader import OmxLeaderConfig
 
 
 # ─────────────────────────────────────────────────────────────
@@ -86,47 +107,32 @@ class RobotState(IntEnum):
     ERROR         = 99
 
 
-# ─────────────────────────────────────────────────────────────
-# Dynamixel 공통 레지스터 주소 (Protocol 2.0)
-# ─────────────────────────────────────────────────────────────
-DXL_BAUDRATE          = 1_000_000
-DXL_PROTOCOL          = 2.0
-ADDR_TORQUE_ENABLE    = 64
-ADDR_GOAL_POSITION    = 116
-ADDR_PRESENT_POSITION = 132
-ADDR_OPERATING_MODE   = 11
-LEN_GOAL_POSITION     = 4
-LEN_PRESENT_POSITION  = 4
-TORQUE_ENABLE         = 1
-TORQUE_DISABLE        = 0
-POSITION_MODE         = 3
+# 관절 이름 (ROS 2 JointState 메시지용)
+JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
+               'wrist_flex', 'wrist_roll', 'gripper']
 
-# ─────────────────────────────────────────────────────────────
-# 관절 ID / 모터 종류 분류
-# ─────────────────────────────────────────────────────────────
-# 관절 및 ID 매핑 (리더: 1~6, 팔로워: 11~16)
-LEADER_IDS_XL430  = [1, 2, 3]        # 리더 12V 모터 (베이스/숄더/엘보우)
-LEADER_IDS_XL330  = [4, 5, 6]        # 리더 5V 모터 (리스트1/리스트2/그리퍼)
-LEADER_IDS        = LEADER_IDS_XL430 + LEADER_IDS_XL330  # [1, 2, 3, 4, 5, 6]
+# 사전 정의 자세 — raw Dynamixel 위치값 (0~4095 = 0~360°)
+# dict 형태로 lerobot bus에 직접 전달 (normalize=False)
+POSE_HOME = {
+    'shoulder_pan': 2048, 'shoulder_lift': 1800, 'elbow_flex': 1200,
+    'wrist_flex': 2048, 'wrist_roll': 2048, 'gripper': 2048,
+}
+POSE_FRONT = {
+    'shoulder_pan': 2048, 'shoulder_lift': 1400, 'elbow_flex': 900,
+    'wrist_flex': 1800, 'wrist_roll': 2048, 'gripper': 2300,
+}
+POSE_BACK = {
+    'shoulder_pan': 2048, 'shoulder_lift': 1400, 'elbow_flex': 900,
+    'wrist_flex': 1800, 'wrist_roll': 2048, 'gripper': 2300,
+}
+POSE_PLACE = {
+    'shoulder_pan': 2048, 'shoulder_lift': 1600, 'elbow_flex': 1100,
+    'wrist_flex': 2048, 'wrist_roll': 2048, 'gripper': 2300,
+}
 
-FOLLOWER_IDS_XL430 = [11, 12, 13]    # 팔로워 12V 모터 (베이스/숄더/엘보우)
-FOLLOWER_IDS_XL330 = [14, 15, 16]    # 팔로워 5V 모터 (리스트1/리스트2/그리퍼)
-FOLLOWER_IDS       = FOLLOWER_IDS_XL430 + FOLLOWER_IDS_XL330  # [11, 12, 13, 14, 15, 16]
-
-JOINT_NAMES       = ['base', 'shoulder', 'elbow', 'wrist_pitch', 'wrist_roll', 'gripper']
-
-# ─────────────────────────────────────────────────────────────
-# 주요 자세 (Dynamixel 위치값 0~4095 = 0~360°)
-# ─────────────────────────────────────────────────────────────
-#                         [base, shoulder, elbow, wrist_pitch, wrist_roll, gripper]
-POSE_HOME  = [2048, 1800, 1200, 2048, 2048, 2048]   # 홈 (직립)
-POSE_FRONT = [2048, 1400,  900, 1800, 2048, 2300]   # 베드 파지 준비 (앞 방향)
-POSE_BACK  = [2048, 1400,  900, 1800, 2048, 2300]   # 검사/분류 (180° 회전)
-POSE_PLACE = [2048, 1600, 1100, 2048, 2048, 2300]   # 턴테이블 안착
-
-# 그리퍼 (ID 6 / ID 16, XL330-M288T)
-GRIPPER_OPEN  = 2300   # 열림
-GRIPPER_CLOSE = 1800   # 닫힘
+# 그리퍼 raw 위치값 (XL330-M288T)
+GRIPPER_OPEN  = 2300
+GRIPPER_CLOSE = 1800
 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
@@ -137,7 +143,10 @@ ACT_CONTROL_HZ = 30
 # ─────────────────────────────────────────────────────────────
 
 class RobotControlNode(Node):
-    """로봇팔 + 레일 + 턴테이블 통합 제어 노드."""
+    """로봇팔 + 레일 + 턴테이블 통합 제어 노드.
+    
+    모터 제어는 lerobot 공식 OmxFollower / OmxLeader를 사용.
+    """
 
     def __init__(self):
         super().__init__('robot_control_node')
@@ -151,31 +160,27 @@ class RobotControlNode(Node):
         self._state_lock = threading.Lock()
 
         self._latest_handcam: Optional[np.ndarray] = None
-        self._latest_joint_pos: List[int] = [2048] * 6   # Dynamixel 위치값 (6자유도)
         self._handcam_lock = threading.Lock()
         self._bridge = CvBridge()
 
         # ─── 텔레오퍼레이션 상태 ───
         self._teleop_running = False
-        self._leader_port_handler = None
-        self._leader_packet_handler = None
+        self._leader: Optional[OmxLeader] = None
 
         # ─── 콜백 그룹 (블로킹 서비스/텔레옵과 타이머가 서로를 막지 않도록) ───
         self._cb_group = ReentrantCallbackGroup()
 
-        # ─── Dynamixel 포트 접근 직렬화 락 ───
+        # ─── lerobot bus I/O 직렬화 락 ───
         # MultiThreadedExecutor 환경에서 30Hz joint 발행 타이머(read)와
         # ACT/텔레옵 루프(write)가 동일 시리얼 포트에 동시 접근하면
-        # 패킷이 섞일 수 있으므로 모든 저수준 I/O 를 이 락으로 직렬화한다.
+        # 패킷이 섞일 수 있으므로 모든 I/O를 이 락으로 직렬화한다.
         self._dxl_io_lock = threading.Lock()
 
-        # ─── Dynamixel 초기화 ───
-        self._dxl_port = None
-        self._packet_handler = None
-        self._port_handler = None
+        # ─── lerobot OmxFollower 초기화 ───
+        self._follower: Optional[OmxFollower] = None
         self._dxl_ready = False
         if self._use_real_hardware:
-            self._init_dynamixel()
+            self._init_follower()
 
         # ─── ACT 모델 로드 ───
         self._act_policy = None
@@ -192,12 +197,11 @@ class RobotControlNode(Node):
             callback_group=self._cb_group)
 
         self.get_logger().info(
-            f'ROBOT_CONTROL_NODE 초기화 완료 | '
+            f'ROBOT_CONTROL_NODE 초기화 완료 (lerobot 공식 코드 사용) | '
             f'하드웨어={self._use_real_hardware} | '
             f'ACT={self._use_act} | '
-            f'DXL포트={self._dxl_port_name} | '
-            f'XL430(12V)=ID{FOLLOWER_IDS_XL430} | '
-            f'XL330(5V)=ID{FOLLOWER_IDS_XL330}')
+            f'팔로워 포트={self._dxl_port_name} | '
+            f'리더 포트={self._leader_port_name}')
 
     # ─────────────────────────────────────────────
     # 파라미터
@@ -207,7 +211,6 @@ class RobotControlNode(Node):
         self.declare_parameter('use_real_hardware', True)
         self.declare_parameter('dxl_port', '/dev/ttyFollower')
         self.declare_parameter('leader_dxl_port', '/dev/ttyLeader')
-        self.declare_parameter('dxl_baudrate', DXL_BAUDRATE)
         # ACT
         self.declare_parameter('use_act', True)
         self.declare_parameter('act_model_path',
@@ -219,7 +222,7 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_steps_inspect', 1000)
         self.declare_parameter('rail_steps_pass',    1700)
         self.declare_parameter('rail_steps_fail',    2400)
-        # 카메라 (usb_cam camera1 네임스페이스와 일치하도록 기본값 설정)
+        # 카메라
         self.declare_parameter('handcam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('use_compressed', True)
         # 동작 타임아웃 (초)
@@ -231,7 +234,6 @@ class RobotControlNode(Node):
         self._use_real_hardware = self.get_parameter('use_real_hardware').value
         self._dxl_port_name     = self.get_parameter('dxl_port').value
         self._leader_port_name  = self.get_parameter('leader_dxl_port').value
-        self._dxl_baudrate      = self.get_parameter('dxl_baudrate').value
         self._use_act           = self.get_parameter('use_act').value
         self._act_model_path    = self.get_parameter('act_model_path').value
         self._act_chunk_size    = self.get_parameter('act_chunk_size').value
@@ -249,71 +251,34 @@ class RobotControlNode(Node):
         self._home_timeout   = self.get_parameter('home_timeout_sec').value
 
     # ─────────────────────────────────────────────
-    # Dynamixel 초기화
+    # lerobot OmxFollower 초기화
     # ─────────────────────────────────────────────
-    def _init_dynamixel(self):
-        """
-        dynamixel_sdk으로 포트 열고 모터 초기화.
+    def _init_follower(self):
+        """lerobot 공식 OmxFollower를 통해 팔로워 로봇팔 초기화.
 
-        XL430-W250T (ID 1~3, 12V) : 고토크 관절 (베이스/숄더/엘보우)
-        XL330-M288T (ID 4~5,  5V) : 경량 관절 (리스트/그리퍼)
-
-        ※ 두 모터 모두 Protocol 2.0 / Position Mode 사용.
-          위치값 범위(0~4095)와 레지스터 주소가 동일하므로
-          동일한 초기화 루틴 적용 가능.
+        OmxFollower가 내부적으로 처리하는 것들:
+          - DynamixelMotorsBus 생성 (GroupSyncRead/Write 포함)
+          - 모터 ping 및 모델 검증
+          - 캘리브레이션 로드/적용 (homing offset, drive mode, range limit)
+          - Operating Mode 설정 (shoulder_pan=EXTENDED_POSITION, gripper=CURRENT_POSITION 등)
+          - PID 게인, Profile Velocity/Acceleration 설정
+          - Position Limit, Current Limit 설정
+          - 토크 활성화
         """
         try:
-            from dynamixel_sdk import (
-                PortHandler, PacketHandler, GroupSyncWrite,
-                COMM_SUCCESS
+            follower_config = OmxFollowerConfig(
+                port=self._dxl_port_name,
+                id='quvi_follower',
             )
-        except ImportError:
-            self.get_logger().error(
-                'dynamixel_sdk 미설치. pip install dynamixel-sdk --break-system-packages')
-            return
-
-        self._port_handler   = PortHandler(self._dxl_port_name)
-        self._packet_handler = PacketHandler(DXL_PROTOCOL)
-
-        if not self._port_handler.openPort():
-            self.get_logger().error(f'Dynamixel 포트 열기 실패: {self._dxl_port_name}')
-            return
-
-        if not self._port_handler.setBaudRate(self._dxl_baudrate):
-            self.get_logger().error('Dynamixel 보드레이트 설정 실패')
-            return
-
-        # 각 관절 Position Mode 설정 + 토크 활성화 (팔로워 ID 11~16)
-        for dxl_id in FOLLOWER_IDS:
-            motor_type = 'XL430-W250T(12V)' if dxl_id in FOLLOWER_IDS_XL430 \
-                         else 'XL330-M288T(5V)'
-
-            # Operating Mode = Position (3)
-            self._packet_handler.write1ByteTxRx(
-                self._port_handler, dxl_id, ADDR_OPERATING_MODE, POSITION_MODE)
-
-            # Torque Enable
-            result, error = self._packet_handler.write1ByteTxRx(
-                self._port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-
-            if result != 0:
-                self.get_logger().warn(
-                    f'ID{dxl_id}({motor_type}) 토크 활성화 실패 (result={result})')
-            else:
-                self.get_logger().info(
-                    f'ID{dxl_id}({motor_type}) 토크 활성화 완료')
-
-        # GroupSyncWrite (4바이트 Goal Position) — XL430/XL330 공통 주소
-        from dynamixel_sdk import GroupSyncWrite
-        self._sync_write = GroupSyncWrite(
-            self._port_handler, self._packet_handler,
-            ADDR_GOAL_POSITION, LEN_GOAL_POSITION)
-
-        self._dxl_ready = True
-        self.get_logger().info(
-            'Dynamixel 초기화 완료 | '
-            f'XL430-W250T(12V): ID{FOLLOWER_IDS_XL430} | '
-            f'XL330-M288T(5V): ID{FOLLOWER_IDS_XL330}')
+            self._follower = OmxFollower(follower_config)
+            self._follower.connect()
+            self._dxl_ready = True
+            self.get_logger().info(
+                f'OmxFollower 연결 완료 | 포트={self._dxl_port_name} | '
+                f'모터: {list(self._follower.bus.motors.keys())}')
+        except Exception as e:
+            self.get_logger().error(f'OmxFollower 초기화 실패: {e}')
+            self._dxl_ready = False
 
     # ─────────────────────────────────────────────
     # ACT 모델 로드
@@ -433,7 +398,6 @@ class RobotControlNode(Node):
                 self._latest_handcam = frame
 
     def _handcam_callback_raw(self, msg):
-        import cv2
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         if frame is not None:
             with self._handcam_lock:
@@ -477,10 +441,7 @@ class RobotControlNode(Node):
         t.start()
 
     def _rotate_cmd_callback(self, msg: Bool):
-        """베이스 회전 명령 수신.
-        true  → 뒤 방향 (검사/분류)
-        false → 앞 방향 (베드 파지)
-        """
+        """베이스 회전 명령 수신. true → 뒤 방향 / false → 앞 방향"""
         if self._get_state() != RobotState.IDLE:
             self.get_logger().warn('회전 명령 무시: 현재 동작 중')
             return
@@ -523,19 +484,19 @@ class RobotControlNode(Node):
         return response
 
     def _open_gripper_service(self, request, response):
-        """그리퍼 열기 서비스 (ID 16, XL330-M288T, 5V)."""
-        self._set_joint_position(16, GRIPPER_OPEN)
+        """그리퍼 열기 서비스 (lerobot bus 사용)."""
+        self._write_raw_position({'gripper': GRIPPER_OPEN})
         time.sleep(0.5)
         response.success = True
-        response.message = '그리퍼 열기 완료 (XL330 ID16)'
+        response.message = '그리퍼 열기 완료 (OmxFollower ID16)'
         return response
 
     def _close_gripper_service(self, request, response):
-        """그리퍼 닫기 서비스 (ID 16, XL330-M288T, 5V)."""
-        self._set_joint_position(16, GRIPPER_CLOSE)
+        """그리퍼 닫기 서비스 (lerobot bus 사용)."""
+        self._write_raw_position({'gripper': GRIPPER_CLOSE})
         time.sleep(0.5)
         response.success = True
-        response.message = '그리퍼 닫기 완료 (XL330 ID16)'
+        response.message = '그리퍼 닫기 완료 (OmxFollower ID16)'
         return response
 
     # ─────────────────────────────────────────────
@@ -547,9 +508,8 @@ class RobotControlNode(Node):
 
         흐름:
           1. 핸드캠 이미지 + 관절 상태 → obs 딕셔너리 구성
-          2. ACTPolicy.select_action(obs) → 액션 청크 (chunk_size × 5)
-          3. 액션 청크를 30 Hz로 Dynamixel에 순서대로 전송
-             (XL430 ID1~3: 12V 고토크 / XL330 ID4~5: 5V 경량)
+          2. ACTPolicy.select_action(obs) → 액션 청크 (chunk_size × 6)
+          3. 액션 청크를 30 Hz로 OmxFollower에 전송
           4. 완료 신호 발행
         """
         self._set_state(RobotState.ACT_GRASPING)
@@ -582,10 +542,11 @@ class RobotControlNode(Node):
                 frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
             img_tensor = img_tensor.to(self._act_device_obj)
 
-            # 관절 상태: Dynamixel 위치값 → 라디안 (0~4095 = 0~2π)
+            # 관절 상태: lerobot bus에서 raw 위치 읽기 → 라디안 변환 (0~4095 = 0~2π)
+            raw_positions = self._read_raw_positions()
             joint_rad = [
-                (pos / 4095.0) * 2 * math.pi
-                for pos in self._latest_joint_pos
+                (raw_positions[name] / 4095.0) * 2 * math.pi
+                for name in JOINT_NAMES
             ]
             state_tensor = torch.tensor(
                 joint_rad, dtype=torch.float32).unsqueeze(0)
@@ -599,9 +560,9 @@ class RobotControlNode(Node):
             # ── ACT 추론 ──
             with torch.no_grad():
                 action_chunk = self._act_policy.select_action(obs)
-                # action_chunk: Tensor shape (1, chunk_size, 5) or (chunk_size, 5)
+                # action_chunk: Tensor shape (1, chunk_size, 6) or (chunk_size, 6)
                 if action_chunk.ndim == 3:
-                    action_chunk = action_chunk.squeeze(0)  # (chunk_size, 5)
+                    action_chunk = action_chunk.squeeze(0)  # (chunk_size, 6)
                 action_chunk = action_chunk.cpu().numpy()
 
             self.get_logger().info(
@@ -613,15 +574,14 @@ class RobotControlNode(Node):
             for i, action in enumerate(action_chunk):
                 step_start = time.time()
 
-                # 라디안 → Dynamixel 위치값 (0~4095)
-                dxl_goals = [
-                    int(np.clip(
-                        (float(a) / (2 * math.pi)) * 4095,
+                # 라디안 → raw Dynamixel 위치값 (0~4095) → lerobot bus로 전송
+                goal_dict = {}
+                for j, name in enumerate(JOINT_NAMES):
+                    goal_dict[name] = int(np.clip(
+                        (float(action[j]) / (2 * math.pi)) * 4095,
                         0, 4095))
-                    for a in action
-                ]
 
-                self._sync_send_positions(dxl_goals)
+                self._write_raw_position(goal_dict)
 
                 # 30 Hz 타이밍 유지
                 elapsed = time.time() - step_start
@@ -679,13 +639,13 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # 실행 함수 — 자세 이동
     # ─────────────────────────────────────────────
-    def _execute_pose(self, target_pose: List[int], label: str = '') -> bool:
-        """목표 자세(Dynamixel 위치값 5개)로 이동."""
+    def _execute_pose(self, target_pose: dict, label: str = '') -> bool:
+        """목표 자세(raw Dynamixel 위치값 dict)로 이동."""
         self._set_state(RobotState.ROTATING_BASE)
         self._publish_status(f'자세 변경: {label}')
         self.get_logger().info(f'자세 변경: {label} → {target_pose}')
 
-        success = self._sync_send_positions(target_pose)
+        success = self._write_raw_position(target_pose)
         time.sleep(1.5)  # 자세 안정화 대기
 
         self._set_state(RobotState.IDLE)
@@ -696,12 +656,12 @@ class RobotControlNode(Node):
     # 실행 함수 — 투하
     # ─────────────────────────────────────────────
     def _execute_release(self) -> bool:
-        """분류함 위에서 그리퍼를 열어 출력물 투하 (ID5 XL330-M288T)."""
+        """분류함 위에서 그리퍼를 열어 출력물 투하."""
         self._set_state(RobotState.RELEASING)
         self._publish_status('출력물 투하')
-        self.get_logger().info('출력물 투하: 그리퍼 열기 (XL330 ID5)')
+        self.get_logger().info('출력물 투하: 그리퍼 열기 (OmxFollower gripper)')
 
-        self._set_joint_position(16, GRIPPER_OPEN)
+        self._write_raw_position({'gripper': GRIPPER_OPEN})
         time.sleep(0.8)
 
         done_msg = Bool()
@@ -721,7 +681,7 @@ class RobotControlNode(Node):
         self._publish_status('홈 복귀')
         self.get_logger().info('홈 복귀 시작')
 
-        success = self._sync_send_positions(POSE_HOME)
+        success = self._write_raw_position(POSE_HOME)
         time.sleep(2.0)
 
         self._set_state(RobotState.IDLE)
@@ -729,95 +689,60 @@ class RobotControlNode(Node):
         return success
 
     # ─────────────────────────────────────────────
-    # Dynamixel 저수준 제어
+    # lerobot bus 기반 모터 I/O
     # ─────────────────────────────────────────────
-    def _sync_send_positions(self, positions: List[int]) -> bool:
-        """
-        GroupSyncWrite로 6개 관절 위치 동시 전송.
-        리더(1~6)와 매칭되는 팔로워(11~16)에 Goal Position 적용.
+    def _write_raw_position(self, positions: dict) -> bool:
+        """lerobot bus를 통해 raw 위치값 전송 (normalize=False).
+
+        Args:
+            positions: {'shoulder_pan': 2048, 'gripper': 2300, ...} 형태의 dict.
+                       전체 6관절 또는 일부 관절만 지정 가능.
         """
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
-            self._latest_joint_pos = list(positions)
             return True
 
         try:
             with self._dxl_io_lock:
-                self._sync_write.clearParam()
-                for dxl_id, goal in zip(FOLLOWER_IDS, positions):
-                    goal = int(np.clip(goal, 0, 4095))
-                    data = [
-                        (goal >> 0)  & 0xFF,
-                        (goal >> 8)  & 0xFF,
-                        (goal >> 16) & 0xFF,
-                        (goal >> 24) & 0xFF,
-                    ]
-                    self._sync_write.addParam(dxl_id, data)
-
-                result = self._sync_write.txPacket()
-            if result != 0:
-                self.get_logger().warn(f'SyncWrite 실패 (result={result})')
-                return False
-
-            self._latest_joint_pos = list(positions)
+                self._follower.bus.sync_write(
+                    'Goal_Position', positions, normalize=False)
             return True
-
         except Exception as e:
-            self.get_logger().error(f'Dynamixel SyncWrite 오류: {e}')
+            self.get_logger().error(f'lerobot sync_write 오류: {e}')
             return False
 
-    def _set_joint_position(self, dxl_id: int, position: int) -> bool:
-        """단일 관절 위치 전송."""
+    def _read_raw_positions(self) -> dict:
+        """lerobot bus를 통해 현재 raw 위치값 읽기 (normalize=False).
+
+        Returns:
+            {'shoulder_pan': 2048, ...} 형태의 dict.
+        """
         if not self._use_real_hardware or not self._dxl_ready:
-            idx = FOLLOWER_IDS.index(dxl_id) if dxl_id in FOLLOWER_IDS else -1
-            if idx != -1:
-                self._latest_joint_pos[idx] = position
-            return True
+            return {name: 2048 for name in JOINT_NAMES}
 
         try:
             with self._dxl_io_lock:
-                result, _ = self._packet_handler.write4ByteTxRx(
-                    self._port_handler, dxl_id, ADDR_GOAL_POSITION, position)
-            idx = FOLLOWER_IDS.index(dxl_id) if dxl_id in FOLLOWER_IDS else -1
-            if idx != -1:
-                self._latest_joint_pos[idx] = position
-            return result == 0
+                return self._follower.bus.sync_read(
+                    'Present_Position', normalize=False)
         except Exception as e:
-            self.get_logger().error(f'단일 관절 전송 오류 (ID{dxl_id}): {e}')
-            return False
-
-    def _read_joint_positions(self) -> List[int]:
-        """현재 관절 위치 읽기."""
-        if not self._use_real_hardware or not self._dxl_ready:
-            return list(self._latest_joint_pos)
-
-        positions = []
-        for i, dxl_id in enumerate(FOLLOWER_IDS):
-            try:
-                with self._dxl_io_lock:
-                    val, result, _ = self._packet_handler.read4ByteTxRx(
-                        self._port_handler, dxl_id, ADDR_PRESENT_POSITION)
-                positions.append(
-                    int(val) if result == 0 else self._latest_joint_pos[i])
-            except Exception:
-                positions.append(self._latest_joint_pos[i])
-        return positions
+            self.get_logger().error(f'lerobot sync_read 오류: {e}')
+            return {name: 2048 for name in JOINT_NAMES}
 
     # ─────────────────────────────────────────────
     # 관절 상태 발행 (30 Hz 타이머)
     # ─────────────────────────────────────────────
     def _publish_joint_states(self):
         """현재 관절 위치를 JointState 토픽으로 발행."""
-        positions = self._read_joint_positions()
-        self._latest_joint_pos = positions
+        raw_positions = self._read_raw_positions()
 
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'base_link'
         msg.name = JOINT_NAMES
-        # Dynamixel 위치값 → 라디안 변환 (0~4095 = 0~2π)
+        # raw Dynamixel 위치값 → 라디안 변환 (0~4095 = 0~2π)
         msg.position = [
-            (pos / 4095.0) * 2 * math.pi for pos in positions
+            (raw_positions[name] / 4095.0) * 2 * math.pi
+            for name in JOINT_NAMES
         ]
         self._joint_state_pub.publish(msg)
 
@@ -841,25 +766,21 @@ class RobotControlNode(Node):
     # 종료 처리
     # ─────────────────────────────────────────────
     def destroy_node(self):
-        """노드 종료 시 토크 비활성화."""
+        """노드 종료 시 lerobot을 통해 안전하게 연결 해제."""
         # 텔레옵이 돌고 있다면 정지
         if self._teleop_running:
             self._stop_teleop()
 
-        if self._use_real_hardware and self._dxl_ready:
-            self.get_logger().info('Dynamixel 토크 비활성화')
-            for dxl_id in JOINT_IDS:
-                try:
-                    self._packet_handler.write1ByteTxRx(
-                        self._port_handler, dxl_id,
-                        ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
-                except Exception:
-                    pass
-            self._port_handler.closePort()
+        if self._follower and self._dxl_ready:
+            self.get_logger().info('OmxFollower 연결 해제 (토크 비활성화 포함)')
+            try:
+                self._follower.disconnect()
+            except Exception as e:
+                self.get_logger().warn(f'OmxFollower 해제 중 오류: {e}')
         super().destroy_node()
 
     # ─────────────────────────────────────────────
-    # 텔레오퍼레이션 제어 함수
+    # 텔레오퍼레이션 제어 (lerobot OmxLeader 사용)
     # ─────────────────────────────────────────────
     def _teleop_cmd_callback(self, msg: Bool):
         """텔레오퍼레이션 ON/OFF 명령 수신."""
@@ -871,7 +792,7 @@ class RobotControlNode(Node):
             t.start()
 
     def _start_teleop(self) -> bool:
-        """리더-팔로워 텔레오퍼레이션 시작."""
+        """lerobot OmxLeader를 사용한 리더-팔로워 텔레오퍼레이션 시작."""
         if self._get_state() == RobotState.TELEOPING:
             return True
         if self._get_state() != RobotState.IDLE:
@@ -884,45 +805,18 @@ class RobotControlNode(Node):
 
         if self._use_real_hardware:
             try:
-                from dynamixel_sdk import PortHandler, PacketHandler
-                self._leader_port_handler = PortHandler(self._leader_port_name)
-                self._leader_packet_handler = PacketHandler(DXL_PROTOCOL)
-
-                if not self._leader_port_handler.openPort():
-                    self.get_logger().error(f'리더 암 다이나믹셀 포트 열기 실패: {self._leader_port_name}')
-                    self._set_state(RobotState.IDLE)
-                    self._publish_status('텔레옵 에러: 리더 포트 열기 실패')
-                    return False
-
-                if not self._leader_port_handler.setBaudRate(self._dxl_baudrate):
-                    self.get_logger().error('리더 암 다이나믹셀 보드레이트 설정 실패')
-                    self._leader_port_handler.closePort()
-                    self._leader_port_handler = None
-                    self._set_state(RobotState.IDLE)
-                    self._publish_status('텔레옵 에러: 보드레이트 설정 실패')
-                    return False
-
-                # 리더 암 모터 토크 해제 (Torque Disable) -> 사람이 손으로 조작 가능하도록 함
-                for dxl_id in LEADER_IDS:
-                    self._leader_packet_handler.write1ByteTxRx(
-                        self._leader_port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_DISABLE)
-                    self.get_logger().info(f'리더 암 ID{dxl_id} 토크 해제 완료')
-
-                # 팔로워 암 모터 토크 활성화 (다시 한 번 확인)
-                if self._dxl_ready:
-                    for dxl_id in FOLLOWER_IDS:
-                        self._packet_handler.write1ByteTxRx(
-                            self._port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-
+                leader_config = OmxLeaderConfig(
+                    port=self._leader_port_name,
+                    id='quvi_leader',
+                )
+                self._leader = OmxLeader(leader_config)
+                self._leader.connect()
+                self.get_logger().info(
+                    f'OmxLeader 연결 완료 | 포트={self._leader_port_name} | '
+                    f'모터: {list(self._leader.bus.motors.keys())}')
             except Exception as e:
-                self.get_logger().error(f'리더 암 초기화 중 오류: {e}')
-                if self._leader_port_handler:
-                    try:
-                        self._leader_port_handler.closePort()
-                    except Exception:
-                        pass
-                self._leader_port_handler = None
-                self._leader_packet_handler = None
+                self.get_logger().error(f'OmxLeader 초기화 실패: {e}')
+                self._leader = None
                 self._set_state(RobotState.IDLE)
                 self._publish_status(f'텔레옵 에러: {e}')
                 return False
@@ -941,66 +835,53 @@ class RobotControlNode(Node):
         self.get_logger().info('텔레오퍼레이션 종료 중...')
         self._teleop_running = False
         if hasattr(self, '_teleop_thread') and self._teleop_thread.is_alive():
-            self._teleop_thread.join(timeout=1.0)
+            self._teleop_thread.join(timeout=2.0)
 
-        if self._use_real_hardware and self._leader_port_handler:
+        if self._leader:
             try:
-                # 리더 암 모터 토크 다시 활성화하여 락(고정) 처리 -> 갑자기 아래로 툭 떨어지는 것을 방지
-                if self._leader_packet_handler:
-                    for dxl_id in LEADER_IDS:
-                        self._leader_packet_handler.write1ByteTxRx(
-                            self._leader_port_handler, dxl_id, ADDR_TORQUE_ENABLE, TORQUE_ENABLE)
-                        self.get_logger().info(f'리더 암 ID{dxl_id} 토크 복구 완료')
-                
-                # 리더 암 포트 닫기
-                self._leader_port_handler.closePort()
-                self.get_logger().info('리더 암 포트 닫힘')
+                self._leader.disconnect()
+                self.get_logger().info('OmxLeader 연결 해제 완료')
             except Exception as e:
-                self.get_logger().error(f'리더 암 포트 닫기 중 오류: {e}')
-
-        self._leader_port_handler = None
-        self._leader_packet_handler = None
+                self.get_logger().error(f'OmxLeader 해제 중 오류: {e}')
+            self._leader = None
 
         self._set_state(RobotState.IDLE)
         self._publish_status('텔레오퍼레이션 종료')
         return True
 
     def _teleop_loop(self):
-        """리더-팔로워 동기화 제어 주기 루프 (30Hz)."""
+        """lerobot OmxLeader → OmxFollower 텔레오퍼레이션 루프 (30Hz).
+
+        공식 API 사용:
+          - leader.get_action()  → 리더 관절 위치 (정규화된 값)
+          - follower.send_action(action) → 팔로워에 전송 (정규화 → raw 변환 자동)
+        """
         dt = 1.0 / ACT_CONTROL_HZ
         sim_angle = 0.0
 
         while self._teleop_running and rclpy.ok():
             start_time = time.time()
-            positions = []
 
-            if self._use_real_hardware and self._leader_port_handler and self._leader_packet_handler:
-                for dxl_id in LEADER_IDS:
-                    try:
-                        val, result, error = self._leader_packet_handler.read4ByteTxRx(
-                            self._leader_port_handler, dxl_id, ADDR_PRESENT_POSITION)
-                        if result == 0:
-                            positions.append(int(val))
-                        else:
-                            idx = LEADER_IDS.index(dxl_id)
-                            positions.append(self._latest_joint_pos[idx])
-                    except Exception:
-                        idx = LEADER_IDS.index(dxl_id)
-                        positions.append(self._latest_joint_pos[idx])
+            if self._use_real_hardware and self._leader and self._follower:
+                try:
+                    # lerobot 공식 API: 정규화된 값으로 리더→팔로워 직접 매핑
+                    with self._dxl_io_lock:
+                        action = self._leader.get_action()
+                        self._follower.send_action(action)
+                except Exception as e:
+                    self.get_logger().warn(f'텔레옵 루프 오류: {e}')
             else:
                 # 시뮬레이션 모드: 부드러운 사인파 형태의 모의 각도 전송
                 sim_angle += 0.05
-                base_sim = 2048 + int(500 * math.sin(sim_angle))
-                shoulder_sim = 1800 + int(300 * math.cos(sim_angle))
-                elbow_sim = 1200 + int(200 * math.sin(sim_angle * 1.5))
-                wrist_p = 2048
-                wrist_r = 2048
-                gripper_sim = GRIPPER_OPEN if math.sin(sim_angle * 0.5) > 0 else GRIPPER_CLOSE
-                positions = [base_sim, shoulder_sim, elbow_sim, wrist_p, wrist_r, gripper_sim]
-
-            # 팔로워에 동시 전송 (6자유도 매핑)
-            if len(positions) == 6:
-                self._sync_send_positions(positions)
+                sim_pose = {
+                    'shoulder_pan': 2048 + int(500 * math.sin(sim_angle)),
+                    'shoulder_lift': 1800 + int(300 * math.cos(sim_angle)),
+                    'elbow_flex': 1200 + int(200 * math.sin(sim_angle * 1.5)),
+                    'wrist_flex': 2048,
+                    'wrist_roll': 2048,
+                    'gripper': GRIPPER_OPEN if math.sin(sim_angle * 0.5) > 0 else GRIPPER_CLOSE,
+                }
+                self._write_raw_position(sim_pose)
 
             # 30Hz 제어 속도 타이밍 대기
             elapsed = time.time() - start_time
