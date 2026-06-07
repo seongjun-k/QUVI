@@ -1,4 +1,5 @@
 ---
+name: commit
 description: 변경된 파일 분석 후 git commit & push 자동화
 ---
 # Git Commit Workflow
