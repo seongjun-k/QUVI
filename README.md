@@ -6,13 +6,13 @@
 
 ---
 
-## 📌 개요
+## 개요
 
 3D 프린터에서 출력을 완료한 제품을 로봇팔이 자동으로 인식 및 파지(Pickup)하여, 검사 챔버에서 머신비전을 통해 품질을 정밀 분석(양불 판정)하고 결과에 따라 합격(PASS)과 불량(FAIL) 분류함으로 적재하는 3D 프린팅 후처리 자동화 시스템(Smart Cell)입니다.
 
 ---
 
-## 🛠️ 시스템 구성
+## 시스템 구성
 
 | 구성 요소 | 기술 사양 | 역할 및 특징 |
 | :--- | :--- | :--- |
@@ -24,7 +24,7 @@
 
 ---
 
-## 📦 ROS 2 패키지 및 노드 구조
+## ROS 2 패키지 및 노드 구조
 
 | 패키지명 | 실행 노드명 | 주요 역할 |
 | :--- | :--- | :--- |
@@ -37,7 +37,7 @@
 
 ---
 
-## 🖥️ Web HMI 주요 기능 (대시보드)
+## Web HMI 주요 기능 (대시보드)
 
 * **실시간 시스템 상태 모니터링 (System Status)**
   * **로봇 6축 관절 각도 시각화**: `/robot/joint_states` 피드백을 실시간 도($^\circ$) 단위 및 게이지바로 표시.
@@ -51,7 +51,7 @@
 
 ---
 
-## 📂 프로젝트 폴더 구조
+## 프로젝트 폴더 구조
 
 ```
 QUVI/
@@ -71,7 +71,7 @@ QUVI/
 
 ---
 
-## 🚀 빠른 시작 (Docker Environment)
+## 빠른 시작 (Docker Environment)
 
 ### 1. 리포지토리 클론 및 서브모듈 초기화
 ```bash
@@ -104,7 +104,7 @@ ros2 launch quvi_bringup full_system.launch.py
 
 ---
 
-## 🛠️ 개발 기술 스택
+## 개발 기술 스택
 
 * **Operating System**: Ubuntu 24.04 LTS (Noble Numbat)
 * **Middleware**: ROS 2 Jazzy Jalisco
@@ -114,7 +114,7 @@ ros2 launch quvi_bringup full_system.launch.py
 
 ---
 
-## 🤖 LeRobot ACT 모방학습 가이드
+## LeRobot ACT 모방학습 가이드
 
 본 프로젝트의 핵심 기능인 로봇팔 파지(Zone 1)는 LeRobot ACT(Action Chunking with Transformers) 모방학습 기반 비주오모터(Visuomotor) 제어로 수행됩니다. 아래 절차에 따라 데이터를 수집하고 학습시킬 수 있습니다.
 
@@ -146,12 +146,12 @@ python3 lerobot/src/lerobot/scripts/train.py \
 
 ---
 
-## 👥 팀 정보
+## 팀 정보
 
 - **서울로봇고등학교 졸업작품 돼지껍데기 팀**
 
 ---
 
-## 📄 라이선스
+## 라이선스
 
 이 프로젝트는 [MIT License](LICENSE)에 따라 라이선스가 부여됩니다.
