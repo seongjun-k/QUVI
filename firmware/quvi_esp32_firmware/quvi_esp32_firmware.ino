@@ -17,6 +17,7 @@
   #include <rclc/rclc.h>
   #include <rclc/executor.h>
   #include <std_msgs/msg/int32.h>
+  #include <std_msgs/msg/bool.h>
 #endif
 
 // =============================================================================
@@ -54,10 +55,14 @@ const uint32_t COLOR_PURPLE = statusLed.Color(80, 0, 80);    // Connection pendi
   rcl_subscription_t turn_sub;
   std_msgs__msg__Int32 rail_msg;
   std_msgs__msg__Int32 turn_msg;
+  rcl_publisher_t rail_done_pub;
+  std_msgs__msg__Bool rail_done_msg;
   rclc_executor_t executor;
   rclc_support_t support;
   rcl_allocator_t allocator;
   rcl_node_t node;
+
+  volatile bool rail_done_pending = false;
 
   #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ error_loop(); }}
   #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ }}
@@ -230,6 +235,7 @@ void rail_subscription_callback(const void * msin) {
     // Soft Limit check for safety
     if (target_steps >= RAIL_MIN_LIMIT && target_steps <= RAIL_MAX_LIMIT) {
         railMotor.setTargetPosition(target_steps);
+        rail_done_pending = true;
     }
 }
 
@@ -294,6 +300,14 @@ void vCommTask(void *pvParameters) {
             "/motor/turntable"
         ));
 
+        // Create Publishers
+        RCCHECK(rclc_publisher_init_default(
+            &rail_done_pub,
+            &node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+            "/motor/rail_done"
+        ));
+
         // Create Executor
         RCCHECK(rclc_executor_init(&executor, &support.context, 2, &allocator));
         RCCHECK(rclc_executor_add_subscription(&executor, &rail_sub, &rail_msg, &rail_subscription_callback, ON_NEW_DATA));
@@ -309,6 +323,13 @@ void vCommTask(void *pvParameters) {
                 continue;
             }
             RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)));
+            
+            if (rail_done_pending && !railMotor.isMoving()) {
+                rail_done_msg.data = true;
+                RCSOFTCHECK(rcl_publish(&rail_done_pub, &rail_done_msg, NULL));
+                rail_done_pending = false;
+            }
+            
             vTaskDelay(pdMS_TO_TICKS(10));
         }
 

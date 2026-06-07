@@ -73,10 +73,12 @@ QUVI/
 
 ## 🚀 빠른 시작 (Docker Environment)
 
-### 1. 리포지토리 클론 및 폴더 이동
+### 1. 리포지토리 클론 및 서브모듈 초기화
 ```bash
 git clone https://github.com/seongjun-k/QUVI.git
 cd QUVI
+# lerobot 서브모듈 의존성 초기화 및 다운로드 (필수)
+git submodule update --init --recursive
 ```
 
 ### 2. Docker 환경 구성 및 실행
@@ -109,6 +111,38 @@ ros2 launch quvi_bringup full_system.launch.py
 * **Vision & AI**: OpenCV 4.9, scikit-image, Ultralytics YOLOv8, PyTorch 2.x, Hugging Face LeRobot
 * **Web HMI**: Python Flask, Flask-SocketIO, Vanilla JS (WebSocket Client), HTML5/CSS3 (Industrial Dark Theme)
 * **Embedded Hardware**: ESP32-S3, TB6600, Dynamixel SDK (Protocol 2.0)
+
+---
+
+## 🤖 LeRobot ACT 모방학습 가이드
+
+본 프로젝트의 핵심 기능인 로봇팔 파지(Zone 1)는 LeRobot ACT(Action Chunking with Transformers) 모방학습 기반 비주오모터(Visuomotor) 제어로 수행됩니다. 아래 절차에 따라 데이터를 수집하고 학습시킬 수 있습니다.
+
+### 1. 텔레오퍼레이션 데이터 수집
+리더-팔로워 모드를 활성화하여 사람이 직접 시연하는 파지 데이터를 수집합니다.
+LeRobot의 공식 데이터 녹화 스크립트를 사용하여 이미지 피드와 관절 각도 상태를 기록합니다.
+```bash
+python3 lerobot/src/lerobot/scripts/record.py \
+  --robot.path lerobot/configs/robot/omx.yaml \
+  --fps 30 \
+  --repo-id data/datasets/quvi_grasp \
+  --warmup-time-s 5
+```
+
+### 2. ACT 모델 학습 (Training)
+수집된 데이터셋을 이용하여 ACT 정책(Policy)을 학습시킵니다.
+```bash
+python3 lerobot/src/lerobot/scripts/train.py \
+  --policy.type=act \
+  --dataset.repo_id=data/datasets/quvi_grasp \
+  --env.type=real \
+  --output_dir=outputs/train/quvi_act \
+  --device=cuda
+```
+*학습 파라미터(청크 크기, 학습률 등)는 `src/quvi_bringup/config/params.yaml` 및 `robot_control_node.py`의 파라미터(`act_chunk_size`, `act_model_path`) 설정과 일치하도록 조정합니다.*
+
+### 3. 학습 모델 추론 및 배포
+학습 완료 후 생성된 pre-trained 가중치를 `act_model_path` 경로(기본값: `outputs/train/quvi_act/checkpoints/last/pretrained_model`)에 위치시키면, 자율 제어 실행 시 자동으로 모델을 로드하여 파지를 수행합니다.
 
 ---
 

@@ -42,3 +42,17 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Temporary and Backup files
+*.bak
+*.tmp
+
+# Docker build artifacts/logs
+docker/=
+docker/CACHED
+docker/ERROR
+docker/\[internal\]
+docker/reading
+docker/resolve
+docker/transferring
+

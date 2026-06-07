@@ -26,7 +26,7 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, Int32
 
-from quvi_msgs.msg import InspectionResult
+from quvi_msgs.msg import GraspGoal, InspectionResult
 
 
 class InspectNode(Node):
@@ -68,6 +68,11 @@ class InspectNode(Node):
             Bool, '/inspection/trigger',
             self._trigger_callback, 10)
 
+        # Subscriber: 로봇 grasp_command (object_index 동기화용)
+        self._grasp_cmd_sub = self.create_subscription(
+            GraspGoal, '/robot/grasp_command',
+            self._grasp_cmd_callback, 10)
+
         # Publisher: 양불 판정 결과
         self._result_pub = self.create_publisher(
             InspectionResult, '/inspection/result', 10)
@@ -84,6 +89,7 @@ class InspectNode(Node):
         self._inspection_active = False
         self._current_object_index = 0
         self._capture_timers: set = set()  # 진행 중인 one-shot 캡처 타이머
+        self._scheduled_angles: Dict[int, rclpy.timer.Timer] = {}  # 예약된 각도별 타이머
 
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
@@ -194,6 +200,10 @@ class InspectNode(Node):
         if frame is not None:
             self._latest_frame = frame
 
+    def _grasp_cmd_callback(self, msg: GraspGoal):
+        self._current_object_index = msg.object_index
+        self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
+
     def _turntable_callback(self, msg: Int32):
         """턴테이블 현재 각도 수신 → 안정화 후 비동기 캡처 예약.
 
@@ -202,6 +212,9 @@ class InspectNode(Node):
         """
         self._current_angle = msg.data
         if self._inspection_active and msg.data in self._angles:
+            # 이미 캡처했거나 예약된 각도인 경우 중복 생성 방지
+            if msg.data in self._captured_images or msg.data in self._scheduled_angles:
+                return
             self._schedule_capture(msg.data)
 
     def _schedule_capture(self, angle: int):
@@ -209,10 +222,12 @@ class InspectNode(Node):
         def _do_capture():
             timer.cancel()
             self._capture_timers.discard(timer)
+            self._scheduled_angles.pop(angle, None)
             self._capture_angle(angle)
 
         timer = self.create_timer(self._cap_delay, _do_capture)
         self._capture_timers.add(timer)
+        self._scheduled_angles[angle] = timer
 
     def _capture_angle(self, angle: int):
         """안정화 대기 후 현재 프레임을 해당 각도로 캡처."""
@@ -233,9 +248,18 @@ class InspectNode(Node):
         if msg.data:
             self._inspection_active = True
             self._captured_images.clear()
+            # 진행 중인 타이머 취소 및 정리
+            for timer in self._capture_timers:
+                timer.cancel()
+            self._capture_timers.clear()
+            self._scheduled_angles.clear()
             self.get_logger().info('검사 모드 활성화 — 턴테이블 회전 대기 중')
         else:
             self._inspection_active = False
+            for timer in self._capture_timers:
+                timer.cancel()
+            self._capture_timers.clear()
+            self._scheduled_angles.clear()
 
     # ─────────────────────────────────────────────
     # 메인 검사 로직
@@ -316,6 +340,10 @@ class InspectNode(Node):
         # 상태 초기화
         self._inspection_active = False
         self._captured_images.clear()
+        for timer in self._capture_timers:
+            timer.cancel()
+        self._capture_timers.clear()
+        self._scheduled_angles.clear()
         self._current_object_index += 1
 
     # ─────────────────────────────────────────────
@@ -464,7 +492,7 @@ class InspectNode(Node):
     # 2) 표면 특징 분석
     # ─────────────────────────────────────────────
     def _surface_analysis(self) -> Dict:
-        """4방향 이미지의 표면 특징을 추출하고 평균으로 판정한다.
+        """4방향 이미지의 표면 특징을 추출하고 최악의 케이스(worst-case)로 판정한다.
 
         특징 5가지:
           - Solidity: 윤곽 면적 / 컨벡스 헐 면적 (워핑 감지)
@@ -473,11 +501,7 @@ class InspectNode(Node):
           - Hole Area Ratio: 구멍 총 면적 / 전체 면적 (레이어 분리)
           - Texture Variance: 라플라시안 분산 (스트링잉)
         """
-        all_solidity = []
-        all_area_ratio = []
-        all_hole_count = []
-        all_hole_area = []
-        all_texture_var = []
+        angle_features = {}
 
         for angle in self._angles:
             captured = self._captured_images.get(angle)
@@ -488,7 +512,6 @@ class InspectNode(Node):
 
             # Solidity
             solidity = self._compute_solidity(gray)
-            all_solidity.append(solidity)
 
             # Area Ratio (표면 특징용 — 기준 이미지 대비)
             ref = self._reference_images.get(angle)
@@ -497,55 +520,74 @@ class InspectNode(Node):
                 a_ratio = self._compute_area_ratio(gray, ref_resized)
             else:
                 a_ratio = 1.0  # 기준 없으면 정상으로 간주
-            all_area_ratio.append(a_ratio)
 
             # Hole Count & Hole Area Ratio
             h_count, h_area_ratio = self._compute_holes(gray)
-            all_hole_count.append(h_count)
-            all_hole_area.append(h_area_ratio)
 
             # Texture Variance
             tex_var = self._compute_texture_variance(gray)
-            all_texture_var.append(tex_var)
 
-        # 4방향 평균
-        avg_sol = float(np.mean(all_solidity)) if all_solidity else 0.0
-        avg_area = float(np.mean(all_area_ratio)) if all_area_ratio else 0.0
-        avg_holes = int(np.mean(all_hole_count)) if all_hole_count else 0
-        avg_hole_area = float(np.mean(all_hole_area)) if all_hole_area else 0.0
-        avg_tex = float(np.mean(all_texture_var)) if all_texture_var else 0.0
+            angle_features[angle] = {
+                'solidity': solidity,
+                'area_ratio': a_ratio,
+                'role_count': h_count, # Wait, let's keep it consistent
+                'hole_count': h_count,
+                'hole_area_ratio': h_area_ratio,
+                'texture_variance': tex_var,
+            }
 
-        # 판정
+        # 판정 (어느 한 방향이라도 허용 한계를 벗어나면 불량)
         all_pass = True
         fail_details = []
 
-        if not (self._sol_min <= avg_sol <= self._sol_max):
-            all_pass = False
-            fail_details.append(f'워핑:Solidity={avg_sol:.3f}')
+        # 각 방향 개별 검사
+        for angle, feats in angle_features.items():
+            sol = feats['solidity']
+            area = feats['area_ratio']
+            holes = feats['hole_count']
+            h_area = feats['hole_area_ratio']
+            tex = feats['texture_variance']
 
-        if not (self._f_area_min <= avg_area <= self._f_area_max):
-            all_pass = False
-            fail_details.append(f'미출력:면적비={avg_area:.3f}')
+            if not (self._sol_min <= sol <= self._sol_max):
+                all_pass = False
+                fail_details.append(f'{angle}°워핑:Solidity={sol:.3f}')
 
-        if avg_holes > self._hole_max:
-            all_pass = False
-            fail_details.append(f'레이어분리:구멍={avg_holes}개')
+            if not (self._f_area_min <= area <= self._f_area_max):
+                all_pass = False
+                fail_details.append(f'{angle}°미출력:면적비={area:.3f}')
 
-        if avg_hole_area > self._hole_area_max:
-            all_pass = False
-            fail_details.append(f'레이어분리:구멍면적={avg_hole_area:.3f}')
+            if holes > self._hole_max:
+                all_pass = False
+                fail_details.append(f'{angle}°레이어분리:구멍={holes}개')
 
-        if avg_tex > self._tex_var_max:
-            all_pass = False
-            fail_details.append(f'스트링잉:텍스처={avg_tex:.1f}')
+            if h_area > self._hole_area_max:
+                all_pass = False
+                fail_details.append(f'{angle}°레이어분리:구멍면적={h_area:.3f}')
+
+            if tex > self._tex_var_max:
+                all_pass = False
+                fail_details.append(f'{angle}°스트링잉:텍스처={tex:.1f}')
+
+        # InspectionResult에 리포트할 대표 최악값 추출
+        all_solidity = [f['solidity'] for f in angle_features.values()]
+        all_area_ratio = [f['area_ratio'] for f in angle_features.values()]
+        all_hole_count = [f['hole_count'] for f in angle_features.values()]
+        all_hole_area = [f['hole_area_ratio'] for f in angle_features.values()]
+        all_texture_var = [f['texture_variance'] for f in angle_features.values()]
+
+        worst_sol = min(all_solidity) if all_solidity else 1.0
+        worst_area = all_area_ratio[np.argmax([abs(1.0 - a) for a in all_area_ratio])] if all_area_ratio else 1.0
+        worst_holes = max(all_hole_count) if all_hole_count else 0
+        worst_hole_area = max(all_hole_area) if all_hole_area else 0.0
+        worst_tex = max(all_texture_var) if all_texture_var else 0.0
 
         return {
             'passed': all_pass,
-            'solidity': avg_sol,
-            'area_ratio': avg_area,
-            'hole_count': avg_holes,
-            'hole_area_ratio': avg_hole_area,
-            'texture_variance': avg_tex,
+            'solidity': worst_sol,
+            'area_ratio': worst_area,
+            'hole_count': worst_holes,
+            'hole_area_ratio': worst_hole_area,
+            'texture_variance': worst_tex,
             'fail_detail': '; '.join(fail_details) if fail_details else '',
         }
 

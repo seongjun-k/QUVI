@@ -54,6 +54,12 @@ class MainOrchestratorNode(Node):
         self.declare_parameter('target_z', 15.0)
         self.declare_parameter('step_delay_sec', 2.0)
         self.declare_parameter('loop_rate_hz', 10.0)
+        self.declare_parameter('grasp_timeout_sec', 20.0)
+        self.declare_parameter('release_timeout_sec', 10.0)
+        self.declare_parameter('home_timeout_sec', 15.0)
+        self.declare_parameter('rail_timeout_sec', 25.0)
+        self.declare_parameter('inspect_timeout_sec', 15.0)
+        self.declare_parameter('detecting_timeout_sec', 10.0)
 
         # ─── 파라미터 로드 ───
         self._px_to_mm_x = self.get_parameter('px_to_mm_x').value
@@ -63,6 +69,12 @@ class MainOrchestratorNode(Node):
         self._target_z = self.get_parameter('target_z').value
         self._step_delay = self.get_parameter('step_delay_sec').value
         self._loop_rate = self.get_parameter('loop_rate_hz').value
+        self._grasp_timeout = self.get_parameter('grasp_timeout_sec').value
+        self._release_timeout = self.get_parameter('release_timeout_sec').value
+        self._home_timeout = self.get_parameter('home_timeout_sec').value
+        self._rail_timeout = self.get_parameter('rail_timeout_sec').value
+        self._inspect_timeout = self.get_parameter('inspect_timeout_sec').value
+        self._detecting_timeout = self.get_parameter('detecting_timeout_sec').value
 
         # ─── 내부 상태 변수 ───
         self._state = FsmState.INIT
@@ -177,16 +189,18 @@ class MainOrchestratorNode(Node):
         self._yolo_online = True
 
     def _robot_act_done_cb(self, msg: Bool):
-        if msg.data:
+        if msg.data and self._state == FsmState.GRASPING_WAIT:
             self._robot_grasp_done = True
 
     def _robot_grasp_done_cb(self, msg: Bool):
-        # release 혹은 grasp 동작의 피드백 완료 통합 처리
+        # release, grasp, home 동작의 피드백 완료 통합 처리
         if msg.data:
             if self._state == FsmState.GRASPING_WAIT:
                 self._robot_grasp_done = True
             elif self._state == FsmState.RELEASING_WAIT:
                 self._robot_release_done = True
+            elif self._state == FsmState.HOMING_WAIT:
+                self._robot_grasp_done = True
 
     def _robot_rail_done_cb(self, msg: Bool):
         if msg.data:
@@ -221,18 +235,24 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.DETECTING_TRIGGER:
             self._yolo_received = False
+            self._state_timer_counter = 0
             trigger = Bool()
             trigger.data = True
             self._yolo_trigger_pub.publish(trigger)
             self._state = FsmState.DETECTING_WAIT
 
         elif self._state == FsmState.DETECTING_WAIT:
+            self._state_timer_counter += 1
             if self._yolo_received:
                 if self._total_objects > 0:
                     self._state = FsmState.GRASPING_TRIGGER
                 else:
                     self.get_logger().info('탐지된 객체가 없어 대기 상태로 복귀합니다.')
                     self._state = FsmState.FINISHED
+            elif self._state_timer_counter > int(self._detecting_timeout * self._loop_rate):
+                self.get_logger().error('YOLO 탐지 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'DETECTING_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.GRASPING_TRIGGER:
             if self._current_object_idx < self._total_objects:
@@ -253,15 +273,21 @@ class MainOrchestratorNode(Node):
                 )
 
                 self._robot_grasp_done = False
+                self._state_timer_counter = 0
                 self._robot_grasp_pub.publish(goal)
                 self._state = FsmState.GRASPING_WAIT
             else:
                 self._state = FsmState.FINISHED
 
         elif self._state == FsmState.GRASPING_WAIT:
+            self._state_timer_counter += 1
             if self._robot_grasp_done:
                 self.get_logger().info('로봇 파지 및 챔버 이송 시퀀스 완료')
                 self._state = FsmState.INSPECTING_TRIGGER
+            elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
+                self.get_logger().error('로봇 파지 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'GRASP_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.INSPECTING_TRIGGER:
             self._inspect_done = False
@@ -324,11 +350,17 @@ class MainOrchestratorNode(Node):
                 self._state = FsmState.INSPECTING_WAIT_RESULT
 
         elif self._state == FsmState.INSPECTING_WAIT_RESULT:
+            self._state_timer_counter += 1
             if self._inspect_done:
                 self._state = FsmState.SORTING_TRIGGER
+            elif self._state_timer_counter > int(self._inspect_timeout * self._loop_rate):
+                self.get_logger().error('품질 검사 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'INSPECT_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.SORTING_TRIGGER:
             self._robot_rail_done = False
+            self._state_timer_counter = 0
             rail_cmd = Int32()
 
             # 양불 결과에 따라 레일 목표 위치 분류
@@ -345,12 +377,18 @@ class MainOrchestratorNode(Node):
             self._state = FsmState.SORTING_WAIT_RAIL
 
         elif self._state == FsmState.SORTING_WAIT_RAIL:
+            self._state_timer_counter += 1
             if self._robot_rail_done:
                 self.get_logger().info('레일 분류 목적지 이동 완료')
                 self._state = FsmState.RELEASING_TRIGGER
+            elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
+                self.get_logger().error('레일 이송 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'RAIL_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.RELEASING_TRIGGER:
             self._robot_release_done = False
+            self._state_timer_counter = 0
             release_cmd = Bool()
             release_cmd.data = True
             self._robot_release_pub.publish(release_cmd)
@@ -358,14 +396,21 @@ class MainOrchestratorNode(Node):
             self._state = FsmState.RELEASING_WAIT
 
         elif self._state == FsmState.RELEASING_WAIT:
+            self._state_timer_counter += 1
             if self._robot_release_done:
                 self.get_logger().info('적재 및 그리퍼 해제 완료')
                 self._processed_count += 1
                 self._current_object_idx += 1
                 self._state = FsmState.HOMING_TRIGGER
+            elif self._state_timer_counter > int(self._release_timeout * self._loop_rate):
+                self.get_logger().error('그리퍼 해제 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'RELEASE_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.HOMING_TRIGGER:
             self._robot_rail_done = False
+            self._robot_grasp_done = False  # arm home done flag
+            self._state_timer_counter = 0
             # 레일을 다시 3D 프린터 베드로 원점 복귀
             rail_cmd = Int32()
             rail_cmd.data = 0  # RailPosition.BED
@@ -380,13 +425,18 @@ class MainOrchestratorNode(Node):
             self._state = FsmState.HOMING_WAIT
 
         elif self._state == FsmState.HOMING_WAIT:
-            if self._robot_rail_done:
+            self._state_timer_counter += 1
+            if self._robot_rail_done and self._robot_grasp_done:
                 self.get_logger().info('홈 복귀 완료')
                 # 다음 감지된 오브젝트가 남았으면 순회 구동
                 if self._current_object_idx < self._total_objects:
                     self._state = FsmState.GRASPING_TRIGGER
                 else:
                     self._state = FsmState.FINISHED
+            elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
+                self.get_logger().error('홈 복귀 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'HOME_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.FINISHED:
             self.get_logger().info('모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.')

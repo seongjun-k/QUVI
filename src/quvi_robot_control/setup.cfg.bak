@@ -1,5 +1,0 @@
-[develop]
-script_dir=$base/lib/quvi_robot_control
-
-[install]
-install_scripts=$base/lib/quvi_robot_control

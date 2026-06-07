@@ -200,8 +200,8 @@ class YoloNode(Node):
                     if w * h < self._min_bbox_area:
                         continue
 
-                    # 커스텀 클래스 필터 (학습 전에는 모든 클래스 허용)
-                    if self._target_classes and 'print_object' not in self._target_classes:
+                    # 커스텀 클래스 필터
+                    if self._target_classes:
                         if cls_name not in self._target_classes:
                             continue
 

@@ -163,6 +163,8 @@ class RobotControlNode(Node):
         self._handcam_lock = threading.Lock()
         self._bridge = CvBridge()
 
+        self._esp32_rail_done = False
+
         # ─── 텔레오퍼레이션 상태 ───
         self._teleop_running = False
         self._leader: Optional[OmxLeader] = None
@@ -330,6 +332,10 @@ class RobotControlNode(Node):
             Int32, '/robot/rail_command',
             self._rail_cmd_callback, 10)
 
+        self._esp32_rail_done_sub = self.create_subscription(
+            Bool, '/motor/rail_done',
+            self._esp32_rail_done_callback, 10)
+
         self._rotate_cmd_sub = self.create_subscription(
             Bool, '/robot/rotate_command',
             self._rotate_cmd_callback, 10)
@@ -402,6 +408,10 @@ class RobotControlNode(Node):
         if frame is not None:
             with self._handcam_lock:
                 self._latest_handcam = frame
+
+    def _esp32_rail_done_callback(self, msg: Bool):
+        if msg.data:
+            self._esp32_rail_done = True
 
     # ─────────────────────────────────────────────
     # 명령 콜백 (토픽 기반 — 비동기)
@@ -574,14 +584,23 @@ class RobotControlNode(Node):
             for i, action in enumerate(action_chunk):
                 step_start = time.time()
 
-                # 라디안 → raw Dynamixel 위치값 (0~4095) → lerobot bus로 전송
-                goal_dict = {}
-                for j, name in enumerate(JOINT_NAMES):
-                    goal_dict[name] = int(np.clip(
-                        (float(action[j]) / (2 * math.pi)) * 4095,
-                        0, 4095))
-
-                self._write_raw_position(goal_dict)
+                if self._use_real_hardware and self._dxl_ready:
+                    # lerobot 공식 API를 통한 캘리브레이션/변환 적용 및 모터 전송
+                    action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
+                    with self._dxl_io_lock:
+                        self._follower.send_action(action_dict)
+                else:
+                    # 시뮬레이션 모드 또는 하드웨어가 없는 경우
+                    goal_dict = {}
+                    for j, name in enumerate(JOINT_NAMES):
+                        val = float(action[j])
+                        # LeRobot의 M100_100 범위 [-100, 100]를 0~4095로 변환 모사
+                        if -100 <= val <= 100:
+                            raw = int(((val + 100.0) / 200.0) * 4095.0)
+                        else:
+                            raw = int(np.clip((val / (2 * math.pi)) * 4095, 0, 4095))
+                        goal_dict[name] = raw
+                    self._write_raw_position(goal_dict)
 
                 # 30 Hz 타이밍 유지
                 elapsed = time.time() - step_start
@@ -626,7 +645,26 @@ class RobotControlNode(Node):
         msg.data = target_steps
         self._rail_pub.publish(msg)
 
-        time.sleep(0.2)
+        if self._use_real_hardware:
+            # ESP32로부터 완료 신호 대기 (타임아웃 포함)
+            self._esp32_rail_done = False
+            deadline = time.time() + self._rail_timeout
+            success = False
+            while time.time() < deadline:
+                if self._esp32_rail_done:
+                    self._esp32_rail_done = False
+                    success = True
+                    break
+                time.sleep(0.05)
+            
+            if not success:
+                self.get_logger().error(f'레일 이동 타임아웃! ({self._rail_timeout}초)')
+                self._set_state(RobotState.ERROR)
+                self._publish_status('ERROR: 레일 이동 타임아웃')
+                return False
+        else:
+            # 시뮬레이션 모드에서는 즉시 완료 처리 (대기 시간 모사)
+            time.sleep(1.0)
 
         done_msg = Bool()
         done_msg.data = True
@@ -683,6 +721,11 @@ class RobotControlNode(Node):
 
         success = self._write_raw_position(POSE_HOME)
         time.sleep(2.0)
+
+        # 홈 복귀 완료 신호 발행
+        done_msg = Bool()
+        done_msg.data = True
+        self._grasp_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
         self._publish_status('홈 복귀 완료')
