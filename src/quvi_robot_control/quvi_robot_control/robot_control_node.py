@@ -294,11 +294,18 @@ class RobotControlNode(Node):
             self.get_logger().error(f'LeRobot/torch 미설치: {e}')
             return
 
-        self.get_logger().info(f'ACT 모델 로드 중: {self._act_model_path}')
+        resolved_path = Path(self._act_model_path)
+        if not resolved_path.is_absolute():
+            resolved_path = Path('/workspace') / resolved_path
+        resolved_path = resolved_path.resolve()
+
+        self.get_logger().info(f'ACT 모델 로드 중: {resolved_path}')
         try:
             import torch
             from lerobot.policies.act.modeling_act import ACTPolicy
-            self._act_policy = ACTPolicy.from_pretrained(self._act_model_path)
+            if not resolved_path.exists():
+                raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
+            self._act_policy = ACTPolicy.from_pretrained(str(resolved_path))
             self._act_policy.eval()
             device = self._act_device
             self._act_policy = self._act_policy.to(device)

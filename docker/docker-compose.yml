@@ -15,6 +15,7 @@ services:
       - ../src:/workspace/src
       - ../data:/workspace/data
       - ../scripts:/workspace/scripts
+      - ../lerobot:/workspace/lerobot
       - /dev:/dev
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${HOME}/.Xauthority:/root/.Xauthority:rw
