@@ -136,7 +136,10 @@ class HmiNode(Node):
     # ─── ROS 콜백 ───
     def _status_cb(self, msg: SystemStatus):
         with self._lock:
-            self._system_status['current_state'] = msg.current_state
+            if self._system_status.get('teleop_active', False):
+                self._system_status['current_state'] = 'TELEOPING'
+            else:
+                self._system_status['current_state'] = msg.current_state
             self._system_status['total_objects'] = msg.total_objects
             self._system_status['processed_count'] = msg.processed_count
             self._system_status['pass_count'] = msg.pass_count

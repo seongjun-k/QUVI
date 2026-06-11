@@ -103,6 +103,7 @@ class MainOrchestratorNode(Node):
         self._robot_grasp_done = False
         self._robot_rail_done = False
         self._robot_release_done = False
+        self._robot_home_done = False
         self._inspect_done = False
 
         # 타이머 카운터 (FSM 딜레이 대기용)
@@ -179,7 +180,7 @@ class MainOrchestratorNode(Node):
             self._fail_count = 0
 
     def _yolo_objects_cb(self, msg: ObjectArray):
-        if self._state == FsmState.DETECTING_WAIT:
+        if self._state.value.startswith("DETECTING_"):
             self.get_logger().info(f'YOLO 객체 수집 완료: {msg.total_count}개 발견')
             self._detected_objects = msg.objects
             self._total_objects = msg.total_count
@@ -189,25 +190,26 @@ class MainOrchestratorNode(Node):
         self._yolo_online = True
 
     def _robot_act_done_cb(self, msg: Bool):
-        if msg.data and self._state == FsmState.GRASPING_WAIT:
+        if msg.data and self._state.value.startswith("GRASPING_"):
             self._robot_grasp_done = True
 
     def _robot_grasp_done_cb(self, msg: Bool):
         # release, grasp, home 동작의 피드백 완료 통합 처리
         if msg.data:
-            if self._state == FsmState.GRASPING_WAIT:
+            if self._state.value.startswith("GRASPING_"):
                 self._robot_grasp_done = True
-            elif self._state == FsmState.RELEASING_WAIT:
+            elif self._state.value.startswith("RELEASING_"):
                 self._robot_release_done = True
-            elif self._state == FsmState.HOMING_WAIT:
-                self._robot_grasp_done = True
+            elif self._state.value.startswith("HOMING_"):
+                self._robot_home_done = True
 
     def _robot_rail_done_cb(self, msg: Bool):
         if msg.data:
-            self._robot_rail_done = True
+            if self._state.value.startswith("SORTING_") or self._state.value.startswith("HOMING_"):
+                self._robot_rail_done = True
 
     def _inspect_result_cb(self, msg: InspectionResult):
-        if self._state == FsmState.INSPECTING_WAIT_RESULT:
+        if self._state.value.startswith("INSPECTING_"):
             self.get_logger().info(f'검사 결과 수신: passed={msg.passed}')
             self._latest_inspection_passed = msg.passed
             self._inspect_done = True
@@ -226,7 +228,6 @@ class MainOrchestratorNode(Node):
 
         # FSM 구현
         if self._state == FsmState.INIT:
-            self._yolo_online = True  # 로컬 가상 헬스체크 매핑
             self._state = FsmState.IDLE
 
         elif self._state == FsmState.IDLE:
@@ -409,7 +410,7 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.HOMING_TRIGGER:
             self._robot_rail_done = False
-            self._robot_grasp_done = False  # arm home done flag
+            self._robot_home_done = False  # arm home done flag
             self._state_timer_counter = 0
             # 레일을 다시 3D 프린터 베드로 원점 복귀
             rail_cmd = Int32()
@@ -426,7 +427,7 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.HOMING_WAIT:
             self._state_timer_counter += 1
-            if self._robot_rail_done and self._robot_grasp_done:
+            if self._robot_rail_done and self._robot_home_done:
                 self.get_logger().info('홈 복귀 완료')
                 # 다음 감지된 오브젝트가 남았으면 순회 구동
                 if self._current_object_idx < self._total_objects:
@@ -448,6 +449,12 @@ class MainOrchestratorNode(Node):
 
     # ─── HMI 전송 유틸리티 ───
     def _publish_hmi_status(self):
+        # Dynamically query the ROS 2 graph to check if other nodes are online
+        yolo_online = (self.count_publishers('/detection/objects') > 0) or self._yolo_online
+        inspect_online = (self.count_publishers('/inspection/result') > 0) or self._inspect_online
+        grasp_online = (self.count_publishers('/robot/joint_states') > 0 or self.count_publishers('/robot/status') > 0) or self._grasp_online
+        motor_online = (self.count_publishers('/robot/joint_states') > 0 or self.count_publishers('/robot/status') > 0) or self._motor_online
+
         msg = SystemStatus()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = "main_controller"
@@ -458,10 +465,10 @@ class MainOrchestratorNode(Node):
         msg.pass_count = int(self._pass_count)
         msg.fail_count = int(self._fail_count)
 
-        msg.yolo_ready = bool(self._yolo_online)
-        msg.grasp_ready = bool(self._grasp_online)
-        msg.inspect_ready = bool(self._inspect_online)
-        msg.motor_ready = bool(self._motor_online)
+        msg.yolo_ready = bool(yolo_online)
+        msg.grasp_ready = bool(grasp_online)
+        msg.inspect_ready = bool(inspect_online)
+        msg.motor_ready = bool(motor_online)
 
         msg.error_message = str(self._error_msg)
 

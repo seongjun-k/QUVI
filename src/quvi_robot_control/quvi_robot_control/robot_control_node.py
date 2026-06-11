@@ -471,6 +471,9 @@ class RobotControlNode(Node):
         """투하 명령 수신."""
         if not msg.data:
             return
+        if self._get_state() != RobotState.IDLE:
+            self.get_logger().warn('투하 명령 무시: 현재 동작 중')
+            return
         t = threading.Thread(
             target=self._execute_release, daemon=True)
         t.start()
@@ -478,6 +481,9 @@ class RobotControlNode(Node):
     def _home_cmd_callback(self, msg: Bool):
         """홈 복귀 명령 수신."""
         if not msg.data:
+            return
+        if self._get_state() != RobotState.IDLE:
+            self.get_logger().warn('홈 복귀 명령 무시: 현재 동작 중')
             return
         t = threading.Thread(
             target=self._execute_home, daemon=True)
@@ -569,6 +575,8 @@ class RobotControlNode(Node):
                 joint_rad, dtype=torch.float32).unsqueeze(0)
             state_tensor = state_tensor.to(self._act_device_obj)
 
+            # TODO: 학습 데이터셋의 video_keys 설정에 따라 이미지 키 이름을 맞춰야 합니다.
+            # 예: 'observation.images.handcam' 또는 'observation.images.top', 'observation.images.wrist' 등
             obs = {
                 'observation.images.handcam': img_tensor,
                 'observation.state': state_tensor,
@@ -648,13 +656,15 @@ class RobotControlNode(Node):
         self._publish_status(f'레일 이동: {pos_name} ({target_steps}스텝)')
         self.get_logger().info(f'레일 이동 명령: {pos_name} = {target_steps}스텝')
 
+        if self._use_real_hardware:
+            self._esp32_rail_done = False
+
         msg = Int32()
         msg.data = target_steps
         self._rail_pub.publish(msg)
 
         if self._use_real_hardware:
             # ESP32로부터 완료 신호 대기 (타임아웃 포함)
-            self._esp32_rail_done = False
             deadline = time.time() + self._rail_timeout
             success = False
             while time.time() < deadline:
@@ -689,6 +699,9 @@ class RobotControlNode(Node):
         self._set_state(RobotState.ROTATING_BASE)
         self._publish_status(f'자세 변경: {label}')
         self.get_logger().info(f'자세 변경: {label} → {target_pose}')
+
+        if target_pose == POSE_BACK and POSE_BACK == POSE_FRONT:
+            self.get_logger().warn('경고: POSE_BACK과 POSE_FRONT의 모터 제어값이 동일합니다. 실제 회전을 위해 캘리브레이션이 필요합니다.')
 
         success = self._write_raw_position(target_pose)
         time.sleep(1.5)  # 자세 안정화 대기
