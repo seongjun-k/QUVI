@@ -18,6 +18,7 @@ from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, LogInfo
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _default_data_dir() -> str:
@@ -35,11 +36,11 @@ def generate_launch_description():
 
     # ─── Launch Arguments ───
     handcam_device_arg = DeclareLaunchArgument(
-        'handcam_device', default_value='/dev/video0',
+        'handcam_device', default_value='/dev/handcam',
         description='핸드캠(Zone 1) USB 장치 경로')
 
     fixed_cam_device_arg = DeclareLaunchArgument(
-        'fixed_cam_device', default_value='/dev/video2',
+        'fixed_cam_device', default_value='/dev/fixed_cam',
         description='고정 카메라(Zone 2 검사 챔버) USB 장치 경로')
 
     data_dir_arg = DeclareLaunchArgument(
@@ -72,6 +73,22 @@ def generate_launch_description():
         'inspect_config', default_value='',
         description='검사 파라미터 YAML 경로 (빈 문자열이면 기본값)')
 
+    handcam_autoexposure_arg = DeclareLaunchArgument(
+        'handcam_autoexposure', default_value='false',
+        description='핸드캠 자동 노출 활성화 여부 (true/false)')
+
+    handcam_exposure_arg = DeclareLaunchArgument(
+        'handcam_exposure', default_value='150',
+        description='핸드캠 수동 노출값 (autoexposure가 false일 때 적용)')
+
+    fixed_cam_autoexposure_arg = DeclareLaunchArgument(
+        'fixed_cam_autoexposure', default_value='false',
+        description='고정캠 자동 노출 활성화 여부 (true/false)')
+
+    fixed_cam_exposure_arg = DeclareLaunchArgument(
+        'fixed_cam_exposure', default_value='150',
+        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
+
     # ─── 카메라 1: 핸드캠 (Zone 1 - 베드 위 출력물 촬영) ───
     camera1_node = Node(
         package='usb_cam',
@@ -85,6 +102,8 @@ def generate_launch_description():
             'pixel_format': 'mjpeg2rgb',
             'framerate': 30.0,
             'camera_name': 'handcam',
+            'autoexposure': ParameterValue(LaunchConfiguration('handcam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('handcam_exposure'), value_type=int),
         }],
         remappings=[
             ('image_raw', 'image_raw'),
@@ -105,6 +124,8 @@ def generate_launch_description():
             'pixel_format': 'mjpeg2rgb',
             'framerate': 30.0,
             'camera_name': 'inspection_cam',
+            'autoexposure': ParameterValue(LaunchConfiguration('fixed_cam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('fixed_cam_exposure'), value_type=int),
         }],
         remappings=[
             ('image_raw', 'image_raw'),
@@ -174,6 +195,10 @@ def generate_launch_description():
         inspect_topic_arg,
         yolo_config_arg,
         inspect_config_arg,
+        handcam_autoexposure_arg,
+        handcam_exposure_arg,
+        fixed_cam_autoexposure_arg,
+        fixed_cam_exposure_arg,
 
         # 로그
         LogInfo(msg='====== QUVI Vision Pipeline 시작 ======'),

@@ -26,11 +26,11 @@ def generate_launch_description():
         description='HMI Web UI 포트')
 
     handcam_arg = DeclareLaunchArgument(
-        'handcam_device', default_value='/dev/video4',
+        'handcam_device', default_value='/dev/handcam',
         description='핸드캠 장치 경로')
 
     fixed_cam_arg = DeclareLaunchArgument(
-        'fixed_cam_device', default_value='/dev/video0',
+        'fixed_cam_device', default_value='/dev/fixed_cam',
         description='고정 카메라 장치 경로')
 
     use_real_hardware_arg = DeclareLaunchArgument(
@@ -49,6 +49,22 @@ def generate_launch_description():
         'leader_dxl_port', default_value='/dev/ttyLeader',
         description='리더 암 Dynamixel 포트 (텔레오퍼레이션)')
 
+    handcam_autoexposure_arg = DeclareLaunchArgument(
+        'handcam_autoexposure', default_value='false',
+        description='핸드캠 자동 노출 활성화 여부 (true/false)')
+
+    handcam_exposure_arg = DeclareLaunchArgument(
+        'handcam_exposure', default_value='150',
+        description='핸드캠 수동 노출값 (autoexposure가 false일 때 적용)')
+
+    fixed_cam_autoexposure_arg = DeclareLaunchArgument(
+        'fixed_cam_autoexposure', default_value='false',
+        description='고정캠 자동 노출 활성화 여부 (true/false)')
+
+    fixed_cam_exposure_arg = DeclareLaunchArgument(
+        'fixed_cam_exposure', default_value='150',
+        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
+
     # ─── Vision Pipeline 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -57,6 +73,10 @@ def generate_launch_description():
         launch_arguments={
             'handcam_device': LaunchConfiguration('handcam_device'),
             'fixed_cam_device': LaunchConfiguration('fixed_cam_device'),
+            'handcam_autoexposure': LaunchConfiguration('handcam_autoexposure'),
+            'handcam_exposure': LaunchConfiguration('handcam_exposure'),
+            'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),
+            'fixed_cam_exposure': LaunchConfiguration('fixed_cam_exposure'),
         }.items(),
     )
 
@@ -122,6 +142,10 @@ def generate_launch_description():
         use_act_arg,
         follower_port_arg,
         leader_port_arg,
+        handcam_autoexposure_arg,
+        handcam_exposure_arg,
+        fixed_cam_autoexposure_arg,
+        fixed_cam_exposure_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
