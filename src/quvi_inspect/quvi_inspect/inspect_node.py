@@ -16,7 +16,7 @@ QUVI INSPECT_NODE
 import os
 import time
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import cv2
 import numpy as np
@@ -79,6 +79,7 @@ class InspectNode(Node):
         self._current_object_index = 0
         self._capture_timers: set = set()
         self._scheduled_angles: Dict[int, rclpy.timer.Timer] = {}
+        self._last_align_info: Dict[int, Dict] = {}
 
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
@@ -116,6 +117,11 @@ class InspectNode(Node):
         self._roi_margin     = g('roi_margin',              20)
         self._blur_k         = g('gaussian_blur_ksize',     5)
         self._bin_thresh     = g('binary_threshold',        127)
+        # 소프트웨어 정렬
+        self._align_enabled  = g('alignment_enabled',       True)
+        self._align_max_dim  = g('align_max_dimension',     200)
+        self._align_padding  = g('align_padding_pct',       0.15)
+        self._align_min_area = g('align_min_bbox_area',     500)
         # 디버그
         self._save_images    = g('save_inspection_images',  True)
         self._log_dir        = g('inspection_log_dir',      '/workspace/data/inspection_logs')
@@ -224,6 +230,7 @@ class InspectNode(Node):
         start_time = time.time()
         self.get_logger().info('=' * 50)
         self.get_logger().info('양불 판정 시작')
+        self._last_align_info.clear()
 
         cad_results     = self._cad_comparison()
         surface_results = self._surface_analysis()
@@ -308,16 +315,19 @@ class InspectNode(Node):
                 fail_angles.append(f'{angle}°:이미지없음')
                 continue
 
-            gray        = self._preprocess(captured)
-            ref_resized = cv2.resize(reference, (gray.shape[1], gray.shape[0]))
+            gray = self._preprocess(captured)
 
-            ssim_val = self._compute_ssim(gray, ref_resized)
+            # ── 소프트웨어 정렬 (캡처만 정렬, Reference는 리사이즈) ──
+            final_cap, final_ref = self._get_aligned_pair(
+                gray, reference, angle)
+
+            ssim_val = self._compute_ssim(final_cap, final_ref)
             ssim_scores.append(float(ssim_val))
 
-            a_ratio  = self._compute_area_ratio(gray, ref_resized)
+            a_ratio  = self._compute_area_ratio(final_cap, final_ref)
             area_ratios.append(float(a_ratio))
 
-            px_diff  = self._compute_pixel_diff(gray, ref_resized)
+            px_diff  = self._compute_pixel_diff(final_cap, final_ref)
             pixel_diffs.append(float(px_diff))
 
             angle_pass = (
@@ -349,6 +359,79 @@ class InspectNode(Node):
         """이미지 전처리: 그레이스케일 + 가우시안 블러."""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image.copy()
         return cv2.GaussianBlur(gray, (self._blur_k, self._blur_k), 0)
+
+    def _get_aligned_pair(
+        self, gray: np.ndarray, reference: np.ndarray, angle: int,
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        """캡처 이미지 정렬 + Reference 리사이즈 쌍을 반환한다.
+
+        정렬 비활성화, 정렬 실패, 또는 정렬 후 SSIM 악화 시 원본 폴백.
+        Reference(STL 렌더링)는 이미 정렬된 이미지이므로 역회전하지 않고
+        캡처 정렬 결과 크기에 맞춰 리사이즈만 수행한다.
+
+        Args:
+            gray: 전처리된 캡처 이미지 (그레이스케일).
+            reference: 기준 이미지 (그레이스케일).
+            angle: 현재 턴테이블 각도 (로깅용).
+
+        Returns:
+            (비교용 캡처, 비교용 레퍼런스) 튜플.
+        """
+        ref_orig = cv2.resize(reference, (gray.shape[1], gray.shape[0]))
+
+        if not self._align_enabled:
+            self._last_align_info[angle] = {
+                'aligned': None, 'rotation_deg': None,
+                'ssim_before': 0.0, 'ssim_after': 0.0,
+                'used_alignment': False, 'reason': 'disabled',
+            }
+            return gray, ref_orig
+
+        cap_cache = BinaryCache(gray, self._bin_thresh)
+        aligned_cap = cap_cache.get_aligned_roi(
+            max_dim=self._align_max_dim,
+            padding_pct=self._align_padding,
+            min_area=self._align_min_area)
+
+        if aligned_cap is None:
+            self._last_align_info[angle] = {
+                'aligned': None, 'rotation_deg': None,
+                'ssim_before': 0.0, 'ssim_after': 0.0,
+                'used_alignment': False, 'reason': 'no_contour',
+            }
+            return gray, ref_orig
+
+        aligned_ref = cv2.resize(
+            reference, (aligned_cap.shape[1], aligned_cap.shape[0]))
+
+        # 정렬 신뢰도 검증: 정렬 후 SSIM이 오히려 악화되면 원본 사용
+        ssim_before = self._compute_ssim(gray, ref_orig)
+        ssim_after  = self._compute_ssim(aligned_cap, aligned_ref)
+
+        rot_info = cap_cache.get_rotation_info()
+        rot_deg  = rot_info[0] if rot_info else None
+
+        if ssim_after < ssim_before:
+            self.get_logger().warn(
+                f'{angle}° 정렬 폴백: '
+                f'SSIM {ssim_after:.3f} < {ssim_before:.3f}')
+            self._last_align_info[angle] = {
+                'aligned': aligned_cap, 'rotation_deg': rot_deg,
+                'ssim_before': ssim_before, 'ssim_after': ssim_after,
+                'used_alignment': False, 'reason': 'ssim_worse',
+            }
+            return gray, ref_orig
+
+        if rot_info:
+            self.get_logger().debug(
+                f'{angle}° 정렬 적용: 보정각도={rot_info[0]:.1f}°')
+
+        self._last_align_info[angle] = {
+            'aligned': aligned_cap, 'rotation_deg': rot_deg,
+            'ssim_before': ssim_before, 'ssim_after': ssim_after,
+            'used_alignment': True, 'reason': 'ok',
+        }
+        return aligned_cap, aligned_ref
 
     def _compute_ssim(self, img1: np.ndarray, img2: np.ndarray) -> float:
         """SSIM 계산. scikit-image 우선, 없으면 OpenCV 폴백."""
@@ -408,6 +491,15 @@ class InspectNode(Node):
 
             gray  = self._preprocess(captured)
             cache = BinaryCache(gray, self._bin_thresh)  # 이진화 1회
+
+            # ── 소프트웨어 정렬 (정렬된 이미지로 표면 분석) ──
+            if self._align_enabled:
+                aligned = cache.get_aligned_roi(
+                    max_dim=self._align_max_dim,
+                    padding_pct=self._align_padding,
+                    min_area=self._align_min_area)
+                if aligned is not None:
+                    cache = BinaryCache(aligned, self._bin_thresh)
 
             solidity = cache.solidity()
 
@@ -483,34 +575,84 @@ class InspectNode(Node):
     # 디버그 / 로깅
     # ─────────────────────────────────────────────
     def _publish_debug_image(self, passed: bool, cad: Dict, surface: Dict):
-        """촬영 이미지를 동적으로 타일링하고 판정 결과를 오버레이한다."""
-        tiles = []
-        for angle in self._angles:
-            img  = self._captured_images.get(angle)
-            tile = cv2.resize(
-                img if img is not None else np.zeros((240, 320, 3), np.uint8),
-                (320, 240))
-            cv2.putText(tile, f'{angle}deg', (10, 25),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 1)
-            tiles.append(tile)
+        """원본 + 정렬 이미지를 2행 타일링하고 판정 결과를 오버레이한다."""
+        TILE_W, TILE_H = 320, 240
+        n = len(self._angles)
+        cols = n if n <= 4 else 4
 
-        # 동적 타일링: _angles 길이에 맞게 열 수 자동 결정
-        n    = len(tiles)
-        cols = 2
-        rows = (n + cols - 1) // cols
-        while len(tiles) < rows * cols:
-            tiles.append(np.zeros((240, 320, 3), np.uint8))
-        row_imgs   = [np.hstack(tiles[i * cols:(i + 1) * cols]) for i in range(rows)]
-        debug_img  = np.vstack(row_imgs)
-
-        color = (0, 255, 0) if passed else (0, 0, 255)
-        cv2.putText(debug_img, 'PASS' if passed else 'FAIL',
-                    (270, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, color, 3)
-
+        # ── Row 1: 원본 촬영 이미지 ──
+        orig_tiles = []
         for i, angle in enumerate(self._angles):
+            img = self._captured_images.get(angle)
+            tile = cv2.resize(
+                img if img is not None else np.zeros((TILE_H, TILE_W, 3), np.uint8),
+                (TILE_W, TILE_H))
+            cv2.putText(tile, f'{angle}deg [RAW]', (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+            # SSIM 오버레이
             ssim_val = cad['ssim_scores'][i] if i < len(cad['ssim_scores']) else 0.0
-            cv2.putText(debug_img, f'{angle}deg SSIM:{ssim_val:.3f}',
-                        (10, 80 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+            cv2.putText(tile, f'SSIM:{ssim_val:.3f}', (10, TILE_H - 15),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1)
+            orig_tiles.append(tile)
+
+        # ── Row 2: 정렬된 ROI 이미지 ──
+        align_tiles = []
+        for angle in self._angles:
+            info = self._last_align_info.get(angle, {})
+            aligned = info.get('aligned')
+
+            if aligned is not None:
+                # 그레이스케일 → BGR 변환 후 리사이즈
+                if len(aligned.shape) == 2:
+                    aligned_bgr = cv2.cvtColor(aligned, cv2.COLOR_GRAY2BGR)
+                else:
+                    aligned_bgr = aligned
+                tile = cv2.resize(aligned_bgr, (TILE_W, TILE_H))
+            else:
+                tile = np.zeros((TILE_H, TILE_W, 3), np.uint8)
+                cv2.putText(tile, 'N/A', (TILE_W // 2 - 30, TILE_H // 2),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.0, (80, 80, 80), 2)
+
+            # 정렬 상태 오버레이
+            used = info.get('used_alignment', False)
+            rot_deg = info.get('rotation_deg')
+            reason = info.get('reason', '')
+
+            status_color = (0, 255, 0) if used else (0, 120, 255)
+            status_text = 'ALIGNED' if used else f'FALLBACK({reason})'
+            cv2.putText(tile, f'{angle}deg [{status_text}]', (10, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, status_color, 1)
+
+            if rot_deg is not None:
+                cv2.putText(tile, f'rot:{rot_deg:+.1f}deg', (10, 50),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 200, 0), 1)
+
+            ssim_b = info.get('ssim_before', 0.0)
+            ssim_a = info.get('ssim_after', 0.0)
+            if ssim_b > 0 or ssim_a > 0:
+                cv2.putText(tile, f'SSIM:{ssim_b:.3f}->{ssim_a:.3f}',
+                            (10, TILE_H - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+
+            align_tiles.append(tile)
+
+        # 빈 슬롯 채우기
+        rows_needed = 2
+        while len(orig_tiles) < cols:
+            orig_tiles.append(np.zeros((TILE_H, TILE_W, 3), np.uint8))
+        while len(align_tiles) < cols:
+            align_tiles.append(np.zeros((TILE_H, TILE_W, 3), np.uint8))
+
+        row1 = np.hstack(orig_tiles[:cols])
+        row2 = np.hstack(align_tiles[:cols])
+        debug_img = np.vstack([row1, row2])
+
+        # 전체 판정 배너
+        color = (0, 255, 0) if passed else (0, 0, 255)
+        label = 'PASS' if passed else 'FAIL'
+        cv2.putText(debug_img, label,
+                    (debug_img.shape[1] - 150, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1.5, color, 3)
 
         self._debug_pub.publish(encode_bgr(debug_img))
 
@@ -526,6 +668,13 @@ class InspectNode(Node):
         for angle, img in self._captured_images.items():
             cv2.imwrite(os.path.join(log_subdir, f'captured_{angle}.png'), img)
 
+        # 정렬 이미지 저장
+        for angle, info in self._last_align_info.items():
+            aligned = info.get('aligned')
+            if aligned is not None:
+                cv2.imwrite(
+                    os.path.join(log_subdir, f'aligned_{angle}.png'), aligned)
+
         with open(os.path.join(log_subdir, 'result.txt'), 'w', encoding='utf-8') as f:
             f.write(f'판정: {result_str}\n')
             f.write(f'SSIM: {cad["ssim_scores"]}\n')
@@ -536,6 +685,13 @@ class InspectNode(Node):
             f.write(f'구멍수: {surface["hole_count"]}\n')
             f.write(f'구멍면적비: {surface["hole_area_ratio"]:.4f}\n')
             f.write(f'텍스처분산: {surface["texture_variance"]:.2f}\n')
+            f.write(f'\n--- 정렬 정보 ---\n')
+            for angle, info in self._last_align_info.items():
+                f.write(
+                    f'{angle}°: used={info["used_alignment"]} '
+                    f'rot={info["rotation_deg"]} '
+                    f'ssim={info["ssim_before"]:.3f}->{info["ssim_after"]:.3f} '
+                    f'reason={info["reason"]}\n')
 
         self.get_logger().info(f'검사 로그 저장: {log_subdir}')
 

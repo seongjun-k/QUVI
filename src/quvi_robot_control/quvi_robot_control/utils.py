@@ -76,9 +76,11 @@ class BinaryCache:
         hierarchy         : RETR_TREE 계층 구조 (shape: [1, N, 4])
     """
 
-    __slots__ = ('binary', 'contours_external', 'contours_tree', 'hierarchy')
+    __slots__ = ('gray', 'binary', 'contours_external', 'contours_tree',
+                 'hierarchy', '_aligned_cache', '_rotation_info')
 
     def __init__(self, gray: np.ndarray, thresh: int) -> None:
+        self.gray = gray
         _, self.binary = cv2.threshold(
             gray, thresh, 255, cv2.THRESH_BINARY)
 
@@ -88,6 +90,10 @@ class BinaryCache:
         # RETR_TREE (구멍 검출용)는 holes() 호출 시에만 lazy 초기화
         self.contours_tree = None
         self.hierarchy = None
+
+        # 정렬 결과 캐시 (get_aligned_roi 호출 시 lazy 초기화)
+        self._aligned_cache = None
+        self._rotation_info = None
 
     # ── 편의 메서드 ──────────────────────────────
 
@@ -136,3 +142,95 @@ class BinaryCache:
                     h_area += area
 
         return h_count, (h_area / total if total > 0 else 0.0)
+
+    def get_aligned_roi(
+        self,
+        max_dim: int = 200,
+        padding_pct: float = 0.15,
+        min_area: int = 500,
+    ) -> Optional[np.ndarray]:
+        """역회전 정렬 + 종횡비 보존 크롭된 ROI를 반환한다.
+
+        원본 그레이스케일에 warpAffine을 적용하여 인플레인 회전을 보정하고,
+        minAreaRect 기반으로 종횡비를 보존한 채 크롭 + 리사이즈한다.
+
+        Note:
+            이진 이미지가 아닌 **원본 그레이스케일**에 역회전을 적용합니다.
+            이진 이미지에 INTER_CUBIC 보간을 적용하면 경계에 회색 아티팩트가
+            생기기 때문입니다.
+
+        Args:
+            max_dim: 출력 이미지의 장축 최대 픽셀 수.
+            padding_pct: 크롭 시 여유 마진 비율 (0.15 = 15%).
+            min_area: 정렬을 수행할 최소 윤곽 면적(픽셀). 미만이면 None 반환.
+
+        Returns:
+            정렬된 ROI 이미지 (그레이스케일). 정렬 불가 시 None.
+        """
+        if self._aligned_cache is not None:
+            return self._aligned_cache
+
+        if not self.contours_external:
+            return None
+
+        largest = max(self.contours_external, key=cv2.contourArea)
+        area = cv2.contourArea(largest)
+        if area < min_area:
+            return None
+
+        # ── minAreaRect → 각도 / 중심 / (w, h) ──
+        (cx, cy), (w, h), angle = cv2.minAreaRect(largest)
+
+        # 각도 정규화 [-45, 45]: 가로축을 장축으로 통일
+        if w < h:
+            angle += 90
+            w, h = h, w
+        if angle > 45:
+            angle -= 90
+
+        self._rotation_info = (
+            float(angle), (float(cx), float(cy)), (float(w), float(h)))
+
+        # ── 원본 그레이스케일에 역회전 ──
+        img_h, img_w = self.gray.shape[:2]
+        M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+        rotated = cv2.warpAffine(
+            self.gray, M, (img_w, img_h),
+            flags=cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+        # ── 종횡비 보존 크롭 + 경계 클램핑 ──
+        pad_w = int(w * (1 + padding_pct))
+        pad_h = int(h * (1 + padding_pct))
+        x1 = max(0, int(cx - pad_w / 2))
+        y1 = max(0, int(cy - pad_h / 2))
+        x2 = min(img_w, x1 + pad_w)
+        y2 = min(img_h, y1 + pad_h)
+
+        cropped = rotated[y1:y2, x1:x2]
+        if cropped.size == 0:
+            return None
+
+        # 장축 기준 종횡비 보존 리사이즈
+        crop_h, crop_w = cropped.shape[:2]
+        long_side = max(crop_w, crop_h)
+        scale = max_dim / long_side if long_side > 0 else 1.0
+        target_w = max(1, int(crop_w * scale))
+        target_h = max(1, int(crop_h * scale))
+        aligned = cv2.resize(
+            cropped, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
+
+        self._aligned_cache = aligned
+        return self._aligned_cache
+
+    def get_rotation_info(
+        self,
+    ) -> Optional[Tuple[float, Tuple[float, float], Tuple[float, float]]]:
+        """보정 각도, 중심 좌표, (w, h) 를 반환한다.
+
+        ``get_aligned_roi()`` 가 먼저 호출되어야 값이 존재한다.
+
+        Returns:
+            ``(angle, (cx, cy), (w, h))`` 또는 ``None``.
+        """
+        return self._rotation_info
