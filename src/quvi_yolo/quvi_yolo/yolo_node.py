@@ -22,7 +22,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool
 
 from quvi_msgs.msg import DetectedObject, ObjectArray
-from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get
+from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get, encode_bgr
 
 
 class YoloNode(Node):
@@ -33,9 +33,6 @@ class YoloNode(Node):
 
         self._load_params()
         self._model = self._load_model()
-
-        from cv_bridge import CvBridge
-        self._bridge = CvBridge()
 
         if self._use_compressed:
             self._img_sub = self.create_subscription(
@@ -209,8 +206,7 @@ class YoloNode(Node):
             cv2.putText(debug_frame,
                         f'Objects: {len(detections)} | Proximity: {proximity_warning}',
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            self._debug_pub.publish(
-                self._bridge.cv2_to_imgmsg(debug_frame, encoding='bgr8'))
+            self._debug_pub.publish(encode_bgr(debug_frame))
 
         self._detection_enabled = False
 

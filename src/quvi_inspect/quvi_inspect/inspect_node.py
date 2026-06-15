@@ -16,18 +16,17 @@ QUVI INSPECT_NODE
 import os
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
-from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, Int32
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
-from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get, BinaryCache
+from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get, BinaryCache, encode_bgr
 
 
 class InspectNode(Node):
@@ -44,8 +43,6 @@ class InspectNode(Node):
         self._load_reference_images()
 
         # ─── ROS 통신 ───
-        self._bridge = CvBridge()
-
         if self._use_compressed:
             self._img_sub = self.create_subscription(
                 CompressedImage, self._camera_topic,
@@ -515,8 +512,7 @@ class InspectNode(Node):
             cv2.putText(debug_img, f'{angle}deg SSIM:{ssim_val:.3f}',
                         (10, 80 + i * 20), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
 
-        self._debug_pub.publish(
-            self._bridge.cv2_to_imgmsg(debug_img, encoding='bgr8'))
+        self._debug_pub.publish(encode_bgr(debug_img))
 
     def _save_inspection_log(self, passed: bool, cad: Dict, surface: Dict):
         """검사 이미지와 결과를 로그 디렉토리에 저장."""

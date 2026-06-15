@@ -11,7 +11,7 @@ QUVI 공통 유틸리티
 """
 from __future__ import annotations
 
-from typing import Optional, Sequence, Tuple
+from typing import Optional, Tuple
 
 import cv2
 import numpy as np
@@ -37,7 +37,9 @@ def decode_raw(msg: Image) -> Optional[np.ndarray]:
     """sensor_msgs/Image → BGR numpy array. 실패 시 None 반환."""
     try:
         return _bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-    except Exception:
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f'decode_raw 실패: {e}')
         return None
 
 
@@ -49,6 +51,11 @@ def declare_and_get(node: Node, name: str, default):
     """파라미터 선언과 로드를 한 번에 처리한다."""
     node.declare_parameter(name, default)
     return node.get_parameter(name).value
+
+
+def encode_bgr(frame: np.ndarray) -> Image:
+    """BGR numpy array → sensor_msgs/Image (bgr8 encoding)."""
+    return _bridge.cv2_to_imgmsg(frame, encoding='bgr8')
 
 
 # ─────────────────────────────────────────────
@@ -78,8 +85,9 @@ class BinaryCache:
         self.contours_external, _ = cv2.findContours(
             self.binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        self.contours_tree, self.hierarchy = cv2.findContours(
-            self.binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        # RETR_TREE (구멍 검출용)는 holes() 호출 시에만 lazy 초기화
+        self.contours_tree = None
+        self.hierarchy = None
 
     # ── 편의 메서드 ──────────────────────────────
 
@@ -108,6 +116,11 @@ class BinaryCache:
         Returns:
             (hole_count, hole_area_ratio)
         """
+        # lazy 초기화: holes() 호출 시에만 RETR_TREE findContours 실행
+        if self.hierarchy is None:
+            self.contours_tree, self.hierarchy = cv2.findContours(
+                self.binary, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
         if self.hierarchy is None:
             return 0, 0.0
 
