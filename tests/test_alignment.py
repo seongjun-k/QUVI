@@ -16,6 +16,7 @@ from typing import Optional, Tuple, List
 
 import cv2
 import numpy as np
+import pytest
 
 # ── ROS 없이 BinaryCache 만 임포트 ──────────────────
 # utils.py 가 모듈 수준에서 cv_bridge / rclpy 를 import 하므로,
@@ -138,49 +139,36 @@ def _measure_residual_angle(aligned: np.ndarray) -> float:
 # 테스트 함수들
 # ─────────────────────────────────────────────
 
-TestResult = Tuple[bool, str]  # (passed, detail_message)
-
-
-def test_normal_rotation(angle_deg: float) -> TestResult:
+@pytest.mark.parametrize("angle_deg", [5.0, 10.0, 15.0])
+def test_normal_rotation(angle_deg: float):
     """일반 회전 보정 테스트: 잔여 각도 < 0.5°"""
     img = make_rotated_rect(480, 640, 200, 200, angle_deg)
     bc = BinaryCache(img, thresh=127)
     aligned = bc.get_aligned_roi(min_area=100)
-    if aligned is None:
-        return False, "get_aligned_roi() 가 None 반환"
+    assert aligned is not None, "get_aligned_roi() 가 None 반환"
 
     residual = _measure_residual_angle(aligned)
-    passed = residual < 0.5
-    return passed, f"residual: {residual:.2f}°"
+    assert residual < 0.5, f"residual: {residual:.2f}°"
 
 
-def test_empty_frame() -> TestResult:
+def test_empty_frame():
     """빈 프레임(전부 검정)일 때 None 반환"""
     img = np.zeros((480, 640), dtype=np.uint8)
     bc = BinaryCache(img, thresh=127)
     result = bc.get_aligned_roi()
-    passed = result is None
-    return passed, "None 반환" if passed else "None 이 아닌 값 반환됨"
+    assert result is None, "None 이 아닌 값 반환됨"
 
 
-def test_boundary_object() -> TestResult:
+def test_boundary_object():
     """이미지 경계에 걸쳐 잘린 사각형 — 크래시 없이 동작"""
     # 왼쪽 상단 모서리에 걸치게 배치 (cx=30, cy=30)
     img = make_rotated_rect(480, 640, 200, 200, 5.0, cx=30, cy=30)
     bc = BinaryCache(img, thresh=127)
-    try:
-        result = bc.get_aligned_roi(min_area=100)
-        # None 이어도 되고, 유효한 이미지여도 됨 — 크래시만 아니면 통과
-        if result is not None:
-            detail = f"유효한 이미지 반환 ({result.shape})"
-        else:
-            detail = "None 반환 (경계 객체 무시)"
-        return True, detail
-    except Exception as e:
-        return False, f"예외 발생: {e}"
+    # 크래시만 아니면 통과
+    bc.get_aligned_roi(min_area=100)
 
 
-def test_multi_contour() -> TestResult:
+def test_multi_contour():
     """노이즈 블롭 + 메인 사각형 → 가장 큰 윤곽 사용 확인"""
     img = make_rotated_rect(480, 640, 200, 200, 7.0)
 
@@ -190,141 +178,74 @@ def test_multi_contour() -> TestResult:
 
     bc = BinaryCache(img, thresh=127)
     aligned = bc.get_aligned_roi(min_area=100)
-    if aligned is None:
-        return False, "get_aligned_roi() 가 None 반환"
+    assert aligned is not None, "get_aligned_roi() 가 None 반환"
 
     residual = _measure_residual_angle(aligned)
-    passed = residual < 0.5
-    return passed, f"residual: {residual:.2f}° (노이즈 블롭 무시됨)"
+    assert residual < 0.5, f"residual: {residual:.2f}° (노이즈 블롭 무시됨)"
 
 
-def test_aspect_ratio() -> TestResult:
+def test_aspect_ratio():
     """100×200 직사각형(종횡비 2:1) 보존 확인 (허용 오차 10%)"""
     rect_w, rect_h = 200, 100  # 가로 200, 세로 100 → 종횡비 2:1
     img = make_rotated_rect(480, 640, rect_w, rect_h, 8.0)
     bc = BinaryCache(img, thresh=127)
     aligned = bc.get_aligned_roi(min_area=100)
-    if aligned is None:
-        return False, "get_aligned_roi() 가 None 반환"
+    assert aligned is not None, "get_aligned_roi() 가 None 반환"
 
-    h_out, w_out = aligned.shape[:2]
     # 출력 ROI 에서 실제 객체의 종횡비를 측정
     _, binary = cv2.threshold(aligned, 127, 255, cv2.THRESH_BINARY)
     contours, _ = cv2.findContours(
         binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return False, "정렬된 이미지에서 윤곽 미검출"
+    assert contours, "정렬된 이미지에서 윤곽 미검출"
 
     largest = max(contours, key=cv2.contourArea)
     (_, _), (mw, mh), _ = cv2.minAreaRect(largest)
     long_side = max(mw, mh)
     short_side = min(mw, mh)
 
-    if short_side < 1:
-        return False, "short_side ≈ 0"
+    assert short_side >= 1, "short_side ≈ 0"
 
     ratio = long_side / short_side
     target = 2.0
     err = abs(ratio - target) / target
-    passed = err < 0.10
-    return passed, f"종횡비: {ratio:.2f} (목표: 2.00, 오차: {err*100:.1f}%)"
+    assert err < 0.10, f"종횡비: {ratio:.2f} (목표: 2.00, 오차: {err*100:.1f}%)"
 
 
-def test_kill_switch() -> TestResult:
+def test_kill_switch():
     """min_area 를 매우 높게 설정 → None 반환"""
     img = make_rotated_rect(480, 640, 200, 200, 5.0)
     bc = BinaryCache(img, thresh=127)
     result = bc.get_aligned_roi(min_area=999_999)
-    passed = result is None
-    return passed, "None 반환" if passed else "None 이 아닌 값 반환됨"
+    assert result is None, "None 이 아닌 값 반환됨"
 
 
-def test_cache_consistency() -> TestResult:
+def test_cache_consistency():
     """get_aligned_roi() 를 두 번 호출해도 동일 결과"""
     img = make_rotated_rect(480, 640, 200, 200, 10.0)
     bc = BinaryCache(img, thresh=127)
     r1 = bc.get_aligned_roi(min_area=100)
     r2 = bc.get_aligned_roi(min_area=100)
-    if r1 is None or r2 is None:
-        return False, "get_aligned_roi() 가 None 반환"
-
-    identical = np.array_equal(r1, r2)
-    return identical, "동일 결과" if identical else "결과가 다름"
+    assert r1 is not None and r2 is not None, "get_aligned_roi() 가 None 반환"
+    assert np.array_equal(r1, r2), "결과가 다름"
 
 
-def test_rotation_info() -> TestResult:
+def test_rotation_info():
     """get_aligned_roi() 후 get_rotation_info() 가 유효한 값 반환"""
     angle_in = 12.0
     img = make_rotated_rect(480, 640, 200, 200, angle_in)
     bc = BinaryCache(img, thresh=127)
     aligned = bc.get_aligned_roi(min_area=100)
-    if aligned is None:
-        return False, "get_aligned_roi() 가 None 반환"
+    assert aligned is not None, "get_aligned_roi() 가 None 반환"
 
     info = bc.get_rotation_info()
-    if info is None:
-        return False, "get_rotation_info() 가 None 반환"
+    assert info is not None, "get_rotation_info() 가 None 반환"
 
     angle, (cx, cy), (w, h) = info
-    # 기본 유효성: 타입 확인 + 값 범위 확인
     ok = (
         isinstance(angle, float)
         and isinstance(cx, float) and isinstance(cy, float)
         and isinstance(w, float) and isinstance(h, float)
         and w > 0 and h > 0
     )
-    detail = f"angle={angle:.2f}°, center=({cx:.0f},{cy:.0f}), size=({w:.0f}×{h:.0f})"
-    return ok, detail
+    assert ok, f"angle={angle:.2f}°, center=({cx:.0f},{cy:.0f}), size=({w:.0f}×{h:.0f})"
 
-
-# ─────────────────────────────────────────────
-# 실행 + 결과 출력
-# ─────────────────────────────────────────────
-
-def main() -> None:
-    tests: List[Tuple[str, callable]] = [
-        ("Normal rotation 5°",          lambda: test_normal_rotation(5.0)),
-        ("Normal rotation 10°",         lambda: test_normal_rotation(10.0)),
-        ("Normal rotation 15°",         lambda: test_normal_rotation(15.0)),
-        ("Empty frame",                 test_empty_frame),
-        ("Boundary object",             test_boundary_object),
-        ("Multi contour",               test_multi_contour),
-        ("Aspect ratio preservation",   test_aspect_ratio),
-        ("Kill switch",                 test_kill_switch),
-        ("Cache consistency",           test_cache_consistency),
-        ("Rotation info",               test_rotation_info),
-    ]
-
-    results: List[Tuple[str, bool, str]] = []
-
-    for name, fn in tests:
-        try:
-            passed, detail = fn()
-        except Exception as e:
-            passed, detail = False, f"예외: {e}"
-        results.append((name, passed, detail))
-
-    # ── 요약 출력 ──
-    print()
-    print("=== Alignment Test Results ===")
-    pass_count = 0
-    for name, passed, detail in results:
-        tag = "[PASS]" if passed else "[FAIL]"
-        if passed:
-            pass_count += 1
-        print(f"  {tag} {name} — {detail}")
-
-    total = len(results)
-    print()
-    if pass_count == total:
-        print(f"Result: {pass_count}/{total} PASSED ✅")
-    else:
-        print(f"Result: {pass_count}/{total} PASSED ❌")
-    print()
-
-    # 실패가 하나라도 있으면 종료 코드 1
-    sys.exit(0 if pass_count == total else 1)
-
-
-if __name__ == '__main__':
-    main()

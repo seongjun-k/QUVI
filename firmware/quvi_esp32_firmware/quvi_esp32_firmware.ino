@@ -18,6 +18,7 @@
   #include <rclc/executor.h>
   #include <std_msgs/msg/int32.h>
   #include <std_msgs/msg/bool.h>
+  #include <quvi_msgs/msg/motor_status.h>
 #endif
 
 // =============================================================================
@@ -53,16 +54,25 @@ const uint32_t COLOR_PURPLE = statusLed.Color(80, 0, 80);    // Connection pendi
 #ifdef USE_MICRO_ROS
   rcl_subscription_t rail_sub;
   rcl_subscription_t turn_sub;
+  rcl_subscription_t turn_led_sub;
+  rcl_subscription_t estop_sub;
   std_msgs__msg__Int32 rail_msg;
   std_msgs__msg__Int32 turn_msg;
+  std_msgs__msg__Bool turn_led_msg;
+  std_msgs__msg__Bool estop_msg;
   rcl_publisher_t rail_done_pub;
   std_msgs__msg__Bool rail_done_msg;
+  rcl_publisher_t turn_done_pub;
+  std_msgs__msg__Bool turn_done_msg;
+  rcl_publisher_t status_pub;
+  quvi_msgs__msg__MotorStatus status_msg;
   rclc_executor_t executor;
   rclc_support_t support;
   rcl_allocator_t allocator;
   rcl_node_t node;
 
   volatile bool rail_done_pending = false;
+  volatile bool turn_done_pending = false;
 
   #define RCCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ error_loop(); }}
   #define RCSOFTCHECK(fn) { rcl_ret_t temp_rc = fn; if((temp_rc != RCL_RET_OK)){ }}
@@ -93,6 +103,10 @@ void setup() {
     // Initialize Motor Drivers
     railMotor.begin();
     turnMotor.begin();
+
+    // Initialize LED Relay Pin
+    pinMode(TURN_LED_RELAY_PIN, OUTPUT);
+    digitalWrite(TURN_LED_RELAY_PIN, LOW); // Default to OFF
 
     // Max Speed & Acceleration Profiles
     railMotor.setMaxSpeed(RAIL_MAX_SPEED);
@@ -156,6 +170,7 @@ void vMotorTask(void *pvParameters) {
         if (isEmergencyStopped) {
             railMotor.disable();
             turnMotor.disable();
+            digitalWrite(TURN_LED_RELAY_PIN, LOW); // E-STOP safety action
             setLedColor(COLOR_RED);
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
@@ -260,6 +275,20 @@ void turn_subscription_callback(const void * msin) {
     long targetSteps = turnMotor.getCurrentPosition() + deltaSteps;
 
     turnMotor.setTargetPosition(targetSteps);
+    turn_done_pending = true;
+}
+
+void turn_led_subscription_callback(const void * msin) {
+    const std_msgs__msg__Bool * msg = (const std_msgs__msg__Bool *)msin;
+    if (isEmergencyStopped) return;
+    digitalWrite(TURN_LED_RELAY_PIN, msg->data ? HIGH : LOW);
+}
+
+void estop_subscription_callback(const void * msin) {
+    const std_msgs__msg__Bool * msg = (const std_msgs__msg__Bool *)msin;
+    if (msg->data) {
+        handleEmergencyStop();
+    }
 }
 
 void error_loop() {
@@ -297,7 +326,21 @@ void vCommTask(void *pvParameters) {
             &turn_sub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-            "/motor/turntable"
+            "/motor/turntable_cmd"
+        ));
+
+        RCCHECK(rclc_subscription_init_default(
+            &turn_led_sub,
+            &node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+            "/motor/turntable_led"
+        ));
+
+        RCCHECK(rclc_subscription_init_default(
+            &estop_sub,
+            &node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+            "/system/estop"
         ));
 
         // Create Publishers
@@ -308,10 +351,26 @@ void vCommTask(void *pvParameters) {
             "/motor/rail_done"
         ));
 
-        // Create Executor
-        RCCHECK(rclc_executor_init(&executor, &support.context, 2, &allocator));
+        RCCHECK(rclc_publisher_init_default(
+            &turn_done_pub,
+            &node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+            "/motor/turntable_done"
+        ));
+
+        RCCHECK(rclc_publisher_init_default(
+            &status_pub,
+            &node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(quvi_msgs, msg, MotorStatus),
+            "/motor/status"
+        ));
+
+        // Create Executor (4 subscriptions)
+        RCCHECK(rclc_executor_init(&executor, &support.context, 4, &allocator));
         RCCHECK(rclc_executor_add_subscription(&executor, &rail_sub, &rail_msg, &rail_subscription_callback, ON_NEW_DATA));
         RCCHECK(rclc_executor_add_subscription(&executor, &turn_sub, &turn_msg, &turn_subscription_callback, ON_NEW_DATA));
+        RCCHECK(rclc_executor_add_subscription(&executor, &turn_led_sub, &turn_led_msg, &turn_led_subscription_callback, ON_NEW_DATA));
+        RCCHECK(rclc_executor_add_subscription(&executor, &estop_sub, &estop_msg, &estop_subscription_callback, ON_NEW_DATA));
 
         // Trigger Auto Homing Calibration upon connection
         performHomingCalibration();
@@ -330,6 +389,24 @@ void vCommTask(void *pvParameters) {
                 rail_done_pending = false;
             }
             
+            if (turn_done_pending && !turnMotor.isMoving()) {
+                turn_done_msg.data = true;
+                RCSOFTCHECK(rcl_publish(&turn_done_pub, &turn_done_msg, NULL));
+                turn_done_pending = false;
+            }
+            
+            static unsigned long last_status_pub = 0;
+            if (millis() - last_status_pub > 100) {
+                status_msg.rail_position = railMotor.getCurrentPosition();
+                status_msg.rail_target = railMotor.getTargetPosition();
+                status_msg.turntable_angle = turnMotor.getCurrentPosition() / (float)TURN_STEPS_PER_DEGREE;
+                status_msg.is_moving = railMotor.isMoving() || turnMotor.isMoving();
+                status_msg.homed = isHomingCompleted;
+                status_msg.estop = isEmergencyStopped;
+                RCSOFTCHECK(rcl_publish(&status_pub, &status_msg, NULL));
+                last_status_pub = millis();
+            }
+            
             vTaskDelay(pdMS_TO_TICKS(10));
         }
 
@@ -344,6 +421,7 @@ void vCommTask(void *pvParameters) {
         Serial.println("  T <degrees>  - Rotate Turntable to absolute angle");
         Serial.println("  S            - Show System Position & Limit Switch Status");
         Serial.println("  E            - EMERGENCY STOP");
+        Serial.println("  L <0 or 1>   - Turntable LED Ring Relay (0:OFF, 1:ON)");
         Serial.println("=================================================");
 
         // Automatically trigger homing calibration on boot in serial mode
@@ -416,6 +494,16 @@ void vCommTask(void *pvParameters) {
                         else if (cmd == 'E') {
                             handleEmergencyStop();
                         }
+                        else if (cmd == 'L') {
+                            int state = inputBuffer.substring(2).toInt();
+                            if (state == 1) {
+                                digitalWrite(TURN_LED_RELAY_PIN, HIGH);
+                                Serial.println("[LED] Turntable LED Relay ON");
+                            } else {
+                                digitalWrite(TURN_LED_RELAY_PIN, LOW);
+                                Serial.println("[LED] Turntable LED Relay OFF");
+                            }
+                        }
                         else {
                             Serial.println("[ERROR] Command syntax unrecognized.");
                         }
@@ -436,8 +524,9 @@ void vCommTask(void *pvParameters) {
 void IRAM_ATTR handleEmergencyStop() {
     isEmergencyStopped = true;
     // Hard-disable the motor signals inside the ISR instantly
-    digitalWrite(RAIL_ENA_PIN, HIGH); // Disable TB6600
-    digitalWrite(TURN_ENA_PIN, HIGH); // Disable TB6600
+    if (RAIL_ENA_PIN >= 0) digitalWrite(RAIL_ENA_PIN, HIGH); // Disable TB6600
+    if (TURN_ENA_PIN >= 0) digitalWrite(TURN_ENA_PIN, HIGH); // Disable TB6600
+    digitalWrite(TURN_LED_RELAY_PIN, LOW); // Turn off LED relay for safety
 }
 
 // Set WS2812B Color

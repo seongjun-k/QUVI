@@ -47,6 +47,7 @@ class MainOrchestratorNode(Node):
         super().__init__('main_orchestrator_node')
 
         # ─── 파라미터 선언 ───
+        self.declare_parameter('use_act', False)
         self.declare_parameter('px_to_mm_x', 0.5)
         self.declare_parameter('px_to_mm_y', 0.5)
         self.declare_parameter('offset_x', 100.0)
@@ -62,6 +63,7 @@ class MainOrchestratorNode(Node):
         self.declare_parameter('detecting_timeout_sec', 10.0)
 
         # ─── 파라미터 로드 ───
+        self._use_act = self.get_parameter('use_act').value
         self._px_to_mm_x = self.get_parameter('px_to_mm_x').value
         self._px_to_mm_y = self.get_parameter('px_to_mm_y').value
         self._offset_x = self.get_parameter('offset_x').value
@@ -97,6 +99,7 @@ class MainOrchestratorNode(Node):
         self._grasp_online = False
         self._inspect_online = False
         self._motor_online = False
+        self._act_ready = False
 
         # 완료 토픽 수신 플래그
         self._yolo_received = False
@@ -135,7 +138,7 @@ class MainOrchestratorNode(Node):
         self._robot_rotate_pub = self.create_publisher(Bool, '/robot/rotate_command', 10)
         self._robot_release_pub = self.create_publisher(Bool, '/robot/release_command', 10)
         self._robot_home_pub = self.create_publisher(Bool, '/robot/home_command', 10)
-        self._turntable_pub = self.create_publisher(Int32, '/motor/turntable', 10)
+        self._turntable_pub = self.create_publisher(Int32, '/motor/turntable_cmd', 10)
 
     def _setup_subscribers(self):
         # HMI 제어 명령 수신
@@ -155,6 +158,9 @@ class MainOrchestratorNode(Node):
         # 헬스 체크용 정보 노드 상태 구독
         self.create_subscription(String, '/robot/status', self._robot_node_status_cb, 10)
 
+        # 비상정지 구독
+        self.create_subscription(Bool, '/system/estop', self._estop_system_cb, 10)
+
     # ─── ROS 2 구독 콜백 함수 정의 ───
     def _hmi_command_cb(self, msg: String):
         command = msg.data.upper()
@@ -162,6 +168,11 @@ class MainOrchestratorNode(Node):
 
         if command == "START":
             if self._state == FsmState.IDLE:
+                if self._use_act and not self._act_ready:
+                    self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 차단합니다.')
+                    self._error_msg = "ACT NOT READY"
+                    self._state = FsmState.ERROR
+                    return
                 self._state = FsmState.DETECTING_TRIGGER
                 self.get_logger().info('자율 구동 시퀀스를 시작합니다.')
         elif command == "STOP":
@@ -178,6 +189,12 @@ class MainOrchestratorNode(Node):
             self._processed_count = 0
             self._pass_count = 0
             self._fail_count = 0
+
+    def _estop_system_cb(self, msg: Bool):
+        if msg.data:
+            self.get_logger().error('시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 천이합니다.')
+            self._state = FsmState.ERROR
+            self._error_msg = "ESTOP ACTIVE"
 
     def _yolo_objects_cb(self, msg: ObjectArray):
         if self._state.value.startswith("DETECTING_"):
@@ -219,6 +236,8 @@ class MainOrchestratorNode(Node):
         # 로봇 상태 노드가 작동 중임을 기록
         self._grasp_online = True
         self._motor_online = True
+        if "ACT_READY" in msg.data.upper():
+            self._act_ready = True
 
     # ─── FSM 루프 및 상태 천이 제어 ───
     def _fsm_loop(self):

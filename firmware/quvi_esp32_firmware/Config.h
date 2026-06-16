@@ -28,7 +28,7 @@
 #define ONBOARD_LED_PIN       38  // Built-in WS2812B RGB LED on LOLIN S3
 
 // Safety & System
-#define ESTOP_PIN             11  // Emergency Stop Switch (GPIO 11, Active LOW with Internal Pull-Up)
+#define ESTOP_PIN             17  // Emergency Stop Switch (GPIO 17, Active LOW with Internal Pull-Up)
 
 // LINEAR RAIL (TB6600 Stepper Driver - EN pin removed)
 #define RAIL_PUL_PIN          5   // Pulse/Step signal
@@ -37,10 +37,14 @@
 #define RAIL_LIMIT_PIN        7   // Limit switch at motor side (Active LOW with Internal Pull-Up)
 
 // TURNTABLE (TB6600 Stepper Driver - EN pin removed)
-#define TURN_PUL_PIN          8   // Pulse/Step signal
-#define TURN_DIR_PIN          9   // Direction signal
+#define TURN_PUL_PIN          15  // Pulse/Step signal
+#define TURN_DIR_PIN          16  // Direction signal
 #define TURN_ENA_PIN          -1  // Enable signal removed (always enabled)
-#define TURN_LIMIT_PIN        10  // Optional Turntable Index/Limit Switch (Active LOW with Internal Pull-Up)
+#define TURN_LIMIT_PIN        -1  // Turntable Limit Switch disabled (using relative control)
+
+// Accessories
+#define TURN_LED_RELAY_PIN    18  // Turntable LED Ring Relay Control Pin (Active HIGH)
+
 
 // =============================================================================
 // MOTOR & GEOMETRIC CONSTANTS

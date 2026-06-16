@@ -52,9 +52,13 @@ class InspectNode(Node):
                 Image, self._camera_topic,
                 self._image_callback_raw, 10)
 
-        self._turntable_sub = self.create_subscription(
-            Int32, '/motor/turntable',
-            self._turntable_callback, 10)
+        self._turntable_cmd_sub = self.create_subscription(
+            Int32, '/motor/turntable_cmd',
+            self._turntable_cmd_callback, 10)
+
+        self._turntable_done_sub = self.create_subscription(
+            Bool, '/motor/turntable_done',
+            self._turntable_done_callback, 10)
 
         self._trigger_sub = self.create_subscription(
             Bool, '/inspection/trigger',
@@ -71,14 +75,11 @@ class InspectNode(Node):
             self._debug_pub = self.create_publisher(
                 Image, self._debug_topic, 5)
 
-        # 내부 상태
         self._latest_frame: Optional[np.ndarray] = None
-        self._current_angle: int = 0
+        self._pending_angle: Optional[int] = None
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
         self._current_object_index = 0
-        self._capture_timers: set = set()
-        self._scheduled_angles: Dict[int, rclpy.timer.Timer] = {}
         self._last_align_info: Dict[int, Dict] = {}
 
         self.get_logger().info(
@@ -110,9 +111,7 @@ class InspectNode(Node):
         self._hole_area_max  = g('hole_area_ratio_max',     0.05)
         self._tex_var_max    = g('texture_variance_max',    500.0)
         self._min_hole_px    = g('min_hole_area_px',        50)
-        # 턴테이블
         self._angles         = g('turntable_angles',        [0, 90, 180, 270])
-        self._cap_delay      = g('capture_delay_sec',       0.5)
         # 전처리
         self._roi_margin     = g('roi_margin',              20)
         self._blur_k         = g('gaussian_blur_ksize',     5)
@@ -173,25 +172,17 @@ class InspectNode(Node):
         self._current_object_index = msg.object_index
         self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
 
-    def _turntable_callback(self, msg: Int32):
-        """턴테이블 현재 각도 수신 → 안정화 후 비동기 캡처 예약."""
-        self._current_angle = msg.data
+    def _turntable_cmd_callback(self, msg: Int32):
+        """턴테이블 목표 각도 수신."""
         if self._inspection_active and msg.data in self._angles:
-            if msg.data in self._captured_images or msg.data in self._scheduled_angles:
-                return
-            self._schedule_capture(msg.data)
+            self._pending_angle = msg.data
 
-    def _schedule_capture(self, angle: int):
-        """capture_delay_sec 후 한 번만 실행되는 캡처 타이머 등록."""
-        def _do_capture():
-            timer.cancel()
-            self._capture_timers.discard(timer)
-            self._scheduled_angles.pop(angle, None)
-            self._capture_angle(angle)
-
-        timer = self.create_timer(self._cap_delay, _do_capture)
-        self._capture_timers.add(timer)
-        self._scheduled_angles[angle] = timer
+    def _turntable_done_callback(self, msg: Bool):
+        """턴테이블 이동 완료 시 즉시 캡처."""
+        if self._inspection_active and msg.data and self._pending_angle is not None:
+            if self._pending_angle not in self._captured_images:
+                self._capture_angle(self._pending_angle)
+            self._pending_angle = None
 
     def _capture_angle(self, angle: int):
         """현재 프레임을 해당 각도로 캡처."""
@@ -210,17 +201,11 @@ class InspectNode(Node):
         if msg.data:
             self._inspection_active = True
             self._captured_images.clear()
-            for timer in self._capture_timers:
-                timer.cancel()
-            self._capture_timers.clear()
-            self._scheduled_angles.clear()
+            self._pending_angle = None
             self.get_logger().info('검사 모드 활성화 — 턴테이블 회전 대기 중')
         else:
             self._inspection_active = False
-            for timer in self._capture_timers:
-                timer.cancel()
-            self._capture_timers.clear()
-            self._scheduled_angles.clear()
+            self._pending_angle = None
 
     # ─────────────────────────────────────────────
     # 메인 검사 로직
@@ -285,10 +270,7 @@ class InspectNode(Node):
 
         self._inspection_active = False
         self._captured_images.clear()
-        for timer in self._capture_timers:
-            timer.cancel()
-        self._capture_timers.clear()
-        self._scheduled_angles.clear()
+        self._pending_angle = None
         self._current_object_index += 1
 
     # ─────────────────────────────────────────────

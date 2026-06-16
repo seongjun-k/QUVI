@@ -324,6 +324,101 @@ function updateLatestInspection(result) {
 
     // 히스토리 테이블 업데이트
     addHistoryRow(result);
+
+    // 검사 상세 탭 업데이트
+    updateInspectionDetailTab(result);
+}
+
+// ─── 검사 상세 내역 탭 업데이트 ───
+function updateInspectionDetailTab(result) {
+    const noResult = document.getElementById('detailNoResult');
+    const detailContainer = document.getElementById('detailResult');
+    if (!noResult || !detailContainer) return;
+    
+    noResult.style.display = 'none';
+    detailContainer.style.display = 'block';
+
+    const badge = document.getElementById('detailBadge');
+    badge.style.display = 'inline-block';
+    if (result.passed) {
+        badge.textContent = 'PASS';
+        badge.className = 'result-badge pass';
+    } else {
+        badge.textContent = 'FAIL';
+        badge.className = 'result-badge fail';
+    }
+    
+    const failReason = document.getElementById('detailFailReason');
+    if (result.passed) {
+        failReason.textContent = '정상 (None)';
+        failReason.style.color = 'var(--accent-green)';
+        failReason.style.background = 'rgba(63, 185, 80, 0.1)';
+        failReason.style.borderColor = 'rgba(63, 185, 80, 0.2)';
+    } else {
+        failReason.textContent = result.fail_reason || '불명 (Unknown)';
+        failReason.style.color = 'var(--accent-red)';
+        failReason.style.background = 'rgba(248,81,73,0.1)';
+        failReason.style.borderColor = 'rgba(248,81,73,0.2)';
+    }
+    
+    // 테이블 값 채우기 및 판정
+    function fillTableRow(valId, evalId, val, min, max, isInt = false, isInverse = false) {
+        const valEl = document.getElementById(valId);
+        const evalEl = document.getElementById(evalId);
+        
+        let formattedVal = isInt ? val : parseFloat(val).toFixed(3);
+        if (valId === 'detTexture') formattedVal = parseFloat(val).toFixed(1);
+        valEl.textContent = formattedVal;
+        
+        let passed = false;
+        if (isInverse) {
+            passed = val <= max; // max is used as threshold here
+        } else {
+            passed = val >= min && val <= max;
+        }
+        
+        if (passed) {
+            evalEl.innerHTML = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
+            valEl.style.color = 'var(--text-primary)';
+        } else {
+            evalEl.innerHTML = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
+            valEl.style.color = 'var(--accent-red)';
+        }
+    }
+    
+    fillTableRow('detSolidity', 'detSolidityEval', result.solidity, 0.85, 1.0);
+    fillTableRow('detAreaRatio', 'detAreaRatioEval', result.area_ratio, 0.90, 1.10);
+    fillTableRow('detHoleCount', 'detHoleCountEval', result.hole_count, 0, 2, true);
+    fillTableRow('detHoleArea', 'detHoleAreaEval', result.hole_area_ratio, 0, 0.05);
+    fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, 500, false, true);
+    
+    // SSIM
+    const ssimContainer = document.getElementById('detailSsimBars');
+    const angles = [0, 90, 180, 270];
+    const threshold = 0.85;
+    let html = '';
+    for (let i = 0; i < angles.length; i++) {
+        const score = result.ssim_scores[i] || 0;
+        const pct = Math.min(score * 100, 100);
+        let cls = 'ok';
+        let evalText = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
+        if (score < threshold) {
+            cls = 'bad';
+            evalText = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
+        }
+        else if (score < 0.90) cls = 'warn';
+        
+        html += `
+        <div class="ssim-bar-row" style="margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span class="ssim-angle" style="width: 60px;">${angles[i]}°</span>
+            <div class="ssim-bar-track" style="flex: 1; margin: 0 10px;">
+                <div class="ssim-bar-fill ${cls}" style="width:${pct}%"></div>
+            </div>
+            <span class="ssim-value" style="color:var(--accent-${cls === 'ok' ? 'green' : cls === 'warn' ? 'yellow' : 'red'}); width: 60px; text-align: right; margin-right: 15px;">${score.toFixed(3)}</span>
+            <span style="width: 40px; text-align: center;">${evalText}</span>
+        </div>`;
+    }
+    ssimContainer.innerHTML = html;
 }
 
 function setMetric(id, value, min, max) {

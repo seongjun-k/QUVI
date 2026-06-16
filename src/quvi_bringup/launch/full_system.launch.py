@@ -38,8 +38,12 @@ def generate_launch_description():
         description='실제 Dynamixel 하드웨어 사용 여부 (false=시뮬레이션)')
 
     use_act_arg = DeclareLaunchArgument(
-        'use_act', default_value='false',
+        'use_act', default_value='true',
         description='ACT 모방학습 정책 로드 여부')
+
+    yolo_model_path_arg = DeclareLaunchArgument(
+        'yolo_model_path', default_value='/workspace/data/models/best.pt',
+        description='YOLO 모델 파일 경로')
 
     follower_port_arg = DeclareLaunchArgument(
         'dxl_port', default_value='/dev/ttyFollower',
@@ -77,6 +81,7 @@ def generate_launch_description():
             'handcam_exposure': LaunchConfiguration('handcam_exposure'),
             'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),
             'fixed_cam_exposure': LaunchConfiguration('fixed_cam_exposure'),
+            'yolo_model_path': LaunchConfiguration('yolo_model_path'),
         }.items(),
     )
 
@@ -123,6 +128,7 @@ def generate_launch_description():
         executable='main_orchestrator_node',
         name='main_orchestrator_node',
         parameters=[{
+            'use_act': LaunchConfiguration('use_act'),
             'px_to_mm_x': 0.5,
             'px_to_mm_y': 0.5,
             'offset_x': 100.0,
@@ -140,6 +146,7 @@ def generate_launch_description():
         fixed_cam_arg,
         use_real_hardware_arg,
         use_act_arg,
+        yolo_model_path_arg,
         follower_port_arg,
         leader_port_arg,
         handcam_autoexposure_arg,

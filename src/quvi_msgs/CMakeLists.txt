@@ -15,6 +15,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/InspectionResult.msg"
   "msg/SystemStatus.msg"
   "msg/GraspGoal.msg"
+  "msg/MotorStatus.msg"
   DEPENDENCIES std_msgs
 )
 

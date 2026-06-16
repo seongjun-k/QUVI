@@ -47,6 +47,10 @@ def generate_launch_description():
         'data_dir', default_value=default_data_dir,
         description='기준/로그 데이터 루트 (기본: $QUVI_DATA_DIR 또는 /workspace/data)')
 
+    yolo_model_path_arg = DeclareLaunchArgument(
+        'yolo_model_path', default_value=[LaunchConfiguration('data_dir'), '/models/best.pt'],
+        description='YOLO 모델 파일 경로')
+
     reference_dir_arg = DeclareLaunchArgument(
         'reference_image_dir',
         default_value=[LaunchConfiguration('data_dir'), '/reference_images'],
@@ -141,6 +145,7 @@ def generate_launch_description():
         parameters=[{
             'camera_topic': LaunchConfiguration('handcam_topic'),
             'use_compressed': True,
+            'model_path': LaunchConfiguration('yolo_model_path'),
             'confidence_threshold': 0.5,
             'iou_threshold': 0.45,
             'max_detections': 20,
@@ -189,6 +194,7 @@ def generate_launch_description():
         handcam_device_arg,
         fixed_cam_device_arg,
         data_dir_arg,
+        yolo_model_path_arg,
         reference_dir_arg,
         inspection_log_dir_arg,
         handcam_topic_arg,

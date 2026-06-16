@@ -219,11 +219,11 @@ class RobotControlNode(Node):
             'outputs/train/quvi_act/checkpoints/last/pretrained_model')
         self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
-        # 레일 위치 (스텝 수) — 조립 후 캘리브레이션으로 확정
-        self.declare_parameter('rail_steps_bed',      0)
-        self.declare_parameter('rail_steps_inspect', 1000)
-        self.declare_parameter('rail_steps_pass',    1700)
-        self.declare_parameter('rail_steps_fail',    2400)
+        # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
+        self.declare_parameter('rail_mm_bed',      0.0)
+        self.declare_parameter('rail_mm_inspect', 12.5)
+        self.declare_parameter('rail_mm_pass',    21.25)
+        self.declare_parameter('rail_mm_fail',    30.0)
         # 카메라
         self.declare_parameter('handcam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('use_compressed', True)
@@ -240,11 +240,11 @@ class RobotControlNode(Node):
         self._act_model_path    = self.get_parameter('act_model_path').value
         self._act_chunk_size    = self.get_parameter('act_chunk_size').value
         self._act_device        = self.get_parameter('act_device').value
-        self._rail_steps = {
-            RailPosition.BED:     self.get_parameter('rail_steps_bed').value,
-            RailPosition.INSPECT: self.get_parameter('rail_steps_inspect').value,
-            RailPosition.PASS:    self.get_parameter('rail_steps_pass').value,
-            RailPosition.FAIL:    self.get_parameter('rail_steps_fail').value,
+        self._rail_mm = {
+            RailPosition.BED:     self.get_parameter('rail_mm_bed').value,
+            RailPosition.INSPECT: self.get_parameter('rail_mm_inspect').value,
+            RailPosition.PASS:    self.get_parameter('rail_mm_pass').value,
+            RailPosition.FAIL:    self.get_parameter('rail_mm_fail').value,
         }
         self._handcam_topic  = self.get_parameter('handcam_topic').value
         self._use_compressed = self.get_parameter('use_compressed').value
@@ -358,6 +358,11 @@ class RobotControlNode(Node):
         self._teleop_cmd_sub = self.create_subscription(
             Bool, '/robot/teleop_command',
             self._teleop_cmd_callback, 10,
+            callback_group=self._cb_group)
+
+        self._estop_sub = self.create_subscription(
+            Bool, '/system/estop',
+            self._estop_cmd_callback, 10,
             callback_group=self._cb_group)
 
         # ── Publishers ──
@@ -488,6 +493,13 @@ class RobotControlNode(Node):
         t = threading.Thread(
             target=self._execute_home, daemon=True)
         t.start()
+
+    def _estop_cmd_callback(self, msg: Bool):
+        """비상 정지 수신."""
+        if msg.data:
+            self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 천이')
+            self._set_state(RobotState.ERROR)
+            self._publish_status('ERROR: ESTOP ACTIVE')
 
     # ─────────────────────────────────────────────
     # 서비스 핸들러 (동기 — Main Orchestrator가 완료 대기)
@@ -651,10 +663,11 @@ class RobotControlNode(Node):
         /motor/rail 토픽으로 스텝 수 발행 → ESP32-S3가 TB6600 구동.
         """
         self._set_state(RobotState.MOVING_RAIL)
-        target_steps = self._rail_steps[position]
+        target_mm = float(self._rail_mm[position])
+        target_steps = int(target_mm * 80.0)
         pos_name = position.name
-        self._publish_status(f'레일 이동: {pos_name} ({target_steps}스텝)')
-        self.get_logger().info(f'레일 이동 명령: {pos_name} = {target_steps}스텝')
+        self._publish_status(f'레일 이동: {pos_name} ({target_mm:.1f}mm -> {target_steps}스텝)')
+        self.get_logger().info(f'레일 이동 명령: {pos_name} = {target_mm:.1f}mm -> {target_steps}스텝')
 
         if self._use_real_hardware:
             self._esp32_rail_done = False
@@ -913,13 +926,13 @@ class RobotControlNode(Node):
         return True
 
     def _teleop_loop(self):
-        """lerobot OmxLeader → OmxFollower 텔레오퍼레이션 루프 (30Hz).
+        """lerobot OmxLeader → OmxFollower 텔레오퍼레이션 루프 (100Hz).
 
         공식 API 사용:
           - leader.get_action()  → 리더 관절 위치 (정규화된 값)
           - follower.send_action(action) → 팔로워에 전송 (정규화 → raw 변환 자동)
         """
-        dt = 1.0 / ACT_CONTROL_HZ
+        dt = 1.0 / 100.0
         sim_angle = 0.0
 
         while self._teleop_running and rclpy.ok():

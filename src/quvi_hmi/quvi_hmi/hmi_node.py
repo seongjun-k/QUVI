@@ -129,6 +129,7 @@ class HmiNode(Node):
         self._trigger_pub = self.create_publisher(Bool, '/detection/trigger', 10)
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
         self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
+        self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -352,6 +353,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         valid = ['start', 'stop', 'estop', 'reset']
         if cmd not in valid:
             return jsonify({'error': f'Unknown command: {cmd}'}), 400
+        
+        if cmd == 'estop':
+            msg = Bool()
+            msg.data = True
+            hmi_node._estop_pub.publish(msg)
+            
         hmi_node.send_command(cmd.upper())
         return jsonify({'ok': True, 'command': cmd})
 
@@ -447,7 +454,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 })
             except Exception:
                 pass
-            time.sleep(0.5)
+            time.sleep(0.1)
 
     # 브로드캐스트 스레드 시작
     ws_thread = threading.Thread(target=_ws_broadcast, daemon=True)
