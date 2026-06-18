@@ -29,14 +29,24 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from cv_bridge import CvBridge
-from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import Bool, String
+from sensor_msgs.msg import CompressedImage, Image, JointState
+from std_msgs.msg import Bool, String, Int32
 
 from quvi_msgs.msg import InspectionResult, ObjectArray, SystemStatus
 
 # Flask + SocketIO
 from flask import Flask, Response, jsonify, render_template, send_from_directory
 from flask_socketio import SocketIO
+
+
+# 레일 스테이션 맵 (index → {name, steps})
+# 캘리브레이션 후 steps 값을 여기서만 수정하면 UI에 자동 반영된다.
+RAIL_STATION_MAP = [
+    {'name': 'BED (D)',      'steps': 0},
+    {'name': 'INSPECT (A)', 'steps': 1000},
+    {'name': 'PASS (B)',    'steps': 1700},
+    {'name': 'FAIL (C)',    'steps': 2400},
+]
 
 
 class HmiNode(Node):
@@ -76,7 +86,12 @@ class HmiNode(Node):
             'grasp_ready': False,
             'inspect_ready': False,
             'motor_ready': False,
+            'teleop_active': False,
             'error_message': '',
+            'joint_positions': [0.0] * 6,
+            'rail_position': 0,
+            'turntable_angle': 0,
+            'rail_station_map': RAIL_STATION_MAP,
         }
         self._latest_detections = []
         self._inspection_history = []  # 최근 100건
@@ -94,6 +109,12 @@ class HmiNode(Node):
             ObjectArray, '/detection/objects', self._detection_cb, 10)
         self.create_subscription(
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
+        self.create_subscription(
+            JointState, '/robot/joint_states', self._joint_states_cb, 10)
+        self.create_subscription(
+            Int32, '/robot/rail_command', self._rail_command_cb, 10)
+        self.create_subscription(
+            Int32, '/motor/turntable', self._turntable_cb, 10)
 
         # 카메라 스트림
         cam1_topic = self.get_parameter('camera1_topic').value
@@ -118,6 +139,8 @@ class HmiNode(Node):
         self._cmd_pub = self.create_publisher(String, '/hmi/command', 10)
         self._trigger_pub = self.create_publisher(Bool, '/detection/trigger', 10)
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
+        self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
+        self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -125,18 +148,31 @@ class HmiNode(Node):
     # ─── ROS 콜백 ───
     def _status_cb(self, msg: SystemStatus):
         with self._lock:
-            self._system_status = {
-                'current_state': msg.current_state,
-                'total_objects': msg.total_objects,
-                'processed_count': msg.processed_count,
-                'pass_count': msg.pass_count,
-                'fail_count': msg.fail_count,
-                'yolo_ready': msg.yolo_ready,
-                'grasp_ready': msg.grasp_ready,
-                'inspect_ready': msg.inspect_ready,
-                'motor_ready': msg.motor_ready,
-                'error_message': msg.error_message,
-            }
+            if self._system_status.get('teleop_active', False):
+                self._system_status['current_state'] = 'TELEOPING'
+            else:
+                self._system_status['current_state'] = msg.current_state
+            self._system_status['total_objects'] = msg.total_objects
+            self._system_status['processed_count'] = msg.processed_count
+            self._system_status['pass_count'] = msg.pass_count
+            self._system_status['fail_count'] = msg.fail_count
+            self._system_status['yolo_ready'] = msg.yolo_ready
+            self._system_status['grasp_ready'] = msg.grasp_ready
+            self._system_status['inspect_ready'] = msg.inspect_ready
+            self._system_status['motor_ready'] = msg.motor_ready
+            self._system_status['error_message'] = msg.error_message
+
+    def _joint_states_cb(self, msg: JointState):
+        with self._lock:
+            self._system_status['joint_positions'] = list(msg.position)
+
+    def _rail_command_cb(self, msg: Int32):
+        with self._lock:
+            self._system_status['rail_position'] = msg.data
+
+    def _turntable_cb(self, msg: Int32):
+        with self._lock:
+            self._system_status['turntable_angle'] = msg.data
 
     def _detection_cb(self, msg: ObjectArray):
         with self._lock:
@@ -167,10 +203,6 @@ class HmiNode(Node):
             self._inspection_history.append(record)
             if len(self._inspection_history) > 100:
                 self._inspection_history.pop(0)
-            if msg.passed:
-                self._system_status['pass_count'] += 1
-            else:
-                self._system_status['fail_count'] += 1
 
     def _cam_cb(self, msg: CompressedImage, key: str):
         np_arr = np.frombuffer(msg.data, np.uint8)
@@ -192,15 +224,30 @@ class HmiNode(Node):
         self._cmd_pub.publish(msg)
         self.get_logger().info(f'HMI 명령: {command}')
 
-    def trigger_detection(self, enable: bool):
+    _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
+
+    def _manual_trigger_allowed(self) -> bool:
+        with self._lock:
+            state = self._system_status.get('current_state', 'IDLE')
+        return state in self._MANUAL_TRIGGER_SAFE_STATES
+
+    def trigger_detection(self, enable: bool) -> bool:
+        if enable and not self._manual_trigger_allowed():
+            self.get_logger().warn('수동 감지 트리거 거부: FSM 이 자율 시퀀스 진행 중')
+            return False
         msg = Bool()
         msg.data = enable
         self._trigger_pub.publish(msg)
+        return True
 
-    def trigger_inspection(self, enable: bool):
+    def trigger_inspection(self, enable: bool) -> bool:
+        if enable and not self._manual_trigger_allowed():
+            self.get_logger().warn('수동 검사 트리거 거부: FSM 이 자율 시퀀스 진행 중')
+            return False
         msg = Bool()
         msg.data = enable
         self._inspect_trigger_pub.publish(msg)
+        return True
 
     # ─── 데이터 접근 ───
     def get_status(self) -> dict:
@@ -231,17 +278,39 @@ class HmiNode(Node):
 
 def create_flask_app(hmi_node: HmiNode) -> tuple:
     """Flask 앱 + SocketIO 생성."""
-    # 템플릿/static 경로
-    pkg_dir = os.path.dirname(os.path.abspath(__file__))
-    template_dir = os.path.join(pkg_dir, 'templates')
-    static_dir = os.path.join(pkg_dir, 'static')
+    from ament_index_python.packages import get_package_share_directory
+
+    try:
+        pkg_share_dir = get_package_share_directory('quvi_hmi')
+        template_dir = os.path.join(pkg_share_dir, 'templates')
+        static_dir = os.path.join(pkg_share_dir, 'static')
+    except Exception:
+        pkg_dir = os.path.dirname(os.path.abspath(__file__))
+        template_dir = os.path.join(pkg_dir, 'templates')
+        static_dir = os.path.join(pkg_dir, 'static')
 
     app = Flask(__name__,
                 template_folder=template_dir,
                 static_folder=static_dir)
-    app.config['SECRET_KEY'] = 'quvi-hmi-secret'
 
-    socketio = SocketIO(app, cors_allowed_origins='*', async_mode='threading')
+    secret_key = os.environ.get('QUVI_HMI_SECRET_KEY')
+    if not secret_key:
+        secret_key = os.urandom(24).hex()
+        hmi_node.get_logger().warn(
+            'QUVI_HMI_SECRET_KEY 미설정 — 임시 랜덤 키 사용. '
+            '운영/세션 유지가 필요하면 환경변수를 지정하세요.')
+    app.config['SECRET_KEY'] = secret_key
+
+    cors_env = os.environ.get('QUVI_HMI_CORS_ORIGINS', '').strip()
+    if cors_env == '*':
+        cors_origins = '*'
+    elif cors_env:
+        cors_origins = [o.strip() for o in cors_env.split(',') if o.strip()]
+    else:
+        cors_origins = []
+
+    socketio = SocketIO(app, cors_allowed_origins=cors_origins,
+                        async_mode='threading')
 
     # ─── 페이지 라우트 ───
     @app.route('/')
@@ -283,17 +352,54 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         valid = ['start', 'stop', 'estop', 'reset']
         if cmd not in valid:
             return jsonify({'error': f'Unknown command: {cmd}'}), 400
+
+        if cmd == 'estop':
+            msg = Bool()
+            msg.data = True
+            hmi_node._estop_pub.publish(msg)
+
         hmi_node.send_command(cmd.upper())
         return jsonify({'ok': True, 'command': cmd})
 
+    @app.route('/api/teleop/<action>', methods=['POST'])
+    def api_teleop(action):
+        if action == 'on':
+            msg = Bool()
+            msg.data = True
+            hmi_node._teleop_pub.publish(msg)
+            with hmi_node._lock:
+                hmi_node._system_status['teleop_active'] = True
+                hmi_node._system_status['current_state'] = 'TELEOPING'
+            return jsonify({'ok': True, 'teleop': 'on'})
+        elif action == 'off':
+            msg = Bool()
+            msg.data = False
+            hmi_node._teleop_pub.publish(msg)
+            with hmi_node._lock:
+                hmi_node._system_status['teleop_active'] = False
+                hmi_node._system_status['current_state'] = 'IDLE'
+            return jsonify({'ok': True, 'teleop': 'off'})
+        else:
+            return jsonify({'error': f'Invalid teleop action: {action}'}), 400
+
     @app.route('/api/trigger/detection', methods=['POST'])
     def api_trigger_detection():
-        hmi_node.trigger_detection(True)
+        if not hmi_node.trigger_detection(True):
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 수동 감지 트리거를 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
         return jsonify({'ok': True})
 
     @app.route('/api/trigger/inspection', methods=['POST'])
     def api_trigger_inspection():
-        hmi_node.trigger_inspection(True)
+        if not hmi_node.trigger_inspection(True):
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 수동 검사 트리거를 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
         return jsonify({'ok': True})
 
     # ─── MJPEG 스트리밍 ───
@@ -304,7 +410,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n')
             else:
-                # 카메라 없을 때 빈 프레임
                 blank = np.zeros((240, 320, 3), dtype=np.uint8)
                 cv2.putText(blank, 'No Signal', (80, 130),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 80, 80), 2)
@@ -325,7 +430,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     # ─── WebSocket: 실시간 상태 업데이트 ───
     def _ws_broadcast():
         """주기적으로 상태를 WebSocket으로 브로드캐스트."""
-        while True:
+        while rclpy.ok():
             try:
                 status = hmi_node.get_status()
                 detections = hmi_node.get_detections()
@@ -347,9 +452,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 })
             except Exception:
                 pass
-            time.sleep(0.5)
+            time.sleep(0.1)  # threading 모드에서는 time.sleep 사용
 
-    # 브로드캐스트 스레드 시작
     ws_thread = threading.Thread(target=_ws_broadcast, daemon=True)
     ws_thread.start()
 
@@ -366,7 +470,6 @@ def main(args=None):
     hmi_node = HmiNode()
     app, socketio = create_flask_app(hmi_node)
 
-    # ROS 2 스피너 (별도 스레드)
     executor = MultiThreadedExecutor()
     executor.add_node(hmi_node)
     ros_thread = threading.Thread(target=executor.spin, daemon=True)
@@ -375,13 +478,20 @@ def main(args=None):
     hmi_node.get_logger().info(
         f'Web HMI 시작: http://{hmi_node._host}:{hmi_node._port}')
 
+    allow_dev_server = os.environ.get(
+        'QUVI_HMI_ALLOW_DEV_SERVER', '1').lower() in ('1', 'true', 'yes')
+    if allow_dev_server:
+        hmi_node.get_logger().warn(
+            'Werkzeug 개발 서버로 구동 중 (시연용). 운영 배포 시 '
+            'eventlet/gevent 기반 WSGI 서버 사용을 권장합니다.')
+
     try:
         socketio.run(
             app,
             host=hmi_node._host,
             port=hmi_node._port,
             debug=hmi_node._debug,
-            allow_unsafe_werkzeug=True,
+            allow_unsafe_werkzeug=allow_dev_server,
             use_reloader=False,
         )
     except KeyboardInterrupt:

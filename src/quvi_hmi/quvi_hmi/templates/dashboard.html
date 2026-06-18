@@ -9,243 +9,653 @@
 </head>
 <body>
 
-<!-- ═══ 헤더 ═══ -->
-<header class="header">
-    <div class="header-left">
+<!-- ═══ 전체 컨테이너 ═══ -->
+<div class="app-container">
+
+    <!-- 사이드바 네비게이션 -->
+    <aside class="sidebar">
         <div class="logo">QUVI<span>Quality Vision</span></div>
-        <div id="systemState" class="status-indicator idle">
-            <div class="status-dot"></div>
-            <span id="stateText">IDLE</span>
-        </div>
-    </div>
-    <div class="header-right">
-        <div id="errorMsg" style="color:var(--accent-red);font-size:12px;display:none;"></div>
-        <div class="clock" id="clock"></div>
-    </div>
-</header>
+        <nav class="nav-menu">
+            <a href="#" id="menu-dashboard" class="nav-item active" onclick="switchTab('dashboard')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="3" width="7" height="9" rx="1"/>
+                    <rect x="14" y="3" width="7" height="5" rx="1"/>
+                    <rect x="14" y="12" width="7" height="9" rx="1"/>
+                    <rect x="3" y="16" width="7" height="5" rx="1"/>
+                </svg>
+                대시보드
+            </a>
+            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2a10 10 0 0 0-10 10c0 5.523 4.477 10 10 10s10-4.477 10-10A10 10 0 0 0 12 2zm1 14h-2v-6h2v6zm0-8h-2V6h2v2z"/>
+                </svg>
+                리더 암 조종 (Teleop)
+            </a>
+            <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                    <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                    <line x1="12" y1="22.08" x2="12" y2="12"/>
+                </svg>
+                시스템 상태
+            </a>
+            <a href="#" id="menu-inspection" class="nav-item" onclick="switchTab('inspection')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12zm10 6c3.31 0 6-2.69 6-6s-2.69-6-6-6-6 2.69-6 6 2.69 6 6 6z"/>
+                </svg>
+                검사 상세 내역
+            </a>
+        </nav>
+    </aside>
 
-<!-- ═══ 컨트롤 바 ═══ -->
-<div class="control-bar">
-    <button class="btn btn-start" onclick="sendCommand('start')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-        시작
-    </button>
-    <button class="btn btn-stop" onclick="sendCommand('stop')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
-        정지
-    </button>
-    <div class="control-divider"></div>
-    <button class="btn btn-estop" onclick="sendCommand('estop')">
-        ⊘ E-STOP
-    </button>
-    <div class="control-divider"></div>
-    <button class="btn" onclick="sendCommand('reset')">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
-        리셋
-    </button>
-    <div class="control-divider"></div>
-    <button class="btn" onclick="triggerDetection()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg>
-        수동 탐지
-    </button>
-    <button class="btn" onclick="triggerInspection()">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-        수동 검사
-    </button>
-</div>
+    <!-- 메인 컨텐츠 영역 -->
+    <main class="main-container">
 
-<!-- ═══ 메인 그리드 ═══ -->
-<div class="main-grid">
+        <!-- ═══ 헤더 ═══ -->
+        <header class="header">
+            <div class="header-left">
+                <div id="systemState" class="status-indicator idle">
+                    <div class="status-dot"></div>
+                    <span id="stateText">IDLE</span>
+                </div>
+                <div id="stageText" class="stage-pill">진행 단계 대기</div>
+            </div>
+            <div class="header-right">
+                <div id="errorMsg" class="header-error" style="display:none;"></div>
+                <div id="connBadge" class="conn-badge offline">
+                    <span class="conn-dot"></span><span id="connText">서버 연결 대기</span>
+                </div>
+                <div class="clock" id="clock"></div>
+            </div>
+        </header>
 
-    <!-- 통계 카드 행 -->
-    <div class="stats-row">
-        <div class="stat-card">
-            <div class="stat-value blue" id="statTotal">0</div>
-            <div class="stat-label">총 출력물</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value green" id="statProcessed">0</div>
-            <div class="stat-label">처리 완료</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value green" id="statPass">0</div>
-            <div class="stat-label">합격 (PASS)</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value red" id="statFail">0</div>
-            <div class="stat-label">불합격 (FAIL)</div>
-        </div>
-        <div class="stat-card">
-            <div class="stat-value purple" id="statPassRate">0%</div>
-            <div class="stat-label">합격률</div>
-        </div>
-    </div>
-
-    <!-- 카메라 스트림 -->
-    <div class="camera-grid">
-        <div class="camera-feed">
-            <img src="/stream/camera1" alt="핸드캠" loading="lazy">
-            <div class="camera-label">📷 핸드캠 — Zone 1 (Pickup)</div>
-            <div class="camera-status" id="cam1Status"></div>
-        </div>
-        <div class="camera-feed">
-            <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
-            <div class="camera-label">📷 고정캠 — Zone 2 (Inspection)</div>
-            <div class="camera-status" id="cam2Status"></div>
-        </div>
-        <div class="camera-feed">
-            <img src="/stream/yolo_debug" alt="YOLO 탐지" loading="lazy">
-            <div class="camera-label">🔍 YOLO 탐지 결과</div>
-        </div>
-        <div class="camera-feed">
-            <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
-            <div class="camera-label">🔬 검사 판정 결과</div>
-        </div>
-    </div>
-
-    <!-- 최신 검사 결과 패널 -->
-    <div class="card inspection-panel">
-        <div class="card-header">
-            <span class="card-title">최신 검사 결과</span>
-            <span id="latestBadge" class="result-badge" style="display:none;">—</span>
-        </div>
-        <div class="card-body" style="padding:16px;">
-            <!-- 결과 없을 때 -->
-            <div id="noResult" style="text-align:center;color:var(--text-muted);padding:24px 0;">
-                아직 검사 결과가 없습니다
+        <!-- ═══ 탭 1: 대시보드 뷰 ═══ -->
+        <div id="tab-dashboard" class="tab-pane active">
+            <!-- 컨트롤 바 -->
+            <div class="control-bar">
+                <button class="btn btn-start" onclick="sendCommand('start')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                    시작
+                </button>
+                <button class="btn btn-stop" onclick="sendCommand('stop')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+                    정지
+                </button>
+                <div class="control-divider"></div>
+                <button class="btn btn-estop" onclick="sendCommand('estop')">
+                    ⊘ E-STOP
+                </button>
+                <div class="control-divider"></div>
+                <button class="btn" onclick="sendCommand('reset')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
+                    리셋
+                </button>
+                <div class="control-divider"></div>
+                <button class="btn" onclick="triggerDetection()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg>
+                    수동 탐지
+                </button>
+                <button class="btn" onclick="triggerInspection()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+                    수동 검사
+                </button>
             </div>
 
-            <!-- 결과 있을 때 -->
-            <div id="latestResult" style="display:none;">
-                <!-- 메트릭 그리드 -->
-                <div class="metrics-grid" id="metricsGrid">
-                    <div class="metric-item">
-                        <div class="metric-label">Solidity (워핑)</div>
-                        <div class="metric-value" id="mSolidity">—</div>
+            <!-- 메인 그리드 -->
+            <div class="main-grid">
+                <!-- 통계 카드 행 -->
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-value blue" id="statTotal">0</div>
+                        <div class="stat-label">총 출력물</div>
                     </div>
-                    <div class="metric-item">
-                        <div class="metric-label">면적 비율 (미출력)</div>
-                        <div class="metric-value" id="mAreaRatio">—</div>
+                    <div class="stat-card">
+                        <div class="stat-value green" id="statProcessed">0</div>
+                        <div class="stat-label">처리 완료</div>
                     </div>
-                    <div class="metric-item">
-                        <div class="metric-label">구멍 수 (레이어 분리)</div>
-                        <div class="metric-value" id="mHoleCount">—</div>
+                    <div class="stat-card">
+                        <div class="stat-value green" id="statPass">0</div>
+                        <div class="stat-label">합격 (PASS)</div>
                     </div>
-                    <div class="metric-item">
-                        <div class="metric-label">구멍 면적비</div>
-                        <div class="metric-value" id="mHoleArea">—</div>
+                    <div class="stat-card">
+                        <div class="stat-value red" id="statFail">0</div>
+                        <div class="stat-label">불합격 (FAIL)</div>
                     </div>
-                    <div class="metric-item">
-                        <div class="metric-label">텍스처 분산 (스트링잉)</div>
-                        <div class="metric-value" id="mTexture">—</div>
-                    </div>
-                    <div class="metric-item">
-                        <div class="metric-label">검사 소요시간</div>
-                        <div class="metric-value" id="mTime">—</div>
+                    <div class="stat-card">
+                        <div class="stat-value purple" id="statPassRate">0%</div>
+                        <div class="stat-label">합격률</div>
                     </div>
                 </div>
 
-                <!-- SSIM 바 -->
-                <div class="ssim-bar-container" style="margin-top:16px;">
-                    <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
-                        SSIM (4방향) — 임계값 0.85
+                <!-- 카메라 스트림 -->
+                <div class="camera-grid">
+                    <div class="camera-feed">
+                        <img src="/stream/camera1" alt="핸드캠" loading="lazy">
+                        <div class="camera-label">📷 핸드캠 — Zone 1 (Pickup)</div>
+                        <div class="camera-status" id="cam1Status"></div>
                     </div>
-                    <div id="ssimBars"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- 오른쪽: 서브시스템 + 통계 차트 -->
-    <div style="display:flex;flex-direction:column;gap:16px;">
-        <!-- 서브시스템 상태 -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title">서브시스템</span>
-            </div>
-            <div class="card-body">
-                <div class="subsystem-grid">
-                    <div class="subsystem-item">
-                        <div class="subsystem-dot" id="subYolo"></div>
-                        <span class="subsystem-name">YOLO 탐지</span>
+                    <div class="camera-feed">
+                        <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
+                        <div class="camera-label">📷 고정캠 — Zone 2 (Inspection)</div>
+                        <div class="camera-status" id="cam2Status"></div>
                     </div>
-                    <div class="subsystem-item">
-                        <div class="subsystem-dot" id="subGrasp"></div>
-                        <span class="subsystem-name">ACT 파지</span>
+                    <div class="camera-feed">
+                        <img src="/stream/yolo_debug" alt="YOLO 탐지" loading="lazy">
+                        <div class="camera-label">🔍 YOLO 탐지 결과</div>
                     </div>
-                    <div class="subsystem-item">
-                        <div class="subsystem-dot" id="subInspect"></div>
-                        <span class="subsystem-name">검사 판정</span>
-                    </div>
-                    <div class="subsystem-item">
-                        <div class="subsystem-dot" id="subMotor"></div>
-                        <span class="subsystem-name">모터 제어</span>
+                    <div class="camera-feed">
+                        <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
+                        <div class="camera-label">🔬 검사 판정 결과</div>
                     </div>
                 </div>
-            </div>
-        </div>
 
-        <!-- 합격률 차트 -->
-        <div class="card">
-            <div class="card-header">
-                <span class="card-title">합격/불합격 비율</span>
-            </div>
-            <div class="card-body">
-                <div class="chart-container">
-                    <div class="donut-wrapper">
-                        <canvas id="donutChart" width="140" height="140"></canvas>
-                        <div class="donut-center">
-                            <div class="rate" id="donutRate">0%</div>
-                            <div class="label">합격률</div>
+                <!-- 최신 검사 결과 패널 -->
+                <div class="card inspection-panel">
+                    <div class="card-header">
+                        <span class="card-title">최신 검사 결과</span>
+                        <span id="latestBadge" class="result-badge" style="display:none;">—</span>
+                    </div>
+                    <div class="card-body" style="padding:16px;">
+                        <div id="noResult" style="text-align:center;color:var(--text-muted);padding:24px 0;">
+                            아직 검사 결과가 없습니다
                         </div>
-                    </div>
-                    <div class="chart-legend">
-                        <div class="legend-item">
-                            <div class="legend-color pass"></div>
-                            <span>PASS <strong id="legendPass">0</strong></span>
-                        </div>
-                        <div class="legend-item">
-                            <div class="legend-color fail"></div>
-                            <span>FAIL <strong id="legendFail">0</strong></span>
+
+                        <div id="latestResult" style="display:none;">
+                            <div class="metrics-grid" id="metricsGrid">
+                                <div class="metric-item">
+                                    <div class="metric-label">Solidity (워핑)</div>
+                                    <div class="metric-value" id="mSolidity">—</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">면적 비율 (미출력)</div>
+                                    <div class="metric-value" id="mAreaRatio">—</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">구멍 수 (레이어 분리)</div>
+                                    <div class="metric-value" id="mHoleCount">—</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">구멍 면적비</div>
+                                    <div class="metric-value" id="mHoleArea">—</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">텍스처 분산 (스트링잉)</div>
+                                    <div class="metric-value" id="mTexture">—</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label">검사 소요시간</div>
+                                    <div class="metric-value" id="mTime">—</div>
+                                </div>
+                            </div>
+
+                            <div class="ssim-bar-container" style="margin-top:16px;">
+                                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
+                                    SSIM (4방향) — 임계값 0.85
+                                </div>
+                                <div id="ssimBars"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
+
+                <!-- 오른쪽: 서브시스템 상태 + 차트 -->
+                <div style="display:flex;flex-direction:column;gap:16px;">
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">서브시스템</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="subsystem-grid">
+                                <div class="subsystem-item">
+                                    <div class="subsystem-dot" id="subYolo"></div>
+                                    <span class="subsystem-name">YOLO 탐지</span>
+                                </div>
+                                <div class="subsystem-item">
+                                    <div class="subsystem-dot" id="subGrasp"></div>
+                                    <span class="subsystem-name">ACT 파지</span>
+                                </div>
+                                <div class="subsystem-item">
+                                    <div class="subsystem-dot" id="subInspect"></div>
+                                    <span class="subsystem-name">검사 판정</span>
+                                </div>
+                                <div class="subsystem-item">
+                                    <div class="subsystem-dot" id="subMotor"></div>
+                                    <span class="subsystem-name">모터 제어</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title">합격/불합격 비율</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <div class="donut-wrapper">
+                                    <canvas id="donutChart" width="140" height="140"></canvas>
+                                    <div class="donut-center">
+                                        <div class="rate" id="donutRate">0%</div>
+                                        <div class="label">합격률</div>
+                                    </div>
+                                </div>
+                                <div class="chart-legend">
+                                    <div class="legend-item">
+                                        <div class="legend-color pass"></div>
+                                        <span>PASS <strong id="legendPass">0</strong></span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-color fail"></div>
+                                        <span>FAIL <strong id="legendFail">0</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 히스토리 테이블 -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <span class="card-title">검사 히스토리</span>
+                        <span style="font-size:12px;color:var(--text-muted);" id="historyCount">0건</span>
+                    </div>
+                    <div class="card-body" style="padding:0;max-height:300px;overflow-y:auto;">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>시간</th>
+                                    <th>판정</th>
+                                    <th>SSIM (평균)</th>
+                                    <th>Solidity</th>
+                                    <th>구멍</th>
+                                    <th>텍스처</th>
+                                    <th>소요시간</th>
+                                    <th>불량 사유</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyBody">
+                                <tr>
+                                    <td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">
+                                        검사 기록이 없습니다
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
 
-    <!-- 검사 히스토리 테이블 -->
-    <div class="card" style="grid-column: 1 / -1;">
-        <div class="card-header">
-            <span class="card-title">검사 히스토리</span>
-            <span style="font-size:12px;color:var(--text-muted);" id="historyCount">0건</span>
-        </div>
-        <div class="card-body" style="padding:0;max-height:300px;overflow-y:auto;">
-            <table class="history-table">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>시간</th>
-                        <th>판정</th>
-                        <th>SSIM (평균)</th>
-                        <th>Solidity</th>
-                        <th>구멍</th>
-                        <th>텍스처</th>
-                        <th>소요시간</th>
-                        <th>불량 사유</th>
-                    </tr>
-                </thead>
-                <tbody id="historyBody">
-                    <tr>
-                        <td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">
-                            검사 기록이 없습니다
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-    </div>
+        <!-- ═══ 탭 2: 텔레오퍼레이션 뷰 ═══ -->
+        <div id="tab-teleop" class="tab-pane">
+            <div class="teleop-container">
+                <div class="teleop-header">
+                    <h2>리더-팔로워 텔레오퍼레이션 (Leader-Follower Teleop)</h2>
+                    <p>토크가 비활성화된 리더 로봇암을 수동 조작하여, 토크가 켜진 팔로워 로봇암을 1:1 실시간 30Hz 제어합니다.</p>
+                </div>
 
+                <div class="teleop-grid">
+                    <div class="card teleop-control-card">
+                        <div class="card-header">
+                            <span class="card-title">텔레옵 조작 패널</span>
+                        </div>
+                        <div class="card-body teleop-control-body">
+                            <div class="teleop-status-display">
+                                <span class="status-label">동작 상태:</span>
+                                <span id="teleopStateBadge" class="teleop-state-badge off">OFF</span>
+                            </div>
+                            <div id="teleopHint" class="teleop-hint">리더 암을 연결한 뒤 토글을 켜세요.</div>
+
+                            <div class="toggle-container">
+                                <span class="toggle-label">텔레오퍼레이션 활성화</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="teleopToggle" onchange="toggleTeleop(this.checked)">
+                                    <span class="slider round"></span>
+                                </label>
+                            </div>
+
+                            <div class="warning-box">
+                                <strong>⚠️ 안전 조작 및 주의사항</strong>
+                                <ul>
+                                    <li><strong>충돌 조심</strong>: 팔로워 로봇이 리더 로봇의 급격한 동작을 그대로 따라 하므로, 조작 반경 내 장애물을 사전에 확인해 주세요.</li>
+                                    <li><strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 화면 상단 또는 컨트롤러의 <strong>E-STOP</strong> 버튼을 클릭하십시오.</li>
+                                    <li><strong>안전 종료</strong>: 텔레옵 비활성화 시 리더 암의 토크가 다시 강하게 켜지며 고정됩니다. 툭 떨어지지 않게 손으로 가볍게 잡은 채 OFF 버튼을 눌러주십시오.</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card teleop-video-card">
+                        <div class="card-header">
+                            <span class="card-title">Zone 1 핸드캠 스트림</span>
+                        </div>
+                        <div class="card-body" style="padding:16px;">
+                            <div class="camera-feed main-teleop-feed">
+                                <img src="/stream/camera1" alt="핸드캠" loading="lazy">
+                                <div class="camera-label">📷 조종용 실시간 핸드캠 피드</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 탭 3: 시스템 상태 뷰 ═══ -->
+        <div id="tab-status" class="tab-pane">
+            <div class="status-tab-container">
+                <div class="status-grid">
+                    <!-- 로봇암 관절 상태 카드 -->
+                    <div class="card status-card">
+                        <div class="card-header">
+                            <span class="card-title">🤖 로봇암 관절 각도 (6축)</span>
+                            <span class="card-subtitle-addon" id="jointSyncTime">정상</span>
+                        </div>
+                        <div class="card-body status-card-body">
+                            <div class="joint-list">
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 1 (Base)</span>
+                                        <span class="joint-value-deg" id="j0_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j0_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 2 (Shoulder)</span>
+                                        <span class="joint-value-deg" id="j1_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j1_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 3 (Elbow)</span>
+                                        <span class="joint-value-deg" id="j2_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j2_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 4 (Wrist Pitch)</span>
+                                        <span class="joint-value-deg" id="j3_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j3_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 5 (Wrist Roll)</span>
+                                        <span class="joint-value-deg" id="j4_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill" id="j4_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">-180°</div>
+                                        <div class="joint-limit-label right">+180°</div>
+                                    </div>
+                                </div>
+                                <div class="joint-item">
+                                    <div class="joint-info">
+                                        <span class="joint-name">Joint 6 (Gripper)</span>
+                                        <span class="joint-value-deg" id="j5_val">0.0°</span>
+                                    </div>
+                                    <div class="joint-bar-wrapper">
+                                        <div class="joint-bar-fill gripper-bar" id="j5_bar" style="width: 50%"></div>
+                                        <div class="joint-limit-label left">CLOSE (1800)</div>
+                                        <div class="joint-limit-label right">OPEN (2300)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 오른쪽: 레일 + 턴테이블 -->
+                    <div class="status-right-column">
+                        <div class="card status-card">
+                            <div class="card-header">
+                                <span class="card-title">🚊 리니어 레일 (Linear Rail)</span>
+                            </div>
+                            <div class="card-body">
+                                <div class="rail-track-container">
+                                    <div class="rail-track">
+                                        <div class="rail-carriage" id="railCarriage">
+                                            <div class="carriage-icon">🤖</div>
+                                        </div>
+                                    </div>
+                                    <div class="rail-stations">
+                                        <div class="rail-station" id="station_bed">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">BED (D)</span>
+                                            <span class="station-step">0</span>
+                                        </div>
+                                        <div class="rail-station" id="station_inspect">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">INSPECT (A)</span>
+                                            <span class="station-step">—</span>
+                                        </div>
+                                        <div class="rail-station" id="station_pass">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">PASS (B)</span>
+                                            <span class="station-step">—</span>
+                                        </div>
+                                        <div class="rail-station" id="station_fail">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">FAIL (C)</span>
+                                            <span class="station-step">—</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="rail-info-box" style="margin-top:16px;">
+                                    <span class="info-label">현재 목표 레일 위치:</span>
+                                    <span class="info-value" id="railStepsText">BED (0 steps)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card status-card">
+                            <div class="card-header">
+                                <span class="card-title">🔄 턴테이블 회전 (Turntable)</span>
+                            </div>
+                            <div class="card-body turntable-card-body">
+                                <div class="turntable-visual">
+                                    <div class="turntable-dial" id="turntableDial">
+                                        <div class="dial-arrow">▲</div>
+                                        <div class="dial-ticks">
+                                            <span class="tick tick-0">0°</span>
+                                            <span class="tick tick-90">90°</span>
+                                            <span class="tick tick-180">180°</span>
+                                            <span class="tick tick-270">270°</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="turntable-info-box">
+                                    <span class="info-label">회전 각도:</span>
+                                    <span class="info-value" id="turntableAngleText">0°</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FSM 순서도 -->
+                <div class="card status-card" style="margin-top:16px;">
+                    <div class="card-header">
+                        <span class="card-title">⛓️ 시스템 상태 시퀀스 (FSM Flow)</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="fsm-flow-container">
+                            <div class="fsm-node" id="fsm_INIT">
+                                <div class="fsm-node-circle">INIT</div>
+                                <div class="fsm-node-label">초기화</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_IDLE">
+                                <div class="fsm-node-circle">IDLE</div>
+                                <div class="fsm-node-label">대기 중</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_DETECTING">
+                                <div class="fsm-node-circle">DETECT</div>
+                                <div class="fsm-node-label">출력물 탐지</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_GRASPING">
+                                <div class="fsm-node-circle">GRASP</div>
+                                <div class="fsm-node-label">ACT 파지</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_INSPECTING">
+                                <div class="fsm-node-circle">INSPECT</div>
+                                <div class="fsm-node-label">품질 검사</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_SORTING">
+                                <div class="fsm-node-circle">SORT</div>
+                                <div class="fsm-node-label">분류 이동</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_RELEASING">
+                                <div class="fsm-node-circle">RELEASE</div>
+                                <div class="fsm-node-label">출력물 투하</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_HOMING">
+                                <div class="fsm-node-circle">HOME</div>
+                                <div class="fsm-node-label">홈 복귀</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_TELEOPING">
+                                <div class="fsm-node-circle">TELEOP</div>
+                                <div class="fsm-node-label">수동 조종</div>
+                            </div>
+                            <div class="fsm-arrow">➔</div>
+                            <div class="fsm-node" id="fsm_FINISHED">
+                                <div class="fsm-node-circle">FINISHED</div>
+                                <div class="fsm-node-label">완료</div>
+                            </div>
+                            <div class="fsm-arrow" style="color:var(--accent-red);">➔</div>
+                            <div class="fsm-node" id="fsm_ERROR">
+                                <div class="fsm-node-circle" style="border-color:var(--accent-red);">ERROR</div>
+                                <div class="fsm-node-label" style="color:var(--accent-red);">오류</div>
+                            </div>
+                            <div class="fsm-arrow" style="color:var(--accent-red);">➔</div>
+                            <div class="fsm-node" id="fsm_ESTOP">
+                                <div class="fsm-node-circle" style="border-color:var(--accent-red);background:rgba(248,81,73,0.15);">ESTOP</div>
+                                <div class="fsm-node-label" style="color:var(--accent-red);">비상정지</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 탭 4: 검사 상세 내역 ═══ -->
+        <div id="tab-inspection" class="tab-pane">
+            <div class="inspection-tab-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">📷 턴테이블 캡쳐 원본 (Live)</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="camera-feed" style="height: auto;">
+                            <img src="/stream/camera2" alt="원본 카메라" loading="lazy" style="width: 100%; border-radius: 8px;">
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title">🔬 검사 결과 디버그 뷰</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="camera-feed" style="height: auto;">
+                            <img src="/stream/inspect_debug" alt="검사 디버그" loading="lazy" style="width: 100%; border-radius: 8px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div class="card-header">
+                        <span class="card-title">📝 상세 판정 기준 및 결과</span>
+                        <span id="detailBadge" class="result-badge" style="display:none;">—</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="detailNoResult" style="text-align:center;color:var(--text-muted);padding:24px 0;">
+                            아직 검사 결과가 없습니다
+                        </div>
+                        <div id="detailResult" style="display:none;">
+                            <div style="margin-bottom: 16px;">
+                                <h3 style="color: var(--text-primary); margin-bottom: 8px; font-size: 14px;">불합격 사유 (Fail Reason)</h3>
+                                <div id="detailFailReason" style="color: var(--accent-red); font-weight: bold; background: rgba(248,81,73,0.1); padding: 12px; border-radius: 6px; border: 1px solid rgba(248,81,73,0.2);">—</div>
+                            </div>
+
+                            <table class="history-table" style="width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="text-align: left;">검사 항목</th>
+                                        <th>측정 값</th>
+                                        <th>합격 기준 (Threshold)</th>
+                                        <th>판정</th>
+                                    </tr>
+                                </thead>
+                                <tbody style="text-align: center;">
+                                    <tr>
+                                        <td style="text-align: left;">Solidity (워핑 휨 현상)</td>
+                                        <td id="detSolidity">—</td>
+                                        <td>0.85 ~ 1.0</td>
+                                        <td id="detSolidityEval">—</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: left;">면적 비율 (미출력/수축)</td>
+                                        <td id="detAreaRatio">—</td>
+                                        <td>0.90 ~ 1.10</td>
+                                        <td id="detAreaRatioEval">—</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: left;">구멍 개수 (레이어 분리/파손)</td>
+                                        <td id="detHoleCount">—</td>
+                                        <td>0 ~ 2 개</td>
+                                        <td id="detHoleCountEval">—</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: left;">구멍 면적비</td>
+                                        <td id="detHoleArea">—</td>
+                                        <td>0 ~ 0.05</td>
+                                        <td id="detHoleAreaEval">—</td>
+                                    </tr>
+                                    <tr>
+                                        <td style="text-align: left;">텍스처 분산 (거미줄/스트링잉)</td>
+                                        <td id="detTexture">—</td>
+                                        <td>500 이하</td>
+                                        <td id="detTextureEval">—</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+
+                            <h3 style="color: var(--text-primary); margin-top: 24px; margin-bottom: 12px; font-size: 14px;">외곽선 유사도 (SSIM - 4방향)</h3>
+                            <div id="detailSsimBars" class="ssim-bar-container"></div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">* 임계값 0.85 이상 시 정상</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main>
 </div>
 
 <!-- ═══ JavaScript ═══ -->
