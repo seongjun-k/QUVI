@@ -432,7 +432,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     # ─── WebSocket: 실시간 상태 업데이트 ───
     def _ws_broadcast():
         """주기적으로 상태를 WebSocket으로 브로드캐스트."""
-        while True:
+        while rclpy.ok():
             try:
                 status = hmi_node.get_status()
                 detections = hmi_node.get_detections()
@@ -454,7 +454,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 })
             except Exception:
                 pass
-            time.sleep(0.1)
+            socketio.sleep(0.1)
 
     # 브로드캐스트 스레드 시작
     ws_thread = threading.Thread(target=_ws_broadcast, daemon=True)

@@ -32,6 +32,12 @@ inspect_node:
     gaussian_blur_ksize: 5            # 가우시안 블러 커널 크기
     binary_threshold: 127             # 이진화 임계값
 
+    # ─── 소프트웨어 정렬 ───
+    alignment_enabled: true           # 소프트웨어 정렬 활성화 여부
+    align_max_dimension: 200          # 정렬 이미지의 장축 최대 크기 (px)
+    align_padding_pct: 0.15           # 정렬 크롭 마진 비율
+    align_min_bbox_area: 500          # 정렬 대상 최소 윤곽 면적 (px²)
+
     # ─── 디버그 ───
     save_inspection_images: true      # 검사 이미지 저장 여부
     inspection_log_dir: "/workspace/data/inspection_logs"

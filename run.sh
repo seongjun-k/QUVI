@@ -28,4 +28,13 @@ if [ ! "$(docker ps -q -f name=^/${CONTAINER_NAME}$)" ]; then
 fi
 
 echo "🚀 [QUVI] '${CONTAINER_NAME}' 컨테이너 내부에서 메인 프로그램 실행 중..."
-docker exec -it "${CONTAINER_NAME}" bash -c "source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
+if [ -t 0 ]; then
+    docker exec -it "${CONTAINER_NAME}" bash -c "source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
+else
+    docker exec -i "${CONTAINER_NAME}" bash -c "source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
+fi
+
+if [ $? -ne 0 ]; then
+    echo "❌ 오류: 메인 프로그램 실행 실패."
+    exit 1
+fi

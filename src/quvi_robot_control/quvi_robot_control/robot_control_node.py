@@ -122,7 +122,7 @@ POSE_FRONT = {
     'wrist_flex': 1800, 'wrist_roll': 2048, 'gripper': 2300,
 }
 POSE_BACK = {
-    'shoulder_pan': 2048, 'shoulder_lift': 1400, 'elbow_flex': 900,
+    'shoulder_pan': 0, 'shoulder_lift': 1400, 'elbow_flex': 900,
     'wrist_flex': 1800, 'wrist_roll': 2048, 'gripper': 2300,
 }
 POSE_PLACE = {
@@ -853,6 +853,9 @@ class RobotControlNode(Node):
                 self._follower.disconnect()
             except Exception as e:
                 self.get_logger().warn(f'OmxFollower 해제 중 오류: {e}')
+            finally:
+                self._dxl_ready = False
+                self._follower = None
         super().destroy_node()
 
     # ─────────────────────────────────────────────

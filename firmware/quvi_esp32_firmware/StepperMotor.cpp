@@ -99,9 +99,15 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     _stepper.setAcceleration(500.0);
     _stepper.move(directionMultiplier * 100000); // Move a very large distance
 
+    unsigned long lastFeed = millis();
     while (!isLimitPressed()) {
         _stepper.run();
-        yield(); // Feed ESP32 watchdog
+        if (millis() - lastFeed >= 10) {
+            delay(1);
+            lastFeed = millis();
+        } else {
+            yield();
+        }
     }
     _stepper.stop();
     _stepper.setCurrentPosition(0);
@@ -112,9 +118,15 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // ==========================================
     _stepper.setMaxSpeed(fineSpeed);
     _stepper.move(-directionMultiplier * backoffSteps);
+    lastFeed = millis();
     while (_stepper.distanceToGo() != 0) {
         _stepper.run();
-        yield();
+        if (millis() - lastFeed >= 10) {
+            delay(1);
+            lastFeed = millis();
+        } else {
+            yield();
+        }
     }
     delay(100); // Settle
 
@@ -122,9 +134,15 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // STAGE 3: Fine search (Slow towards switch)
     // ==========================================
     _stepper.move(directionMultiplier * backoffSteps * 2);
+    lastFeed = millis();
     while (!isLimitPressed()) {
         _stepper.run();
-        yield();
+        if (millis() - lastFeed >= 10) {
+            delay(1);
+            lastFeed = millis();
+        } else {
+            yield();
+        }
     }
     _stepper.stop();
     _stepper.setCurrentPosition(0);
@@ -132,9 +150,15 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
 
     // Back off slightly from limit switch to prevent constant triggering
     _stepper.move(-directionMultiplier * 50);
+    lastFeed = millis();
     while (_stepper.distanceToGo() != 0) {
         _stepper.run();
-        yield();
+        if (millis() - lastFeed >= 10) {
+            delay(1);
+            lastFeed = millis();
+        } else {
+            yield();
+        }
     }
     _stepper.setCurrentPosition(50); // Reflect actual position offset
 

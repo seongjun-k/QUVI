@@ -469,10 +469,10 @@ class MainOrchestratorNode(Node):
     # ─── HMI 전송 유틸리티 ───
     def _publish_hmi_status(self):
         # Dynamically query the ROS 2 graph to check if other nodes are online
-        yolo_online = (self.count_publishers('/detection/objects') > 0) or self._yolo_online
-        inspect_online = (self.count_publishers('/inspection/result') > 0) or self._inspect_online
-        grasp_online = (self.count_publishers('/robot/joint_states') > 0 or self.count_publishers('/robot/status') > 0) or self._grasp_online
-        motor_online = (self.count_publishers('/robot/joint_states') > 0 or self.count_publishers('/robot/status') > 0) or self._motor_online
+        yolo_online = self.count_publishers('/detection/objects') > 0
+        inspect_online = self.count_publishers('/inspection/result') > 0
+        grasp_online = self.count_publishers('/robot/status') > 0
+        motor_online = self.count_publishers('/robot/status') > 0
 
         msg = SystemStatus()
         msg.header.stamp = self.get_clock().now().to_msg()

@@ -185,6 +185,10 @@ def generate_launch_description():
             'save_inspection_images': True,
             'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
             'publish_debug_image': True,
+            'alignment_enabled': True,
+            'align_max_dimension': 200,
+            'align_padding_pct': 0.15,
+            'align_min_bbox_area': 500,
         }],
         output='screen',
     )

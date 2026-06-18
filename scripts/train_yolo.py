@@ -36,7 +36,7 @@ def check_yolo():
         print("❌ Error: Ultralytics is not installed. Please run: pip install ultralytics")
         sys.exit(1)
 
-def validate_dataset(dataset_dir):
+def validate_dataset(dataset_dir, auto_confirm=False):
     dataset_path = Path(dataset_dir).resolve()
     if not dataset_path.exists():
         print(f"❌ Error: Dataset directory '{dataset_path}' does not exist.")
@@ -67,7 +67,11 @@ def validate_dataset(dataset_dir):
             if 'print_object' not in classes:
                 print("⚠️ Warning: 'print_object' class not found in the dataset configuration.")
                 print(f"   The QUVI pipeline expects detecting 'print_object'.")
-                confirm = input("   Do you want to proceed anyway? (y/n): ").strip().lower()
+                if auto_confirm:
+                    print("   Proceeding anyway (auto-confirmed)...")
+                    confirm = 'y'
+                else:
+                    confirm = input("   Do you want to proceed anyway? (y/n): ").strip().lower()
                 if confirm != 'y':
                     sys.exit(0)
     except Exception as e:
@@ -82,6 +86,7 @@ def main():
     parser.add_argument("--batch", type=int, default=16, help="Batch size (default: 16)")
     parser.add_argument("--imgsz", type=int, default=640, help="Image size (default: 640)")
     parser.add_argument("--device", type=str, default="", help="Device to train on (e.g. 0, cpu)")
+    parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all prompts (non-interactive mode)")
     args = parser.parse_args()
 
     print("=========================================")
@@ -101,7 +106,7 @@ def main():
             print("❌ Error: Dataset path cannot be empty.")
             sys.exit(1)
 
-    yaml_file = validate_dataset(dataset_dir)
+    yaml_file = validate_dataset(dataset_dir, auto_confirm=args.yes)
     if not yaml_file:
         sys.exit(1)
 
@@ -142,7 +147,10 @@ def main():
     print(f"  - Training device: {device}")
     print("=========================================")
 
-    confirm = input("▶️ Ready to start training? (y/n): ").strip().lower()
+    if args.yes:
+        confirm = 'y'
+    else:
+        confirm = input("▶️ Ready to start training? (y/n): ").strip().lower()
     if confirm != 'y':
         print("❌ Training cancelled.")
         sys.exit(0)

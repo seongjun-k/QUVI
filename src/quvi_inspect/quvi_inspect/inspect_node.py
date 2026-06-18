@@ -271,7 +271,6 @@ class InspectNode(Node):
         self._inspection_active = False
         self._captured_images.clear()
         self._pending_angle = None
-        self._current_object_index += 1
 
     # ─────────────────────────────────────────────
     # 1) CAD 기준 형상 비교
@@ -487,7 +486,7 @@ class InspectNode(Node):
 
             ref = self._reference_images.get(angle)
             if ref is not None:
-                ref_resized = cv2.resize(ref, (gray.shape[1], gray.shape[0]))
+                ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
                 ref_area = BinaryCache(ref_resized, self._bin_thresh).largest_external_area()
                 cap_area = cache.largest_external_area()
                 a_ratio  = cap_area / ref_area if ref_area > 0 else 0.0
