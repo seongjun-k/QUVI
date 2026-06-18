@@ -1,89 +1,157 @@
 # QUVI (QUality VIsion)
 
-**AI 비전 로봇을 활용한 3D 프린터 출력물 자동 양불 판정 시스템**
+**AI 비전 로봇을 활용한 3D 프린터 출력물 자동 양불 판정 및 분류 시스템**
 
 > "보는 것이 곧 품질이다 (Seeing is Quality)"
 
+---
+
 ## 개요
 
-3D 프린터에서 출력된 제품을 로봇이 자동으로 픽업하여 머신비전으로 품질을 검사하고, 양품과 불량품으로 분류하는 완전 자동화 셀.
+3D 프린터에서 출력을 완료한 제품을 로봇팔이 자동으로 인식 및 파지(Pickup)하여, 검사 챔버에서 머신비전을 통해 품질을 정밀 분석(양불 판정)하고 결과에 따라 합격(PASS)과 불량(FAIL) 분류함으로 적재하는 3D 프린팅 후처리 자동화 시스템(Smart Cell)입니다.
+
+---
 
 ## 시스템 구성
 
-| 구성 | 설명 |
-|------|------|
-| **메인 제어** | Ubuntu 24.04 + ROS 2 Jazzy (Docker) |
-| **하위 제어** | ESP32 S3 |
-| **로봇팔** | OMX AI 매니퓰레이터 (팔로워) |
-| **카메라** | InnoMaker USB U20CAM-1080P × 2 |
-| **AI** | YOLOv8n + ACT + SSIM + 표면 특징 분석 |
+| 구성 요소 | 기술 사양 | 역할 및 특징 |
+| :--- | :--- | :--- |
+| **메인 제어** | Ubuntu 24.04 + ROS 2 Jazzy (Docker) | 전체 노드 오케스트레이션 및 상태 머신(FSM) 제어 |
+| **하위 제어** | ESP32-S3 (TB6600 구동) | 리니어 레일(스텝 모터) 및 턴테이블 각도 구동 제어 |
+| **로봇팔** | OMX AI 매니퓰레이터 (팔로워) | 6자유도 다이나믹셀 기반 매니퓰레이터 (리더-팔로워 텔레옵 지원) |
+| **카메라** | InnoMaker USB U20CAM × 2 | Zone 1 (핸드캠: 조종 및 YOLO) 및 Zone 2 (고정캠: 품질 검사용) |
+| **AI 및 알고리즘** | YOLOv8n + LeRobot ACT + SSIM | 객체 탐지, 모방 학습 파지 제어, 정사영 형상비교 검사 |
 
-## ROS 2 노드
+---
 
-| 노드 | 역할 |
-|------|------|
-| `MAIN_CONTROLLER` | 전체 시퀀스 관리, 상태 머신 |
-| `YOLO_NODE` | 출력물 감지, 좌표 목록 발행 |
-| `GRASP_NODE` | ACT 파지 모델 실행, 로봇팔 제어 |
-| `INSPECT_NODE` | 양불 판정 (CAD 비교 + 표면 특징) |
-| `SORT_NODE` | 분류 명령 발행 |
-| `MOTOR_CONTROL` | STM32 통신, 레일/턴테이블 제어 |
-| `HMI_NODE` | 대시보드 표시 |
+## ROS 2 패키지 및 노드 구조
 
-## 빠른 시작 (Docker)
+| 패키지명 | 실행 노드명 | 주요 역할 |
+| :--- | :--- | :--- |
+| **`quvi_robot_control`** | `main_orchestrator_node` | 전체 자율 시퀀스 유한상태머신(FSM) 제어 및 오케스트레이션 |
+| | `robot_control_node` | 로봇팔 다이나믹셀(XL430, XL330) 제어, LeRobot ACT 모방학습 파지 구동, ESP32 레일/턴테이블 통신 중계 |
+| **`quvi_yolo`** | `yolo_node` | YOLOv8n 기반 3D 프린터 베드 위 출력물 감지, 중심 3D 파지 좌표 계산 및 발행 |
+| **`quvi_inspect`** | `inspect_node` | 4방향 카메라 정사영 정적 이미지 분석 (SSIM 유사도, Solidity 워핑 검사, Hole 개수 검사, 표면 텍스처 검증) |
+| **`quvi_hmi`** | `hmi_node` | **Flask + SocketIO 기반 실시간 웹 대시보드** (시스템 상태 모니터링, 다중 MJPEG 비전 스트리밍 및 수동 제어) |
+| **`quvi_msgs`** | - | 패키지 간 데이터 통신을 위한 커스텀 ROS 2 메시지 (`SystemStatus`, `InspectionResult` 등) |
 
+---
+
+## Web HMI 주요 기능 (대시보드)
+
+* **실시간 시스템 상태 모니터링 (System Status)**
+  * **로봇 6축 관절 각도 시각화**: `/robot/joint_states` 피드백을 실시간 도($^\circ$) 단위 및 게이지바로 표시.
+  * **리니어 레일 트랙 모션**: 구역 위치에 맞춰 HMI 내 로봇 캐리지가 실시간으로 이동하는 CSS 애니메이션.
+  * **턴테이블 나침반**: ESP32 구동 각도(0~360도)에 매핑되어 회전하는 원형 다이얼 그래픽.
+  * **FSM 흐름도**: 초기화부터 탐지, 파지, 검사, 투하, 홈 복귀 단계가 활성화될 때마다 네온 글로우 효과로 단계 시각화.
+* **실시간 MJPEG 비디오 스트리밍**
+  * Zone 1 핸드캠 피드, Zone 2 고정캠 피드, YOLO 객체 탐지 결과 바운딩 박스, 품질 비전 정사영 디버깅 뷰.
+* **수동 제어 및 텔레오퍼레이션 (Leader-Follower)**
+  * 리더 로봇암을 이용한 1:1 팔로워 실시간 추종 조작 토글 브리지, 자율 시퀀스 시작/정지/비상정지(E-STOP) 제어.
+
+---
+
+## 프로젝트 폴더 구조
+
+```
+QUVI/
+├── docker/                  # Docker 가상화 개발 환경 (Dockerfile, compose)
+├── firmware/                # ESP32-S3 기반 레일 및 턴테이블 구동용 펌웨어 소스
+├── src/                     # ROS 2 소스 코드 디렉토리
+│   ├── quvi_msgs/           # 시스템 공용 커스텀 메시지 정의
+│   ├── quvi_bringup/        # 시스템 런처 파일 및 YAML 설정 파일
+│   ├── quvi_robot_control/  # 로봇팔 및 메인 시퀀스(FSM) 제어 패키지
+│   ├── quvi_yolo/           # YOLOv8 기반 출력물 탐지 패키지
+│   ├── quvi_inspect/        # 이미지 비교 알고리즘 기반 품질 검사 패키지
+│   └── quvi_hmi/            # Flask + SocketIO 웹 대시보드 HMI 패키지
+├── data/                    # 모델 파일 및 CAD 기준 형상 데이터
+├── scripts/                 # 유틸리티 및 캘리브레이션 헬퍼 스크립트
+└── docs/                    # 기술 설계 문서 및 이미지 자료
+```
+
+---
+
+## 빠른 시작 (Docker Environment)
+
+### 1. 리포지토리 클론 및 서브모듈 초기화
 ```bash
-# 1. 리포지토리 클론
 git clone https://github.com/seongjun-k/QUVI.git
 cd QUVI
+# lerobot 서브모듈 의존성 초기화 및 다운로드 (필수)
+git submodule update --init --recursive
+```
 
-# 2. Docker 이미지 빌드
+### 2. Docker 환경 구성 및 실행
+```bash
 cd docker
 docker compose build
-
-# 3. 컨테이너 실행
 docker compose up -d
+```
 
-# 4. 컨테이너 접속
+### 3. 개발 컨테이너 내부 진입 및 빌드
+```bash
 docker exec -it quvi-dev bash
-
-# 5. ROS 2 워크스페이스 빌드
 cd /workspace
 colcon build --symlink-install
 source install/setup.bash
 ```
 
-## 프로젝트 구조
-
+### 4. 전체 시스템 런칭 (HMI 웹 포함)
+```bash
+ros2 launch quvi_bringup full_system.launch.py
 ```
-QUVI/
-├── docker/                  # Docker 환경
-│   ├── Dockerfile
-│   └── docker-compose.yml
-├── src/
-│   ├── quvi_msgs/           # 커스텀 메시지/서비스
-│   ├── quvi_bringup/        # Launch 파일, 설정
-│   ├── quvi_yolo/           # YOLO 객체 탐지 노드
-│   └── quvi_inspect/        # 양불 판정 노드
-├── data/
-│   ├── datasets/            # 학습 데이터
-│   └── reference_stl/       # CAD 기준 STL 파일
-├── scripts/                 # 유틸리티 스크립트
-└── docs/                    # 문서
+* 웹 브라우저를 열고 `http://localhost:5000`에 접속하여 HMI 대시보드를 모니터링합니다.
+
+---
+
+## 개발 기술 스택
+
+* **Operating System**: Ubuntu 24.04 LTS (Noble Numbat)
+* **Middleware**: ROS 2 Jazzy Jalisco
+* **Vision & AI**: OpenCV 4.9, scikit-image, Ultralytics YOLOv8, PyTorch 2.x, Hugging Face LeRobot
+* **Web HMI**: Python Flask, Flask-SocketIO, Vanilla JS (WebSocket Client), HTML5/CSS3 (Industrial Dark Theme)
+* **Embedded Hardware**: ESP32-S3, TB6600, Dynamixel SDK (Protocol 2.0)
+
+---
+
+## LeRobot ACT 모방학습 가이드
+
+본 프로젝트의 핵심 기능인 로봇팔 파지(Zone 1)는 LeRobot ACT(Action Chunking with Transformers) 모방학습 기반 비주오모터(Visuomotor) 제어로 수행됩니다. 아래 절차에 따라 데이터를 수집하고 학습시킬 수 있습니다.
+
+### 1. 텔레오퍼레이션 데이터 수집
+리더-팔로워 모드를 활성화하여 사람이 직접 시연하는 파지 데이터를 수집합니다.
+LeRobot의 공식 데이터 녹화 스크립트를 사용하여 이미지 피드와 관절 각도 상태를 기록합니다.
+```bash
+python3 lerobot/src/lerobot/scripts/record.py \
+  --robot.path lerobot/configs/robot/omx.yaml \
+  --fps 30 \
+  --repo-id data/datasets/quvi_grasp \
+  --warmup-time-s 5
 ```
 
-## 기술 스택
+### 2. ACT 모델 학습 (Training)
+수집된 데이터셋을 이용하여 ACT 정책(Policy)을 학습시킵니다.
+```bash
+python3 lerobot/src/lerobot/scripts/train.py \
+  --policy.type=act \
+  --dataset.repo_id=data/datasets/quvi_grasp \
+  --env.type=real \
+  --output_dir=outputs/train/quvi_act \
+  --device=cuda
+```
+*학습 파라미터(청크 크기, 학습률 등)는 `src/quvi_bringup/config/params.yaml` 및 `robot_control_node.py`의 파라미터(`act_chunk_size`, `act_model_path`) 설정과 일치하도록 조정합니다.*
 
-- **OS**: Ubuntu 24.04 (Noble Numbat)
-- **ROS**: ROS 2 Jazzy Jalisco
-- **비전**: OpenCV 4.9, scikit-image
-- **AI**: PyTorch 2.x, Ultralytics YOLOv8, Hugging Face LeRobot
-- **HMI**: PyQt5 / Flask
+### 3. 학습 모델 추론 및 배포
+학습 완료 후 생성된 pre-trained 가중치를 `act_model_path` 경로(기본값: `outputs/train/quvi_act/checkpoints/last/pretrained_model`)에 위치시키면, 자율 제어 실행 시 자동으로 모델을 로드하여 파지를 수행합니다.
 
-## 팀
+---
 
-- 서울로봇고등학교 졸업작품 돼지껍데기 팀
+## 팀 정보
+
+- **서울로봇고등학교 졸업작품 돼지껍데기 팀**
+
+---
 
 ## 라이선스
 
-이 프로젝트는 교육 목적으로 제작되었습니다.
+이 프로젝트는 [MIT License](LICENSE)에 따라 라이선스가 부여됩니다.

@@ -30,16 +30,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     curl \
     usbutils \
+    # OpenGL 및 비전 렌더링용 의존 라이브러리 추가
+    libglib2.0-0 \
+    mesa-utils \
+    libgl1 \
+    libglu1-mesa-dev \
+    libosmesa6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── Python 패키지 ───
+# 1단계: 대용량 PyTorch 및 Torchvision을 타임아웃 방지 옵션 및 아시아 미러 서버를 지정하여 분리 설치
+RUN pip3 install --break-system-packages --no-cache-dir --default-timeout=1000 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    torch>=2.1.0 \
+    torchvision>=0.16.0
+
+# 2단계: 나머지 파이썬 의존성 패키지 설치
 RUN pip3 install --break-system-packages --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     opencv-python-headless>=4.9.0 \
-    numpy>=1.26.0 \
     scikit-image>=0.22.0 \
     ultralytics>=8.1.0 \
-    torch>=2.1.0 \
-    torchvision>=0.16.0 \
     pyserial>=3.5 \
     Pillow>=10.0.0 \
     scipy>=1.12.0 \
@@ -47,8 +58,12 @@ RUN pip3 install --break-system-packages --no-cache-dir \
     flask>=3.0.0 \
     flask-socketio>=5.3.0 \
     PyYAML>=6.0.0 \
-    trimesh>=4.0.0 \
-    pyrender>=0.1.45
+    trimesh>=4.0.0
+
+# 3단계: colcon-core와의 호환성을 위해 setuptools 버전을 <80으로 명시적 강제 다운그레이드
+RUN pip3 install --break-system-packages --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    "setuptools<80"
 
 # ─── 워크스페이스 설정 ───
 WORKDIR /workspace

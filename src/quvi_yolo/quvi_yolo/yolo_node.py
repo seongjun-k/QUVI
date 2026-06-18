@@ -22,7 +22,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool
 
 from quvi_msgs.msg import DetectedObject, ObjectArray
-from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get
+from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get, encode_bgr
 
 
 class YoloNode(Node):
@@ -33,9 +33,6 @@ class YoloNode(Node):
 
         self._load_params()
         self._model = self._load_model()
-
-        from cv_bridge import CvBridge
-        self._bridge = CvBridge()
 
         if self._use_compressed:
             self._img_sub = self.create_subscription(
@@ -93,9 +90,26 @@ class YoloNode(Node):
         except ImportError:
             self.get_logger().error('ultralytics 패키지가 설치되지 않음. pip install ultralytics')
             raise
+
+        import os
         model_path = self._model_path if self._model_path else 'yolov8n.pt'
+
+        if model_path != 'yolov8n.pt' and not os.path.exists(model_path):
+            self.get_logger().fatal(f'YOLO 모델 파일을 찾을 수 없습니다: {model_path}')
+            import sys
+            sys.exit(1)
+
         self.get_logger().info(f'YOLO 모델 로드: {model_path}')
-        return YOLO(model_path)
+        model = YOLO(model_path)
+
+        model_classes = list(model.names.values())
+        for tc in self._target_classes:
+            if tc not in model_classes:
+                self.get_logger().fatal(f'Target class "{tc}"가 로드된 모델의 클래스 목록에 없습니다: {model_classes}')
+                import sys
+                sys.exit(1)
+
+        return model
 
     # ─────────────────────────────────────────────
     # 이미지 콜백
@@ -209,8 +223,7 @@ class YoloNode(Node):
             cv2.putText(debug_frame,
                         f'Objects: {len(detections)} | Proximity: {proximity_warning}',
                         (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
-            self._debug_pub.publish(
-                self._bridge.cv2_to_imgmsg(debug_frame, encoding='bgr8'))
+            self._debug_pub.publish(encode_bgr(debug_frame))
 
         self._detection_enabled = False
 

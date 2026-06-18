@@ -14,8 +14,9 @@
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>quvi_msgs</depend>
+  <exec_depend>dynamixel_sdk</exec_depend>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_python</buildtool_depend>
   <test_depend>ament_pep8</test_depend>
 
   <export>

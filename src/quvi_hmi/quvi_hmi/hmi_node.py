@@ -164,6 +164,7 @@ class HmiNode(Node):
 
     def _joint_states_cb(self, msg: JointState):
         with self._lock:
+            # ROS 2 JointState positions are floats
             self._system_status['joint_positions'] = list(msg.position)
 
     def _rail_command_cb(self, msg: Int32):
@@ -203,6 +204,8 @@ class HmiNode(Node):
             self._inspection_history.append(record)
             if len(self._inspection_history) > 100:
                 self._inspection_history.pop(0)
+            # pass/fail 카운트는 오케스트레이터의 /hmi/status 가 단일 source of truth.
+            # 여기서 증가시키면 _status_cb 와 이중 집계되므로 history 누적만 한다.
 
     def _cam_cb(self, msg: CompressedImage, key: str):
         np_arr = np.frombuffer(msg.data, np.uint8)
@@ -224,14 +227,17 @@ class HmiNode(Node):
         self._cmd_pub.publish(msg)
         self.get_logger().info(f'HMI 명령: {command}')
 
+    # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
 
     def _manual_trigger_allowed(self) -> bool:
+        """오케스트레이터 FSM 이 수동 트리거를 받아도 안전한 상태인지 확인."""
         with self._lock:
             state = self._system_status.get('current_state', 'IDLE')
         return state in self._MANUAL_TRIGGER_SAFE_STATES
 
     def trigger_detection(self, enable: bool) -> bool:
+        """수동 감지 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
         if enable and not self._manual_trigger_allowed():
             self.get_logger().warn('수동 감지 트리거 거부: FSM 이 자율 시퀀스 진행 중')
             return False
@@ -241,6 +247,7 @@ class HmiNode(Node):
         return True
 
     def trigger_inspection(self, enable: bool) -> bool:
+        """수동 검사 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
         if enable and not self._manual_trigger_allowed():
             self.get_logger().warn('수동 검사 트리거 거부: FSM 이 자율 시퀀스 진행 중')
             return False
@@ -279,12 +286,14 @@ class HmiNode(Node):
 def create_flask_app(hmi_node: HmiNode) -> tuple:
     """Flask 앱 + SocketIO 생성."""
     from ament_index_python.packages import get_package_share_directory
-
+    
+    # ROS 2 share 디렉토리에서 리소스 경로 탐색 (setup.py가 리소스를 배치하는 정확한 위치)
     try:
         pkg_share_dir = get_package_share_directory('quvi_hmi')
         template_dir = os.path.join(pkg_share_dir, 'templates')
         static_dir = os.path.join(pkg_share_dir, 'static')
     except Exception:
+        # 폴백: 로컬 소스 코드 파일 기준 경로
         pkg_dir = os.path.dirname(os.path.abspath(__file__))
         template_dir = os.path.join(pkg_dir, 'templates')
         static_dir = os.path.join(pkg_dir, 'static')
@@ -293,6 +302,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 template_folder=template_dir,
                 static_folder=static_dir)
 
+    # SECRET_KEY: 환경변수 우선, 없으면 랜덤 생성(운영 시 QUVI_HMI_SECRET_KEY 지정 권장).
     secret_key = os.environ.get('QUVI_HMI_SECRET_KEY')
     if not secret_key:
         secret_key = os.urandom(24).hex()
@@ -301,13 +311,15 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             '운영/세션 유지가 필요하면 환경변수를 지정하세요.')
     app.config['SECRET_KEY'] = secret_key
 
+    # CORS 허용 오리진: 기본은 로컬 LAN 시연용으로 동일 출처('*' 아님).
+    # 외부 접근이 필요하면 QUVI_HMI_CORS_ORIGINS(쉼표 구분)로 명시.
     cors_env = os.environ.get('QUVI_HMI_CORS_ORIGINS', '').strip()
     if cors_env == '*':
         cors_origins = '*'
     elif cors_env:
         cors_origins = [o.strip() for o in cors_env.split(',') if o.strip()]
     else:
-        cors_origins = []
+        cors_origins = []  # 동일 출처만 허용 (가장 안전한 기본값)
 
     socketio = SocketIO(app, cors_allowed_origins=cors_origins,
                         async_mode='threading')
@@ -352,12 +364,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         valid = ['start', 'stop', 'estop', 'reset']
         if cmd not in valid:
             return jsonify({'error': f'Unknown command: {cmd}'}), 400
-
+        
         if cmd == 'estop':
             msg = Bool()
             msg.data = True
             hmi_node._estop_pub.publish(msg)
-
+            
         hmi_node.send_command(cmd.upper())
         return jsonify({'ok': True, 'command': cmd})
 
@@ -478,6 +490,8 @@ def main(args=None):
     hmi_node.get_logger().info(
         f'Web HMI 시작: http://{hmi_node._host}:{hmi_node._port}')
 
+    # 시연용 Werkzeug 개발 서버 허용 여부. 운영 WSGI(eventlet/gevent) 사용 시
+    # QUVI_HMI_ALLOW_DEV_SERVER=0 으로 끄고 적절한 서버로 구동할 수 있다.
     allow_dev_server = os.environ.get(
         'QUVI_HMI_ALLOW_DEV_SERVER', '1').lower() in ('1', 'true', 'yes')
     if allow_dev_server:

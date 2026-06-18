@@ -50,6 +50,7 @@
 
     <!-- 메인 컨텐츠 영역 -->
     <main class="main-container">
+<<<<<<< HEAD
 
         <!-- ═══ 헤더 ═══ -->
         <header class="header">
@@ -69,6 +70,27 @@
             </div>
         </header>
 
+=======
+        
+        <!-- ═══ 헤더 ═══ -->
+        <header class="header">
+            <div class="header-left">
+                <div id="systemState" class="status-indicator idle">
+                    <div class="status-dot"></div>
+                    <span id="stateText">IDLE</span>
+                </div>
+                <div id="stageText" class="stage-pill">진행 단계 대기</div>
+            </div>
+            <div class="header-right">
+                <div id="errorMsg" class="header-error" style="display:none;"></div>
+                <div id="connBadge" class="conn-badge offline">
+                    <span class="conn-dot"></span><span id="connText">서버 연결 대기</span>
+                </div>
+                <div class="clock" id="clock"></div>
+            </div>
+        </header>
+
+>>>>>>> origin/master
         <!-- ═══ 탭 1: 대시보드 뷰 ═══ -->
         <div id="tab-dashboard" class="tab-pane active">
             <!-- 컨트롤 바 -->
@@ -297,6 +319,10 @@
                 </div>
 
                 <div class="teleop-grid">
+<<<<<<< HEAD
+=======
+                    <!-- 제어 카드 -->
+>>>>>>> origin/master
                     <div class="card teleop-control-card">
                         <div class="card-header">
                             <span class="card-title">텔레옵 조작 패널</span>
@@ -327,6 +353,10 @@
                         </div>
                     </div>
 
+<<<<<<< HEAD
+=======
+                    <!-- 스트림 모니터링 카드 -->
+>>>>>>> origin/master
                     <div class="card teleop-video-card">
                         <div class="card-header">
                             <span class="card-title">Zone 1 핸드캠 스트림</span>
@@ -345,6 +375,10 @@
         <!-- ═══ 탭 3: 시스템 상태 뷰 ═══ -->
         <div id="tab-status" class="tab-pane">
             <div class="status-tab-container">
+<<<<<<< HEAD
+=======
+                <!-- 상단 카드 그리드 -->
+>>>>>>> origin/master
                 <div class="status-grid">
                     <!-- 로봇암 관절 상태 카드 -->
                     <div class="card status-card">
@@ -354,6 +388,10 @@
                         </div>
                         <div class="card-body status-card-body">
                             <div class="joint-list">
+<<<<<<< HEAD
+=======
+                                <!-- Joint 1 (Base) -->
+>>>>>>> origin/master
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 1 (Base)</span>
@@ -365,6 +403,10 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+<<<<<<< HEAD
+=======
+                                <!-- Joint 2 (Shoulder) -->
+>>>>>>> origin/master
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 2 (Shoulder)</span>
@@ -376,6 +418,10 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+<<<<<<< HEAD
+=======
+                                <!-- Joint 3 (Elbow) -->
+>>>>>>> origin/master
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 3 (Elbow)</span>
@@ -387,6 +433,10 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+<<<<<<< HEAD
+=======
+                                <!-- Joint 4 (Wrist Pitch) -->
+>>>>>>> origin/master
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 4 (Wrist Pitch)</span>
@@ -398,6 +448,10 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+<<<<<<< HEAD
+=======
+                                <!-- Joint 5 (Wrist Roll) -->
+>>>>>>> origin/master
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 5 (Wrist Roll)</span>
@@ -409,6 +463,7 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+                                <!-- Joint 6 (Gripper) -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 6 (Gripper)</span>
@@ -424,19 +479,22 @@
                         </div>
                     </div>
 
-                    <!-- 오른쪽: 레일 + 턴테이블 -->
+                    <!-- 오른쪽 영역: 레일 + 턴테이블 -->
                     <div class="status-right-column">
+                        <!-- 리니어 레일 상태 카드 -->
                         <div class="card status-card">
                             <div class="card-header">
                                 <span class="card-title">🚊 리니어 레일 (Linear Rail)</span>
                             </div>
                             <div class="card-body">
                                 <div class="rail-track-container">
+                                    <!-- 레일 트랙 선 -->
                                     <div class="rail-track">
                                         <div class="rail-carriage" id="railCarriage">
                                             <div class="carriage-icon">🤖</div>
                                         </div>
                                     </div>
+                                    <!-- 구역 표시핀들 -->
                                     <div class="rail-stations">
                                         <div class="rail-station" id="station_bed">
                                             <span class="station-dot"></span>
@@ -467,12 +525,14 @@
                             </div>
                         </div>
 
+                        <!-- 턴테이블 상태 카드 -->
                         <div class="card status-card">
                             <div class="card-header">
                                 <span class="card-title">🔄 턴테이블 회전 (Turntable)</span>
                             </div>
                             <div class="card-body turntable-card-body">
                                 <div class="turntable-visual">
+                                    <!-- 원형 나침반/다이얼 디자인 -->
                                     <div class="turntable-dial" id="turntableDial">
                                         <div class="dial-arrow">▲</div>
                                         <div class="dial-ticks">
@@ -492,7 +552,7 @@
                     </div>
                 </div>
 
-                <!-- FSM 순서도 -->
+                <!-- 하단 FSM 순서도 카드 -->
                 <div class="card status-card" style="margin-top:16px;">
                     <div class="card-header">
                         <span class="card-title">⛓️ 시스템 상태 시퀀스 (FSM Flow)</span>
@@ -587,7 +647,6 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
                         <span class="card-title">📝 상세 판정 기준 및 결과</span>
@@ -602,7 +661,7 @@
                                 <h3 style="color: var(--text-primary); margin-bottom: 8px; font-size: 14px;">불합격 사유 (Fail Reason)</h3>
                                 <div id="detailFailReason" style="color: var(--accent-red); font-weight: bold; background: rgba(248,81,73,0.1); padding: 12px; border-radius: 6px; border: 1px solid rgba(248,81,73,0.2);">—</div>
                             </div>
-
+                            
                             <table class="history-table" style="width: 100%;">
                                 <thead>
                                     <tr>
@@ -645,7 +704,7 @@
                                     </tr>
                                 </tbody>
                             </table>
-
+                            
                             <h3 style="color: var(--text-primary); margin-top: 24px; margin-bottom: 12px; font-size: 14px;">외곽선 유사도 (SSIM - 4방향)</h3>
                             <div id="detailSsimBars" class="ssim-bar-container"></div>
                             <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">* 임계값 0.85 이상 시 정상</div>

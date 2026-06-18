@@ -48,8 +48,8 @@ function updateStatus(status) {
     else if (state === 'DONE' || state === 'FINISHED') stateEl.classList.add('done');
     else stateEl.classList.add('running');
 
+    // 진행 단계 라벨 (사람이 읽기 쉬운 한국어)
     updateStageLabel(state);
-
     if (status.error_message) {
         errorMsg.textContent = status.error_message;
         errorMsg.style.display = 'block';
@@ -65,11 +65,13 @@ function updateStatus(status) {
     setSubsystem('subInspect', status.inspect_ready);
     setSubsystem('subMotor', status.motor_ready);
 
+    // 텔레오퍼레이션 상태 동기화
     const teleopToggle = document.getElementById('teleopToggle');
     const teleopBadge = document.getElementById('teleopStateBadge');
 
     if (teleopToggle && teleopBadge) {
         const isActive = status.teleop_active || (state === 'TELEOPING');
+        // /robot/status 가 "텔레옵 에러"를 알리면 에러 상태로 구분 표시
         const isTeleopError = !!(status.error_message &&
             /텔레옵|teleop|리더/i.test(status.error_message));
 
@@ -77,45 +79,53 @@ function updateStatus(status) {
         setTeleopBadge(isActive ? 'on' : (isTeleopError ? 'error' : 'off'));
     }
 
+    // ─── 시스템 상태 탭 업데이트 ───
     updateStatusTab(status);
 }
 
 // ─── 시스템 상태 탭 상세 업데이트 ───
 function updateStatusTab(status) {
-    // 1. 관절 상태
+    // 1. 관절 상태 (Joint States)
     if (status.joint_positions && Array.isArray(status.joint_positions)) {
         status.joint_positions.forEach((rad, idx) => {
             if (idx >= 6) return;
-
+            
             const valEl = document.getElementById(`j${idx}_val`);
             const barEl = document.getElementById(`j${idx}_bar`);
             if (!valEl || !barEl) return;
-
+            
             if (idx === 5) {
-                // 그리퍼: 라디안 → Dynamixel ticks (4095 / 2π)
+                // 그리퍼 (ID 6, 1800 ~ 2300 ticks)
                 const ticks = Math.round((rad * 4095.0) / (2 * Math.PI));
                 valEl.textContent = `${ticks} ticks`;
+                
+                // 퍼센트 계산
                 let pct = ((ticks - 1800) / (2300 - 1800)) * 100;
                 pct = Math.max(0, Math.min(100, pct));
                 barEl.style.width = `${pct}%`;
+                
+                // 그리퍼 상태 색상 힌트
                 if (ticks <= 1850) {
-                    barEl.className = 'joint-bar-fill gripper-bar closed';
+                    barEl.className = "joint-bar-fill gripper-bar closed";
                 } else if (ticks >= 2250) {
-                    barEl.className = 'joint-bar-fill gripper-bar open';
+                    barEl.className = "joint-bar-fill gripper-bar open";
                 } else {
-                    barEl.className = 'joint-bar-fill gripper-bar';
+                    barEl.className = "joint-bar-fill gripper-bar";
                 }
             } else {
-                // 일반 관절: rad → deg, -180 ~ +180 정규화
-                let deg = (rad * 180 / Math.PI);
+                // 일반 관절 (0 ~ 360 -> -180 ~ +180)
+                let deg = (rad * 180 / Math.PI) - 180;
+                // 주기화 (-180 ~ 180 범위로 안착)
                 while (deg < -180) deg += 360;
                 while (deg > 180) deg -= 360;
+                
                 valEl.textContent = `${deg.toFixed(1)}°`;
                 const pct = ((deg + 180) / 360) * 100;
                 barEl.style.width = `${pct}%`;
             }
         });
-
+        
+        // 동기화 시간 업데이트
         const syncTimeEl = document.getElementById('jointSyncTime');
         if (syncTimeEl) {
             syncTimeEl.textContent = '실시간 (30Hz)';
@@ -123,7 +133,7 @@ function updateStatusTab(status) {
         }
     }
 
-    // 2. 리니어 레일 — API 응답의 rail_station_map 기반 (하드코딩 없음)
+    // 2. 리니어 레일 위치 (Linear Rail - API 응답의 rail_station_map 기반 동적화)
     if (status.rail_position !== undefined) {
         const railPos = parseInt(status.rail_position);
         const stationMap = status.rail_station_map || [
@@ -133,35 +143,55 @@ function updateStatusTab(status) {
             { name: 'FAIL (C)',    steps: 2400 },
         ];
         const maxSteps = stationMap[stationMap.length - 1].steps || 2400;
-        const station = stationMap[railPos] || stationMap[0];
 
+        // railPos(실제 스텝 값)과 가장 가까운 스테이션 탐색 (허용 오차 100 스텝)
+        let station = stationMap.find(s => Math.abs(s.steps - railPos) < 100);
+        if (!station) {
+            station = { name: '이동 중...', steps: railPos };
+        }
+
+        // Carriage 위치 계산
         const carriage = document.getElementById('railCarriage');
         if (carriage) {
             const pct = (station.steps / maxSteps) * 85 + 7.5;
             carriage.style.left = `${pct}%`;
         }
 
+        // 역 정보 텍스트 표시
         const infoEl = document.getElementById('railStepsText');
         if (infoEl) {
             infoEl.innerHTML = `<strong>${station.name}</strong> (${station.steps} steps)`;
         }
 
+        // 구역 표시핀 하이라이트 및 스텝 값 동적 반영
+        const matchedIdx = stationMap.findIndex(s => s.name === station.name);
         const stationIds = ['station_bed', 'station_inspect', 'station_pass', 'station_fail'];
         stationIds.forEach((id, idx) => {
             const el = document.getElementById(id);
             if (el) {
-                el.classList.toggle('active', idx === railPos);
+                el.classList.toggle('active', idx === matchedIdx);
+                // 스텝 숫자 동적 갱신
+                const stepEl = el.querySelector('.station-step');
+                if (stepEl && stationMap[idx]) {
+                    stepEl.textContent = stationMap[idx].steps;
+                }
             }
         });
     }
 
-    // 3. 턴테이블
+    // 3. 턴테이블 회전 각도 (Turntable)
     if (status.turntable_angle !== undefined) {
         const angle = parseInt(status.turntable_angle);
+        
         const dial = document.getElementById('turntableDial');
-        if (dial) dial.style.transform = `rotate(${angle}deg)`;
+        if (dial) {
+            dial.style.transform = `rotate(${angle}deg)`;
+        }
+        
         const textEl = document.getElementById('turntableAngleText');
-        if (textEl) textEl.textContent = `${angle}°`;
+        if (textEl) {
+            textEl.textContent = `${angle}°`;
+        }
     }
 
     // 4. FSM Flow 하이라이트 (ERROR / ESTOP 포함)
@@ -174,17 +204,27 @@ function updateStatusTab(status) {
         ];
 
         let activeNode = null;
-        for (const node of fsmNodes) {
-            if (state === node || state.startsWith(node)) {
-                activeNode = `fsm_${node}`;
-                break;
+        // ESTOP 여부 검사 (ERROR 상태이면서 에러 메시지에 ESTOP/비상정지 포함 시)
+        if (state === 'ERROR' && status.error_message && /ESTOP|비상정지/i.test(status.error_message)) {
+            activeNode = 'fsm_ESTOP';
+        } else {
+            for (const node of fsmNodes) {
+                if (state === node || state.startsWith(node)) {
+                    activeNode = `fsm_${node}`;
+                    break;
+                }
             }
         }
+        
         if (state === 'DONE') activeNode = 'fsm_FINISHED';
-
+        
+        // FSM 노드들의 active 클래스 토글
         fsmNodes.forEach(node => {
-            const el = document.getElementById(`fsm_${node}`);
-            if (el) el.classList.toggle('active', `fsm_${node}` === activeNode);
+            const nodeId = `fsm_${node}`;
+            const el = document.getElementById(nodeId);
+            if (el) {
+                el.classList.toggle('active', nodeId === activeNode);
+            }
         });
     }
 }
@@ -209,6 +249,7 @@ const STAGE_LABELS = {
 function updateStageLabel(state) {
     const el = document.getElementById('stageText');
     if (!el) return;
+    // "DETECTING_WAIT" 같은 세부 상태도 접두어로 매칭
     let label = STAGE_LABELS[state];
     if (!label) {
         const prefix = Object.keys(STAGE_LABELS).find(k => state.startsWith(k));
@@ -223,7 +264,7 @@ function updateStageLabel(state) {
     else el.classList.add('running');
 }
 
-// ─── 텔레옵 배지/힌트 ───
+// ─── 텔레옵 배지/힌트 (on | off | error) ───
 function setTeleopBadge(mode) {
     const badge = document.getElementById('teleopStateBadge');
     const hint = document.getElementById('teleopHint');
@@ -285,19 +326,19 @@ function updateLatestInspection(result) {
 
     renderSsimBars(result.ssim_scores);
     addHistoryRow(result);
+    // 검사 상세 탭 업데이트
     updateInspectionDetailTab(result);
 }
 
 // ─── 검사 상세 내역 탭 업데이트 ───
 function updateInspectionDetailTab(result) {
-    const noResult = document.getElementById('detailNoResult');
-    const detailContainer = document.getElementById('detailResult');
-    if (!noResult || !detailContainer) return;
-
+    const noResult = document.getElementById('noResult');
+    const detailContainer = document.getElementById('detailContainer');
+    const badge = document.getElementById('detailBadge');
+    
     noResult.style.display = 'none';
     detailContainer.style.display = 'block';
 
-    const badge = document.getElementById('detailBadge');
     badge.style.display = 'inline-block';
     if (result.passed) {
         badge.textContent = 'PASS';
@@ -306,7 +347,6 @@ function updateInspectionDetailTab(result) {
         badge.textContent = 'FAIL';
         badge.className = 'result-badge fail';
     }
-
     const failReason = document.getElementById('detailFailReason');
     if (result.passed) {
         failReason.textContent = '정상 (None)';
@@ -319,14 +359,22 @@ function updateInspectionDetailTab(result) {
         failReason.style.background = 'rgba(248,81,73,0.1)';
         failReason.style.borderColor = 'rgba(248,81,73,0.2)';
     }
-
+    // 테이블 값 채우기 및 판정
     function fillTableRow(valId, evalId, val, min, max, isInt = false, isInverse = false) {
         const valEl = document.getElementById(valId);
         const evalEl = document.getElementById(evalId);
+        
         let formattedVal = isInt ? val : parseFloat(val).toFixed(3);
         if (valId === 'detTexture') formattedVal = parseFloat(val).toFixed(1);
         valEl.textContent = formattedVal;
-        const passed = isInverse ? val <= max : (val >= min && val <= max);
+        
+        let passed = false;
+        if (isInverse) {
+            passed = val <= max; // max is used as threshold here
+        } else {
+            passed = val >= min && val <= max;
+        }
+        
         if (passed) {
             evalEl.innerHTML = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
             valEl.style.color = 'var(--text-primary)';
@@ -335,13 +383,13 @@ function updateInspectionDetailTab(result) {
             valEl.style.color = 'var(--accent-red)';
         }
     }
-
     fillTableRow('detSolidity', 'detSolidityEval', result.solidity, 0.85, 1.0);
     fillTableRow('detAreaRatio', 'detAreaRatioEval', result.area_ratio, 0.90, 1.10);
     fillTableRow('detHoleCount', 'detHoleCountEval', result.hole_count, 0, 2, true);
     fillTableRow('detHoleArea', 'detHoleAreaEval', result.hole_area_ratio, 0, 0.05);
     fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, 500, false, true);
-
+    
+    // SSIM
     const ssimContainer = document.getElementById('detailSsimBars');
     const angles = [0, 90, 180, 270];
     const threshold = 0.85;
@@ -349,19 +397,22 @@ function updateInspectionDetailTab(result) {
     for (let i = 0; i < angles.length; i++) {
         const score = result.ssim_scores[i] || 0;
         const pct = Math.min(score * 100, 100);
-        let cls = score < threshold ? 'bad' : (score < 0.90 ? 'warn' : 'ok');
-        const evalText = cls === 'bad'
-            ? '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>'
-            : '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
-        const scoreColor = cls === 'ok' ? 'green' : (cls === 'warn' ? 'yellow' : 'red');
+        let cls = 'ok';
+        let evalText = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
+        if (score < threshold) {
+            cls = 'bad';
+            evalText = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
+        }
+        else if (score < 0.90) cls = 'warn';
+        
         html += `
-        <div class="ssim-bar-row" style="margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;">
-            <span class="ssim-angle" style="width:60px;">${angles[i]}°</span>
-            <div class="ssim-bar-track" style="flex:1;margin:0 10px;">
+        <div class="ssim-bar-row" style="margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span class="ssim-angle" style="width: 60px;">${angles[i]}°</span>
+            <div class="ssim-bar-track" style="flex: 1; margin: 0 10px;">
                 <div class="ssim-bar-fill ${cls}" style="width:${pct}%"></div>
             </div>
-            <span class="ssim-value" style="color:var(--accent-${scoreColor});width:60px;text-align:right;margin-right:15px;">${score.toFixed(3)}</span>
-            <span style="width:40px;text-align:center;">${evalText}</span>
+            <span class="ssim-value" style="color:var(--accent-${cls === 'ok' ? 'green' : cls === 'warn' ? 'yellow' : 'red'}); width: 60px; text-align: right; margin-right: 15px;">${score.toFixed(3)}</span>
+            <span style="width: 40px; text-align: center;">${evalText}</span>
         </div>`;
     }
     ssimContainer.innerHTML = html;
@@ -553,27 +604,39 @@ async function loadInitialData() {
 loadInitialData();
 drawDonut(0, 0);
 
+<<<<<<< HEAD
 // ─── 탭 전환 ───
 function switchTab(tabName) {
+=======
+// ─── 탭 전환 함수 ───
+function switchTab(tabName) {
+    // 탭 판넬 전환
+>>>>>>> origin/master
     document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
     const targetTab = document.getElementById(`tab-${tabName}`);
     if (targetTab) targetTab.classList.add('active');
 
+<<<<<<< HEAD
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const targetMenu = document.getElementById(`menu-${tabName}`);
     if (targetMenu) targetMenu.classList.add('active');
 }
 
-// ─── 텔레오퍼레이션 토글 ───
+// ─── 텔레오퍼레이션 토글 API 호출 ───
 async function toggleTeleop(enable) {
     const action = enable ? 'on' : 'off';
+    console.log(`[QUVI] 텔레오퍼레이션 요청: ${action}`);
+    
     try {
         const res = await fetch(`/api/teleop/${action}`, { method: 'POST' });
         const data = await res.json();
         console.log(`[QUVI] 텔레오퍼레이션 응답:`, data);
+        
+        // UI 즉시 업데이트 (배지 색상 변경) — 이후 status_update가 최종 동기화
         setTeleopBadge(enable ? 'on' : 'off');
     } catch (e) {
         console.error('[QUVI] 텔레오퍼레이션 토글 실패:', e);
+        // 실패 시 스위치 롤백 + 에러 표시
         const teleopToggle = document.getElementById('teleopToggle');
         if (teleopToggle) teleopToggle.checked = !enable;
         setTeleopBadge('error');
