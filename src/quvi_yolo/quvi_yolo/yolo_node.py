@@ -93,6 +93,12 @@ class YoloNode(Node):
 
         import os
         model_path = self._model_path if self._model_path else 'yolov8n.pt'
+        
+        if not self._model_path and self._target_classes:
+            self.get_logger().warn(
+                'model_path가 지정되지 않아 기본 yolov8n.pt 모델을 사용합니다. '
+                '기본 COCO 모델에는 커스텀 클래스가 없을 수 있으니 실행 인자로 모델을 지정해주세요.'
+            )
 
         if model_path != 'yolov8n.pt' and not os.path.exists(model_path):
             self.get_logger().fatal(f'YOLO 모델 파일을 찾을 수 없습니다: {model_path}')

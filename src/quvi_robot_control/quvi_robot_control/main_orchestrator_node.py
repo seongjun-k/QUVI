@@ -15,6 +15,7 @@ import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Int32, String
 from quvi_msgs.msg import GraspGoal, InspectionResult, ObjectArray, SystemStatus
+import quvi_robot_control.topics as topics
 
 
 class FsmState(Enum):
@@ -25,10 +26,8 @@ class FsmState(Enum):
     GRASPING_TRIGGER = "GRASPING_TRIGGER"
     GRASPING_WAIT = "GRASPING_WAIT"
     INSPECTING_TRIGGER = "INSPECTING_TRIGGER"
-    INSPECTING_STEP_0 = "INSPECTING_STEP_0"
-    INSPECTING_STEP_90 = "INSPECTING_STEP_90"
-    INSPECTING_STEP_180 = "INSPECTING_STEP_180"
-    INSPECTING_STEP_270 = "INSPECTING_STEP_270"
+    INSPECTING_ROTATE = "INSPECTING_ROTATE"
+    INSPECTING_CAPTURE = "INSPECTING_CAPTURE"
     INSPECTING_WAIT_RESULT = "INSPECTING_WAIT_RESULT"
     SORTING_TRIGGER = "SORTING_TRIGGER"
     SORTING_WAIT_RAIL = "SORTING_WAIT_RAIL"
@@ -93,6 +92,10 @@ class MainOrchestratorNode(Node):
         self._pass_count = 0
         self._fail_count = 0
 
+        # 검사 로직 관련
+        self._inspect_angles = [0, 90, 180, 270]
+        self._inspect_angle_idx = 0
+
         # 검사 결과 임시 저장
         self._latest_inspection_passed = False
 
@@ -128,40 +131,40 @@ class MainOrchestratorNode(Node):
 
     def _setup_publishers(self):
         # HMI 대시보드 상태 통보
-        self._hmi_status_pub = self.create_publisher(SystemStatus, '/hmi/status', 10)
+        self._hmi_status_pub = self.create_publisher(SystemStatus, topics.TOPIC_HMI_STATUS, 10)
 
         # 하위 노드 트리거 발행
-        self._yolo_trigger_pub = self.create_publisher(Bool, '/detection/trigger', 10)
-        self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
+        self._yolo_trigger_pub = self.create_publisher(Bool, topics.TOPIC_DETECTION_TRIGGER, 10)
+        self._inspect_trigger_pub = self.create_publisher(Bool, topics.TOPIC_INSPECTION_TRIGGER, 10)
 
         # 로봇 및 구동부 명령 발행
-        self._robot_grasp_pub = self.create_publisher(GraspGoal, '/robot/grasp_command', 10)
-        self._robot_rail_pub = self.create_publisher(Int32, '/robot/rail_command', 10)
-        self._robot_rotate_pub = self.create_publisher(Bool, '/robot/rotate_command', 10)
-        self._robot_release_pub = self.create_publisher(Bool, '/robot/release_command', 10)
-        self._robot_home_pub = self.create_publisher(Bool, '/robot/home_command', 10)
-        self._turntable_pub = self.create_publisher(Int32, '/motor/turntable_cmd', 10)
+        self._robot_grasp_pub = self.create_publisher(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD, 10)
+        self._robot_rail_pub = self.create_publisher(Int32, topics.TOPIC_ROBOT_RAIL_CMD, 10)
+        self._robot_rotate_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_ROTATE_CMD, 10)
+        self._robot_release_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RELEASE_CMD, 10)
+        self._robot_home_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_HOME_CMD, 10)
+        self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
 
     def _setup_subscribers(self):
         # HMI 제어 명령 수신
-        self.create_subscription(String, '/hmi/command', self._hmi_command_cb, 10)
+        self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
 
         # YOLO 탐지 결과 구독
         self.create_subscription(ObjectArray, '/detection/objects', self._yolo_objects_cb, 10)
 
         # 로봇 피드백 완료 토픽 구독
-        self.create_subscription(Bool, '/robot/act_done', self._robot_act_done_cb, 10)
-        self.create_subscription(Bool, '/robot/grasp_done', self._robot_grasp_done_cb, 10)
-        self.create_subscription(Bool, '/robot/rail_done', self._robot_rail_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_ACT_DONE, self._robot_act_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_GRASP_DONE, self._robot_grasp_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_RAIL_DONE, self._robot_rail_done_cb, 10)
 
         # 검사 결과 토픽 구독
         self.create_subscription(InspectionResult, '/inspection/result', self._inspect_result_cb, 10)
 
         # 헬스 체크용 정보 노드 상태 구독
-        self.create_subscription(String, '/robot/status', self._robot_node_status_cb, 10)
+        self.create_subscription(String, topics.TOPIC_ROBOT_STATUS, self._robot_node_status_cb, 10)
 
         # 비상정지 구독
-        self.create_subscription(Bool, '/system/estop', self._estop_system_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ESTOP, self._estop_system_cb, 10)
 
     # ─── ROS 2 구독 콜백 함수 정의 ───
     def _hmi_command_cb(self, msg: String):
@@ -318,58 +321,31 @@ class MainOrchestratorNode(Node):
             inspect_trigger.data = True
             self._inspect_trigger_pub.publish(inspect_trigger)
 
-            # 0도 턴테이블 회전 및 캡처 제어 진입
+            # 턴테이블 회전 및 캡처 제어 진입
+            self._inspect_angle_idx = 0
             self._state_timer_counter = 0
-            self._state = FsmState.INSPECTING_STEP_0
+            self._state = FsmState.INSPECTING_ROTATE
 
-        elif self._state == FsmState.INSPECTING_STEP_0:
-            if self._state_timer_counter == 0:
-                angle_msg = Int32()
-                angle_msg.data = 0
-                self._turntable_pub.publish(angle_msg)
-                self.get_logger().info('턴테이블 0도 회전 명령 전송')
+        elif self._state == FsmState.INSPECTING_ROTATE:
+            angle = self._inspect_angles[self._inspect_angle_idx]
+            angle_msg = Int32()
+            angle_msg.data = angle
+            self._turntable_pub.publish(angle_msg)
+            self.get_logger().info(f'턴테이블 {angle}도 회전 명령 전송')
+            
+            self._state_timer_counter = 0
+            self._state = FsmState.INSPECTING_CAPTURE
 
+        elif self._state == FsmState.INSPECTING_CAPTURE:
             self._state_timer_counter += 1
-            # 2초 동안 기구 안정화 및 이미지 캡처 대기
+            # 기구 안정화 및 이미지 캡처 대기 (step_delay_sec)
             if self._state_timer_counter >= int(self._step_delay * self._loop_rate):
-                self._state_timer_counter = 0
-                self._state = FsmState.INSPECTING_STEP_90
-
-        elif self._state == FsmState.INSPECTING_STEP_90:
-            if self._state_timer_counter == 0:
-                angle_msg = Int32()
-                angle_msg.data = 90
-                self._turntable_pub.publish(angle_msg)
-                self.get_logger().info('턴테이블 90도 회전 명령 전송')
-
-            self._state_timer_counter += 1
-            if self._state_timer_counter >= int(self._step_delay * self._loop_rate):
-                self._state_timer_counter = 0
-                self._state = FsmState.INSPECTING_STEP_180
-
-        elif self._state == FsmState.INSPECTING_STEP_180:
-            if self._state_timer_counter == 0:
-                angle_msg = Int32()
-                angle_msg.data = 180
-                self._turntable_pub.publish(angle_msg)
-                self.get_logger().info('턴테이블 180도 회전 명령 전송')
-
-            self._state_timer_counter += 1
-            if self._state_timer_counter >= int(self._step_delay * self._loop_rate):
-                self._state_timer_counter = 0
-                self._state = FsmState.INSPECTING_STEP_270
-
-        elif self._state == FsmState.INSPECTING_STEP_270:
-            if self._state_timer_counter == 0:
-                angle_msg = Int32()
-                angle_msg.data = 270
-                self._turntable_pub.publish(angle_msg)
-                self.get_logger().info('턴테이블 270도 회전 명령 전송')
-
-            self._state_timer_counter += 1
-            if self._state_timer_counter >= int(self._step_delay * self._loop_rate):
-                self._state_timer_counter = 0
-                self._state = FsmState.INSPECTING_WAIT_RESULT
+                self._inspect_angle_idx += 1
+                if self._inspect_angle_idx < len(self._inspect_angles):
+                    self._state = FsmState.INSPECTING_ROTATE
+                else:
+                    self._state_timer_counter = 0
+                    self._state = FsmState.INSPECTING_WAIT_RESULT
 
         elif self._state == FsmState.INSPECTING_WAIT_RESULT:
             self._state_timer_counter += 1

@@ -80,6 +80,8 @@ from lerobot.robots.omx_follower.config_omx_follower import OmxFollowerConfig
 from lerobot.teleoperators.omx_leader import OmxLeader
 from lerobot.teleoperators.omx_leader.config_omx_leader import OmxLeaderConfig
 
+import quvi_robot_control.topics as topics
+
 
 # ─────────────────────────────────────────────────────────────
 # 상수 및 열거형
@@ -332,27 +334,27 @@ class RobotControlNode(Node):
                 self._handcam_callback_raw, 10)
 
         self._grasp_cmd_sub = self.create_subscription(
-            GraspGoal, '/robot/grasp_command',
+            GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
             self._grasp_cmd_callback, 10)
 
         self._rail_cmd_sub = self.create_subscription(
-            Int32, '/robot/rail_command',
+            Int32, topics.TOPIC_ROBOT_RAIL_CMD,
             self._rail_cmd_callback, 10)
 
         self._esp32_rail_done_sub = self.create_subscription(
-            Bool, '/motor/rail_done',
+            Bool, topics.TOPIC_MOTOR_RAIL_DONE,
             self._esp32_rail_done_callback, 10)
 
         self._rotate_cmd_sub = self.create_subscription(
-            Bool, '/robot/rotate_command',
+            Bool, topics.TOPIC_ROBOT_ROTATE_CMD,
             self._rotate_cmd_callback, 10)
 
         self._release_cmd_sub = self.create_subscription(
-            Bool, '/robot/release_command',
+            Bool, topics.TOPIC_ROBOT_RELEASE_CMD,
             self._release_cmd_callback, 10)
 
         self._home_cmd_sub = self.create_subscription(
-            Bool, '/robot/home_command',
+            Bool, topics.TOPIC_ROBOT_HOME_CMD,
             self._home_cmd_callback, 10)
 
         self._teleop_cmd_sub = self.create_subscription(
@@ -361,7 +363,7 @@ class RobotControlNode(Node):
             callback_group=self._cb_group)
 
         self._estop_sub = self.create_subscription(
-            Bool, '/system/estop',
+            Bool, topics.TOPIC_ESTOP,
             self._estop_cmd_callback, 10,
             callback_group=self._cb_group)
 
@@ -370,20 +372,20 @@ class RobotControlNode(Node):
             JointState, '/robot/joint_states', 10)
 
         self._rail_pub = self.create_publisher(
-            Int32, '/motor/rail', 10)
+            Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
 
 
         self._status_pub = self.create_publisher(
-            String, '/robot/status', 10)
+            String, topics.TOPIC_ROBOT_STATUS, 10)
 
         self._act_done_pub = self.create_publisher(
-            Bool, '/robot/act_done', 10)
+            Bool, topics.TOPIC_ROBOT_ACT_DONE, 10)
 
         self._grasp_done_pub = self.create_publisher(
-            Bool, '/robot/grasp_done', 10)
+            Bool, topics.TOPIC_ROBOT_GRASP_DONE, 10)
 
         self._rail_done_pub = self.create_publisher(
-            Bool, '/robot/rail_done', 10)
+            Bool, topics.TOPIC_ROBOT_RAIL_DONE, 10)
 
         # ── Services ──
         self._act_grasp_srv = self.create_service(

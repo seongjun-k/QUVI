@@ -96,4 +96,15 @@
 #define RAIL_MIN_LIMIT        0
 #define RAIL_MAX_LIMIT        33600  // 420.0f mm * 80.0 steps/mm = 33600 steps
 
+// =============================================================================
+// ROS 2 TOPICS
+// =============================================================================
+#define TOPIC_RAIL_CMD "/motor/rail"
+#define TOPIC_TURN_CMD "/motor/turntable_cmd"
+#define TOPIC_TURN_LED "/motor/turntable_led"
+#define TOPIC_ESTOP "/system/estop"
+#define TOPIC_RAIL_DONE "/motor/rail_done"
+#define TOPIC_TURN_DONE "/motor/turntable_done"
+#define TOPIC_STATUS "/motor/status"
+
 #endif // CONFIG_H

@@ -319,28 +319,28 @@ void vCommTask(void *pvParameters) {
             &rail_sub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-            "/motor/rail"
+            TOPIC_RAIL_CMD
         ));
 
         RCCHECK(rclc_subscription_init_default(
             &turn_sub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
-            "/motor/turntable_cmd"
+            TOPIC_TURN_CMD
         ));
 
         RCCHECK(rclc_subscription_init_default(
             &turn_led_sub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-            "/motor/turntable_led"
+            TOPIC_TURN_LED
         ));
 
         RCCHECK(rclc_subscription_init_default(
             &estop_sub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-            "/system/estop"
+            TOPIC_ESTOP
         ));
 
         // Create Publishers
@@ -348,21 +348,21 @@ void vCommTask(void *pvParameters) {
             &rail_done_pub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-            "/motor/rail_done"
+            TOPIC_RAIL_DONE
         ));
 
         RCCHECK(rclc_publisher_init_default(
             &turn_done_pub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
-            "/motor/turntable_done"
+            TOPIC_TURN_DONE
         ));
 
         RCCHECK(rclc_publisher_init_default(
             &status_pub,
             &node,
             ROSIDL_GET_MSG_TYPE_SUPPORT(quvi_msgs, msg, MotorStatus),
-            "/motor/status"
+            TOPIC_STATUS
         ));
 
         // Create Executor (4 subscriptions)
