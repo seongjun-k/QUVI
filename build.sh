@@ -9,12 +9,22 @@ CONTAINER_NAME="quvi-dev"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 COMPOSE_FILE="${SCRIPT_DIR}/docker/docker-compose.yml"
 
+# docker compose 커맨드 자동 확인
+if docker compose version >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker compose"
+elif command -v docker-compose >/dev/null 2>&1; then
+    DOCKER_COMPOSE="docker-compose"
+else
+    echo "❌ 오류: docker compose 또는 docker-compose 명령을 찾을 수 없습니다."
+    exit 1
+fi
+
 # 컨테이너가 실행 중이 아니면 자동으로 docker compose up -d 실행
 if [ ! "$(docker ps -q -f name=^/${CONTAINER_NAME}$)" ]; then
     echo "🔄 [QUVI] '${CONTAINER_NAME}' 컨테이너가 꺼져 있습니다. 자동으로 실행을 시도합니다..."
     
     if [ -f "${COMPOSE_FILE}" ]; then
-        docker compose -f "${COMPOSE_FILE}" up -d
+        $DOCKER_COMPOSE -f "${COMPOSE_FILE}" up -d
         if [ $? -ne 0 ]; then
             echo "❌ 오류: docker compose 구동 실패."
             exit 1
