@@ -34,8 +34,10 @@ class FsmState(Enum):
     SORTING_WAIT_RAIL = "SORTING_WAIT_RAIL"
     RELEASING_TRIGGER = "RELEASING_TRIGGER"
     RELEASING_WAIT = "RELEASING_WAIT"
-    HOMING_TRIGGER = "HOMING_TRIGGER"
-    HOMING_WAIT = "HOMING_WAIT"
+    HOMING_RAIL_TRIGGER = "HOMING_RAIL_TRIGGER"
+    HOMING_RAIL_WAIT = "HOMING_RAIL_WAIT"
+    HOMING_ARM_TRIGGER = "HOMING_ARM_TRIGGER"
+    HOMING_ARM_WAIT = "HOMING_ARM_WAIT"
     FINISHED = "FINISHED"
     ERROR = "ERROR"
 
@@ -421,41 +423,54 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('적재 및 그리퍼 해제 완료')
                 self._processed_count += 1
                 self._current_object_idx += 1
-                self._state = FsmState.HOMING_TRIGGER
+                self._state = FsmState.HOMING_RAIL_TRIGGER
             elif self._state_timer_counter > int(self._release_timeout * self._loop_rate):
                 self.get_logger().error('그리퍼 해제 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'RELEASE_TIMEOUT'
                 self._state = FsmState.ERROR
 
-        elif self._state == FsmState.HOMING_TRIGGER:
+        elif self._state == FsmState.HOMING_RAIL_TRIGGER:
             self._robot_rail_done = False
-            self._robot_home_done = False  # arm home done flag
             self._state_timer_counter = 0
             # 레일을 다시 3D 프린터 베드로 원점 복귀
             rail_cmd = Int32()
             rail_cmd.data = 0  # RailPosition.BED
             self._robot_rail_pub.publish(rail_cmd)
+            self.get_logger().info('레일 홈 복귀 명령 전송')
+            self._state = FsmState.HOMING_RAIL_WAIT
 
+        elif self._state == FsmState.HOMING_RAIL_WAIT:
+            self._state_timer_counter += 1
+            if self._robot_rail_done:
+                self.get_logger().info('레일 홈 복귀 완료')
+                self._state = FsmState.HOMING_ARM_TRIGGER
+            elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
+                self.get_logger().error('레일 홈 복귀 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'HOME_RAIL_TIMEOUT'
+                self._state = FsmState.ERROR
+
+        elif self._state == FsmState.HOMING_ARM_TRIGGER:
+            self._robot_home_done = False  # arm home done flag
+            self._state_timer_counter = 0
             # 로봇팔 홈 복귀 실행
             home_cmd = Bool()
             home_cmd.data = True
             self._robot_home_pub.publish(home_cmd)
+            self.get_logger().info('로봇팔 홈 복귀 명령 전송')
+            self._state = FsmState.HOMING_ARM_WAIT
 
-            self.get_logger().info('레일 및 로봇팔 홈 복귀 명령 전송')
-            self._state = FsmState.HOMING_WAIT
-
-        elif self._state == FsmState.HOMING_WAIT:
+        elif self._state == FsmState.HOMING_ARM_WAIT:
             self._state_timer_counter += 1
-            if self._robot_rail_done and self._robot_home_done:
-                self.get_logger().info('홈 복귀 완료')
+            if self._robot_home_done:
+                self.get_logger().info('로봇팔 홈 복귀 완료')
                 # 다음 감지된 오브젝트가 남았으면 순회 구동
                 if self._current_object_idx < self._total_objects:
                     self._state = FsmState.GRASPING_TRIGGER
                 else:
                     self._state = FsmState.FINISHED
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
-                self.get_logger().error('홈 복귀 대기 타임아웃! ERROR 상태로 천이')
-                self._error_msg = 'HOME_TIMEOUT'
+                self.get_logger().error('로봇팔 홈 복귀 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'HOME_ARM_TIMEOUT'
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.FINISHED:

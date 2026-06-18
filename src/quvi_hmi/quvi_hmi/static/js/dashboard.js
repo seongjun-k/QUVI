@@ -604,19 +604,13 @@ async function loadInitialData() {
 loadInitialData();
 drawDonut(0, 0);
 
-<<<<<<< HEAD
 // ─── 탭 전환 ───
 function switchTab(tabName) {
-=======
-// ─── 탭 전환 함수 ───
-function switchTab(tabName) {
     // 탭 판넬 전환
->>>>>>> origin/master
     document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
     const targetTab = document.getElementById(`tab-${tabName}`);
     if (targetTab) targetTab.classList.add('active');
 
-<<<<<<< HEAD
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const targetMenu = document.getElementById(`menu-${tabName}`);
     if (targetMenu) targetMenu.classList.add('active');

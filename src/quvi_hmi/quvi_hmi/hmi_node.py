@@ -114,7 +114,7 @@ class HmiNode(Node):
         self.create_subscription(
             Int32, '/robot/rail_command', self._rail_command_cb, 10)
         self.create_subscription(
-            Int32, '/motor/turntable', self._turntable_cb, 10)
+            Int32, '/motor/turntable_cmd', self._turntable_cb, 10)
 
         # 카메라 스트림
         cam1_topic = self.get_parameter('camera1_topic').value

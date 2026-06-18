@@ -372,8 +372,6 @@ class RobotControlNode(Node):
         self._rail_pub = self.create_publisher(
             Int32, '/motor/rail', 10)
 
-        self._turntable_pub = self.create_publisher(
-            Int32, '/motor/turntable', 10)
 
         self._status_pub = self.create_publisher(
             String, '/robot/status', 10)

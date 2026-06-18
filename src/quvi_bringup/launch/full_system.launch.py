@@ -9,7 +9,7 @@ QUVI 전체 시스템 Launch 파일
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -68,6 +68,14 @@ def generate_launch_description():
     fixed_cam_exposure_arg = DeclareLaunchArgument(
         'fixed_cam_exposure', default_value='150',
         description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
+
+    micro_ros_port_arg = DeclareLaunchArgument(
+        'micro_ros_port', default_value='/dev/ttyACM0',
+        description='micro-ROS agent 시리얼 포트')
+
+    micro_ros_baud_arg = DeclareLaunchArgument(
+        'micro_ros_baud', default_value='115200',
+        description='micro-ROS agent 보 레이트')
 
     # ─── Vision Pipeline 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
@@ -140,6 +148,17 @@ def generate_launch_description():
         output='screen',
     )
 
+    micro_ros_agent = ExecuteProcess(
+        cmd=[
+            'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
+            'serial', '--dev',
+            LaunchConfiguration('micro_ros_port'),
+            '-b',
+            LaunchConfiguration('micro_ros_baud'),
+        ],
+        output='screen',
+    )
+
     return LaunchDescription([
         hmi_port_arg,
         handcam_arg,
@@ -153,10 +172,13 @@ def generate_launch_description():
         handcam_exposure_arg,
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
+        micro_ros_port_arg,
+        micro_ros_baud_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
 
+        micro_ros_agent,
         vision_launch,
         hmi_node,
         robot_control_node,
