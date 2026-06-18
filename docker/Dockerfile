@@ -39,13 +39,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ─── Python 패키지 ───
-# 1단계: 대용량 PyTorch 및 Torchvision을 타임아웃 방지 옵션을 주어 먼저 분리 설치
+# 1단계: 대용량 PyTorch 및 Torchvision을 타임아웃 방지 옵션 및 아시아 미러 서버를 지정하여 분리 설치
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir --default-timeout=1000 \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     torch>=2.1.0 \
     torchvision>=0.16.0
 
 # 2단계: 나머지 파이썬 의존성 패키지 설치
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
     "setuptools<80" \
     opencv-python-headless>=4.9.0 \
     scikit-image>=0.22.0 \
