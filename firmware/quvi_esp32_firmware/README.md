@@ -13,15 +13,16 @@ Connect the Wemos LOLIN S3 board to the two TB6600 drivers, the homing limit swi
 | LOLIN S3 PIN | Signal Name | Target Hardware Device | TB6600 Driver Pin | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | **GND** | GND | Common Ground | **GND / PUL- / DIR- / ENA-** | Tie all negative signals together |
-| **GPIO 1** | `RAIL_PUL` | Linear Rail TB6600 | **PUL+ (PUL)** | Pulse step signal (Active HIGH) |
-| **GPIO 2** | `RAIL_DIR` | Linear Rail TB6600 | **DIR+ (DIR)** | Direction signal (HIGH=Right, LOW=Left/Homing) |
-| **GPIO 3** | `RAIL_ENA` | Linear Rail TB6600 | **ENA+ (ENA)** | Enable signal (Active LOW) |
-| **GPIO 4** | `RAIL_LIMIT`| Rail Limit Switch (Left) | **COM / NO** | Active LOW (Grounds GPIO 4 on contact) |
-| **GPIO 5** | `TURN_PUL` | Turntable TB6600 | **PUL+ (PUL)** | Pulse step signal (Active HIGH) |
-| **GPIO 6** | `TURN_DIR` | Turntable TB6600 | **DIR+ (DIR)** | Direction signal |
-| **GPIO 7** | `TURN_ENA` | Turntable TB6600 | **ENA+ (ENA)** | Enable signal (Active LOW) |
-| **GPIO 8** | `TURN_LIMIT`| Turntable Index Switch | **Optional** | Active LOW index switch for turntable homing |
-| **GPIO 9** | `ESTOP` | Emergency Stop | **NC (Normally Closed)** | active LOW hardware interrupt (Estop on ground loss) |
+| **GPIO 5** | `RAIL_PUL` | Linear Rail TB6600 | **PUL+ (PUL)** | Pulse step signal (Active HIGH) |
+| **GPIO 6** | `RAIL_DIR` | Linear Rail TB6600 | **DIR+ (DIR)** | Direction signal (HIGH=Right, LOW=Left/Homing) |
+| **-1** | `RAIL_ENA` | Linear Rail TB6600 | **ENA+ (ENA)** | Enable signal removed (always enabled) |
+| **GPIO 7** | `RAIL_LIMIT`| Rail Limit Switch (Left) | **COM / NO** | Active LOW (Grounds GPIO 7 on contact) |
+| **GPIO 15** | `TURN_PUL` | Turntable TB6600 | **PUL+ (PUL)** | Pulse step signal (Active HIGH) |
+| **GPIO 16** | `TURN_DIR` | Turntable TB6600 | **DIR+ (DIR)** | Direction signal |
+| **-1** | `TURN_ENA` | Turntable TB6600 | **ENA+ (ENA)** | Enable signal removed (always enabled) |
+| **-1** | `TURN_LIMIT`| Turntable Index Switch | **None** | Turntable Limit Switch disabled |
+| **GPIO 17** | `ESTOP` | Emergency Stop | **NC (Normally Closed)** | Active LOW hardware interrupt |
+| **GPIO 18** | `TURN_LED_RELAY` | Turntable LED | **Relay IN** | LED Ring Relay Control (Active HIGH) |
 | **GPIO 38** | Onboard LED | Built-in WS2812 RGB | Onboard | Provides colored visual feedback |
 
 > [!WARNING]
@@ -114,7 +115,12 @@ When micro-ROS mode is active, the board acts as a native ROS 2 publisher/subscr
    ```
    You should see:
    - `/motor/rail`
-   - `/motor/turntable`
+   - `/motor/turntable_cmd`
+   - `/motor/rail_done`
+   - `/motor/turntable_done`
+   - `/motor/status`
+   - `/motor/turntable_led`
+   - `/system/estop`
 
 3. **Publish movements manually from host:**
    ```bash
@@ -122,5 +128,5 @@ When micro-ROS mode is active, the board acts as a native ROS 2 publisher/subscr
    ros2 topic pub /motor/rail std_msgs/msg/Int32 "{data: 1000}" --once
 
    # Rotate Turntable to 270 degrees
-   ros2 topic pub /motor/turntable std_msgs/msg/Int32 "{data: 270}" --once
+   ros2 topic pub /motor/turntable_cmd std_msgs/msg/Int32 "{data: 270}" --once
    ```

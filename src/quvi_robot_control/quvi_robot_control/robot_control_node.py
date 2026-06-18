@@ -426,6 +426,18 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # 명령 콜백 (토픽 기반 — 비동기)
     # ─────────────────────────────────────────────
+    def _try_start_command(self, target_state: RobotState, target_func, *args):
+        """lock 안에서 상태를 선점하고 스레드를 시작하여 레이스 컨디션을 방지한다."""
+        with self._state_lock:
+            if self._state != RobotState.IDLE:
+                self.get_logger().warn(f'명령 무시: 현재 {self._state.name} 동작 중')
+                return False
+            self._state = target_state
+            self._publish_status(self._state.name)
+        t = threading.Thread(target=target_func, args=args, daemon=True)
+        t.start()
+        return True
+
     def _grasp_cmd_callback(self, msg: GraspGoal):
         """파지 명령 수신 → ACT 파지 실행 (별도 스레드).
 
@@ -434,63 +446,38 @@ class RobotControlNode(Node):
         출력물을 대상으로 하는지에 대한 참고/로깅 용도이며, 향후 좌표 기반
         프리포지셔닝(레일/베이스 이동)을 붙일 때 사용할 수 있다.
         """
-        if self._get_state() != RobotState.IDLE:
-            self.get_logger().warn('파지 명령 무시: 현재 동작 중')
-            return
         self.get_logger().info(
             f'파지 목표 수신(참고): idx={msg.object_index} '
             f'x={msg.target_x:.1f} y={msg.target_y:.1f} '
             f'(ACT visuomotor 추론 사용, 좌표는 직접 미사용)')
-        t = threading.Thread(
-            target=self._execute_act_grasp, daemon=True)
-        t.start()
+        self._try_start_command(RobotState.ACT_GRASPING, self._execute_act_grasp)
 
     def _rail_cmd_callback(self, msg: Int32):
         """레일 이동 명령 수신 → 레일 이동 실행 (별도 스레드)."""
-        if self._get_state() != RobotState.IDLE:
-            self.get_logger().warn('레일 명령 무시: 현재 동작 중')
-            return
         pos_code = msg.data
         try:
             pos = RailPosition(pos_code)
         except ValueError:
             self.get_logger().error(f'알 수 없는 레일 위치 코드: {pos_code}')
             return
-        t = threading.Thread(
-            target=self._execute_rail_move, args=(pos,), daemon=True)
-        t.start()
+        self._try_start_command(RobotState.MOVING_RAIL, self._execute_rail_move, pos)
 
     def _rotate_cmd_callback(self, msg: Bool):
         """베이스 회전 명령 수신. true → 뒤 방향 / false → 앞 방향"""
-        if self._get_state() != RobotState.IDLE:
-            self.get_logger().warn('회전 명령 무시: 현재 동작 중')
-            return
         pose = POSE_BACK if msg.data else POSE_FRONT
-        t = threading.Thread(
-            target=self._execute_pose, args=(pose, '베이스 회전'), daemon=True)
-        t.start()
+        self._try_start_command(RobotState.ROTATING_BASE, self._execute_pose, pose, '베이스 회전')
 
     def _release_cmd_callback(self, msg: Bool):
         """투하 명령 수신."""
         if not msg.data:
             return
-        if self._get_state() != RobotState.IDLE:
-            self.get_logger().warn('투하 명령 무시: 현재 동작 중')
-            return
-        t = threading.Thread(
-            target=self._execute_release, daemon=True)
-        t.start()
+        self._try_start_command(RobotState.RELEASING, self._execute_release)
 
     def _home_cmd_callback(self, msg: Bool):
         """홈 복귀 명령 수신."""
         if not msg.data:
             return
-        if self._get_state() != RobotState.IDLE:
-            self.get_logger().warn('홈 복귀 명령 무시: 현재 동작 중')
-            return
-        t = threading.Thread(
-            target=self._execute_home, daemon=True)
-        t.start()
+        self._try_start_command(RobotState.HOMING, self._execute_home)
 
     def _estop_cmd_callback(self, msg: Bool):
         """비상 정지 수신."""

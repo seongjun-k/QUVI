@@ -1,7 +1,7 @@
 #include "StepperMotor.h"
 
 // Constructor
-StepperMotor::StepperMotor(uint8_t pulPin, uint8_t dirPin, uint8_t enaPin, int8_t limitPin)
+StepperMotor::StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin)
     : _stepper(AccelStepper::DRIVER, pulPin, dirPin),
       _pulPin(pulPin), _dirPin(dirPin), _enaPin(enaPin), _limitPin(limitPin), _enabled(false) {
 }

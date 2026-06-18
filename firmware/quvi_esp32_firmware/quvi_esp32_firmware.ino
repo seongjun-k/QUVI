@@ -25,10 +25,10 @@
 // GLOBAL OBJECTS
 // =============================================================================
 // 1. Motors
-// Linear Rail: GPIO 1 (PUL), GPIO 2 (DIR), GPIO 3 (ENA), GPIO 4 (LIMIT Switch at left/motor side)
+// Linear Rail: GPIO 5 (PUL), GPIO 6 (DIR), -1 (ENA), GPIO 7 (LIMIT Switch at left/motor side)
 StepperMotor railMotor(RAIL_PUL_PIN, RAIL_DIR_PIN, RAIL_ENA_PIN, RAIL_LIMIT_PIN);
 
-// Turntable: GPIO 5 (PUL), GPIO 6 (DIR), GPIO 7 (ENA), GPIO 8 (Optional Zero switch)
+// Turntable: GPIO 15 (PUL), GPIO 16 (DIR), -1 (ENA), -1 (Optional Zero switch)
 StepperMotor turnMotor(TURN_PUL_PIN, TURN_DIR_PIN, TURN_ENA_PIN, TURN_LIMIT_PIN);
 
 // 2. Onboard Status LED (WS2812B RGB LED)

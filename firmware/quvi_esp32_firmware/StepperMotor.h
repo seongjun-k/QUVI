@@ -7,7 +7,7 @@
 class StepperMotor {
 public:
     // Constructor
-    StepperMotor(uint8_t pulPin, uint8_t dirPin, uint8_t enaPin, int8_t limitPin = -1);
+    StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin = -1);
 
     // Initialization
     void begin();
@@ -43,8 +43,8 @@ public:
 
 private:
     AccelStepper _stepper;
-    uint8_t _pulPin;
-    uint8_t _dirPin;
+    int8_t _pulPin;
+    int8_t _dirPin;
     int8_t _enaPin;
     int8_t _limitPin;
     bool _enabled;

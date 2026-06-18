@@ -101,6 +101,12 @@ class HmiNode(Node):
             'yolo_debug': None,
             'inspect_debug': None,
         }
+        self._jpeg_cache = {
+            'camera1': None,
+            'camera2': None,
+            'yolo_debug': None,
+            'inspect_debug': None,
+        }
 
         # ─── ROS 2 Subscribers ───
         self.create_subscription(
@@ -211,14 +217,20 @@ class HmiNode(Node):
         np_arr = np.frombuffer(msg.data, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if frame is not None:
+            _, jpeg = cv2.imencode('.jpg', frame,
+                                   [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
             with self._lock:
                 self._camera_frames[key] = frame
+                self._jpeg_cache[key] = jpeg.tobytes()
 
     def _cam_raw_cb(self, msg: Image, key: str):
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         if frame is not None:
+            _, jpeg = cv2.imencode('.jpg', frame,
+                                   [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
             with self._lock:
                 self._camera_frames[key] = frame
+                self._jpeg_cache[key] = jpeg.tobytes()
 
     # ─── 제어 명령 발행 ───
     def send_command(self, command: str):
@@ -271,12 +283,7 @@ class HmiNode(Node):
 
     def get_camera_jpeg(self, key: str) -> bytes | None:
         with self._lock:
-            frame = self._camera_frames.get(key)
-        if frame is None:
-            return None
-        _, jpeg = cv2.imencode('.jpg', frame,
-                               [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
-        return jpeg.tobytes()
+            return self._jpeg_cache.get(key)
 
 
 # ═══════════════════════════════════════════════
