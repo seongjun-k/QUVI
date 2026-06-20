@@ -66,6 +66,8 @@ from sensor_msgs.msg import CompressedImage, JointState
 from std_msgs.msg import Bool, Int32, String
 from std_srvs.srv import Trigger
 
+import quvi_robot_control.topics as topics
+
 from quvi_msgs.msg import GraspGoal
 
 # ─────────────────────────────────────────────────────────────
@@ -150,8 +152,8 @@ class RobotControlNode(Node):
     모터 제어는 lerobot 공식 OmxFollower / OmxLeader를 사용.
     """
 
-    def __init__(self):
-        super().__init__('robot_control_node')
+    def __init__(self, **kwargs):
+        super().__init__('robot_control_node', **kwargs)
 
         # ─── 파라미터 선언 ───
         self._declare_params()
@@ -363,8 +365,13 @@ class RobotControlNode(Node):
             callback_group=self._cb_group)
 
         self._estop_sub = self.create_subscription(
-            Bool, topics.TOPIC_ESTOP,
+            Bool, '/system/estop',
             self._estop_cmd_callback, 10,
+            callback_group=self._cb_group)
+
+        self._reset_sub = self.create_subscription(
+            Bool, topics.TOPIC_ROBOT_RESET_CMD,
+            self._reset_cmd_callback, 10,
             callback_group=self._cb_group)
 
         # ── Publishers ──
@@ -492,6 +499,13 @@ class RobotControlNode(Node):
         if msg.data:
             self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 천이')
             self._safe_estop_cleanup()
+
+    def _reset_cmd_callback(self, msg: Bool):
+        """시스템 리셋 및 모터 연결 복구 명령 수신."""
+        if msg.data:
+            self.get_logger().info('로봇 리셋 및 Dynamixel 포트 재연결 시도...')
+            t = threading.Thread(target=self._execute_reset, daemon=True)
+            t.start()
 
     # ─────────────────────────────────────────────
     # 서비스 핸들러 (동기 — Main Orchestrator가 완료 대기)
@@ -863,6 +877,33 @@ class RobotControlNode(Node):
 
         self._set_state(RobotState.ERROR)
         self._publish_status('ERROR: ESTOP ACTIVE — 토크 해제됨')
+
+    def _execute_reset(self) -> bool:
+        """리셋 명령 수신 시 시리얼 연결 재설정 및 상태 초기화."""
+        with self._dxl_io_lock:
+            # 1. 기존 팔로워 해제
+            if self._follower:
+                try:
+                    self._follower.disconnect()
+                except Exception:
+                    pass
+                self._follower = None
+            self._dxl_ready = False
+            
+            # 2. 재연결 시도
+            if self._use_real_hardware:
+                self._init_follower()
+                
+            # 3. 상태 정리 및 완료 통보
+            if not self._use_real_hardware or self._dxl_ready:
+                self._set_state(RobotState.IDLE)
+                self._publish_status('ACT_READY')
+                self.get_logger().info('로봇 리셋 및 Dynamixel 재연결 완료 -> IDLE 상태 전이')
+                return True
+            else:
+                self._set_state(RobotState.ERROR)
+                self._publish_status('ERROR: RESET FAILED')
+                return False
 
     # ─────────────────────────────────────────────
     # 종료 처리

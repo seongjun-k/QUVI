@@ -13,6 +13,7 @@ TOPIC_ROBOT_ROTATE_CMD = '/robot/rotate_command'
 TOPIC_ROBOT_RELEASE_CMD = '/robot/release_command'
 TOPIC_ROBOT_HOME_CMD = '/robot/home_command'
 TOPIC_ROBOT_GRASP_CMD = '/robot/grasp_command'
+TOPIC_ROBOT_RESET_CMD = '/robot/reset_command'
 
 TOPIC_ROBOT_STATUS = '/robot/status'
 TOPIC_ROBOT_ACT_DONE = '/robot/act_done'

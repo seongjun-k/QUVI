@@ -28,24 +28,30 @@ from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_
 class YoloNode(Node):
     """YOLO 기반 3D 프린터 출력물 탐지 노드."""
 
-    def __init__(self):
-        super().__init__('yolo_node')
+    def __init__(self, **kwargs):
+        super().__init__('yolo_node', **kwargs)
 
         self._load_params()
         self._model = self._load_model()
 
+        from rclpy.callback_groups import ReentrantCallbackGroup
+        self._cb_group = ReentrantCallbackGroup()
+
         if self._use_compressed:
             self._img_sub = self.create_subscription(
                 CompressedImage, self._camera_topic,
-                self._image_callback, 10)
+                self._image_callback, 10,
+                callback_group=self._cb_group)
         else:
             self._img_sub = self.create_subscription(
                 Image, self._camera_topic,
-                self._image_callback_raw, 10)
+                self._image_callback_raw, 10,
+                callback_group=self._cb_group)
 
         self._trigger_sub = self.create_subscription(
             Bool, '/detection/trigger',
-            self._trigger_callback, 10)
+            self._trigger_callback, 10,
+            callback_group=self._cb_group)
 
         self._obj_pub       = self.create_publisher(ObjectArray, '/detection/objects', 10)
         self._proximity_pub = self.create_publisher(Bool, '/detection/proximity_warning', 10)
@@ -254,8 +260,11 @@ class YoloNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = YoloNode()
+    from rclpy.executors import MultiThreadedExecutor
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     finally:

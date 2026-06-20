@@ -45,8 +45,8 @@ class FsmState(Enum):
 class MainOrchestratorNode(Node):
     """자율 자동화 시퀀스를 총괄 제어하는 메인 오케스트레이터 노드."""
 
-    def __init__(self):
-        super().__init__('main_orchestrator_node')
+    def __init__(self, **kwargs):
+        super().__init__('main_orchestrator_node', **kwargs)
 
         # ─── 파라미터 선언 ───
         self.declare_parameter('use_act', False)
@@ -145,6 +145,7 @@ class MainOrchestratorNode(Node):
         self._robot_rotate_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_ROTATE_CMD, 10)
         self._robot_release_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RELEASE_CMD, 10)
         self._robot_home_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_HOME_CMD, 10)
+        self._robot_reset_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RESET_CMD, 10)
         self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
 
     def _setup_subscribers(self):
@@ -194,11 +195,16 @@ class MainOrchestratorNode(Node):
             self._error_msg = "ESTOP ACTIVE"
         elif command == "RESET":
             self.get_logger().info('시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.')
+            reset_msg = Bool()
+            reset_msg.data = True
+            self._robot_reset_pub.publish(reset_msg)
+
             self._state = FsmState.INIT
             self._error_msg = ""
             self._processed_count = 0
             self._pass_count = 0
             self._fail_count = 0
+            self._act_ready = False
 
     def _estop_system_cb(self, msg: Bool):
         if msg.data:
