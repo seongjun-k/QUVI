@@ -15,6 +15,7 @@ QUVI INSPECT_NODE
 
 import os
 import time
+import math
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
@@ -52,10 +53,6 @@ class InspectNode(Node):
                 Image, self._camera_topic,
                 self._image_callback_raw, 10)
 
-        self._turntable_cmd_sub = self.create_subscription(
-            Int32, '/motor/turntable_cmd',
-            self._turntable_cmd_callback, 10)
-
         self._turntable_done_sub = self.create_subscription(
             Bool, '/motor/turntable_done',
             self._turntable_done_callback, 10)
@@ -76,7 +73,6 @@ class InspectNode(Node):
                 Image, self._debug_topic, 5)
 
         self._latest_frame: Optional[np.ndarray] = None
-        self._pending_angle: Optional[int] = None
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
         self._current_object_index = 0
@@ -152,8 +148,17 @@ class InspectNode(Node):
             else:
                 self.get_logger().warn(f'기준 이미지 없음: {path}')
 
-        self.get_logger().info(
-            f'기준 이미지 {len(self._reference_images)}/{len(self._angles)}개 로드됨')
+        loaded = len(self._reference_images)
+        expected = len(self._angles)
+        self.get_logger().info(f'기준 이미지 {loaded}/{expected}개 로드됨')
+
+        # 완전성 검증: 일부만 로드된 경우 에러 로그
+        if 0 < loaded < expected:
+            missing = [a for a in self._angles if a not in self._reference_images]
+            self.get_logger().error(
+                f'기준 이미지가 불완전합니다! '
+                f'누락된 각도: {missing}. '
+                f'검사 결과의 신뢰도가 떨어집니다.')
 
     # ─────────────────────────────────────────────
     # 콜백
@@ -172,17 +177,17 @@ class InspectNode(Node):
         self._current_object_index = msg.object_index
         self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
 
-    def _turntable_cmd_callback(self, msg: Int32):
-        """턴테이블 목표 각도 수신."""
-        if self._inspection_active and msg.data in self._angles:
-            self._pending_angle = msg.data
-
     def _turntable_done_callback(self, msg: Bool):
         """턴테이블 이동 완료 시 즉시 캡처."""
-        if self._inspection_active and msg.data and self._pending_angle is not None:
-            if self._pending_angle not in self._captured_images:
-                self._capture_angle(self._pending_angle)
-            self._pending_angle = None
+        if not self._inspection_active or not msg.data:
+            return
+
+        # 오케스트레이터가 순차적으로 명령을 보내므로, done 순서 = 각도 순서로 가정.
+        # 이미 캡처된 각도는 건너뛰고, 아직 캡처되지 않은 가장 빠른 각도를 캡처.
+        for angle in self._angles:
+            if angle not in self._captured_images:
+                self._capture_angle(angle)
+                break
 
     def _capture_angle(self, angle: int):
         """현재 프레임을 해당 각도로 캡처."""
@@ -201,11 +206,9 @@ class InspectNode(Node):
         if msg.data:
             self._inspection_active = True
             self._captured_images.clear()
-            self._pending_angle = None
             self.get_logger().info('검사 모드 활성화 — 턴테이블 회전 대기 중')
         else:
             self._inspection_active = False
-            self._pending_angle = None
 
     # ─────────────────────────────────────────────
     # 메인 검사 로직
@@ -270,7 +273,6 @@ class InspectNode(Node):
 
         self._inspection_active = False
         self._captured_images.clear()
-        self._pending_angle = None
 
     # ─────────────────────────────────────────────
     # 1) CAD 기준 형상 비교
@@ -491,7 +493,7 @@ class InspectNode(Node):
                 cap_area = cache.largest_external_area()
                 a_ratio  = cap_area / ref_area if ref_area > 0 else 0.0
             else:
-                a_ratio = 1.0
+                a_ratio = float('nan')
 
             h_count, h_area_ratio = cache.holes(self._min_hole_px)
 
@@ -519,9 +521,10 @@ class InspectNode(Node):
             if not (self._sol_min <= sol <= self._sol_max):
                 all_pass = False
                 fail_details.append(f'{angle}°워핑:Solidity={sol:.3f}')
-            if not (self._f_area_min <= area <= self._f_area_max):
-                all_pass = False
-                fail_details.append(f'{angle}°미출력:면적비={area:.3f}')
+            if not math.isnan(area):
+                if not (self._f_area_min <= area <= self._f_area_max):
+                    all_pass = False
+                    fail_details.append(f'{angle}°미출력:면적비={area:.3f}')
             if holes > self._hole_max:
                 all_pass = False
                 fail_details.append(f'{angle}°레이어분리:구멍={holes}개')
@@ -539,8 +542,9 @@ class InspectNode(Node):
         all_hole_ar  = [f['hole_area_ratio']   for f in vals]
         all_tex      = [f['texture_variance']  for f in vals]
 
-        # worst_area: 1.0 에서 가장 멀리 벗어난 값 (max by key, sqrt 불필요)
-        worst_area = max(all_area, key=lambda a: abs(1.0 - a)) if all_area else 1.0
+        # worst_area: 1.0 에서 가장 멀리 벗어난 값 (NaN 제외)
+        valid_areas = [a for a in all_area if not math.isnan(a)]
+        worst_area = max(valid_areas, key=lambda a: abs(1.0 - a)) if valid_areas else float('nan')
 
         return {
             'passed':           all_pass,
@@ -662,7 +666,7 @@ class InspectNode(Node):
             f.write(f'면적비: {cad["area_ratios"]}\n')
             f.write(f'픽셀차이: {cad["pixel_diff_ratios"]}\n')
             f.write(f'Solidity: {surface["solidity"]:.4f}\n')
-            f.write(f'면적비(표면): {surface["area_ratio"]:.4f}\n')
+            f.write(f'면적비(표면): {"N/A" if math.isnan(surface["area_ratio"]) else f"{surface["area_ratio"]:.4f}"}\n')
             f.write(f'구멍수: {surface["hole_count"]}\n')
             f.write(f'구멍면적비: {surface["hole_area_ratio"]:.4f}\n')
             f.write(f'텍스처분산: {surface["texture_variance"]:.2f}\n')

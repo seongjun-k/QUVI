@@ -27,6 +27,7 @@ class FsmState(Enum):
     GRASPING_WAIT = "GRASPING_WAIT"
     INSPECTING_TRIGGER = "INSPECTING_TRIGGER"
     INSPECTING_ROTATE = "INSPECTING_ROTATE"
+    INSPECTING_WAIT_TURNTABLE = "INSPECTING_WAIT_TURNTABLE"
     INSPECTING_CAPTURE = "INSPECTING_CAPTURE"
     INSPECTING_WAIT_RESULT = "INSPECTING_WAIT_RESULT"
     SORTING_TRIGGER = "SORTING_TRIGGER"
@@ -113,6 +114,7 @@ class MainOrchestratorNode(Node):
         self._robot_release_done = False
         self._robot_home_done = False
         self._inspect_done = False
+        self._turntable_done = False
 
         # 타이머 카운터 (FSM 딜레이 대기용)
         self._state_timer_counter = 0
@@ -157,6 +159,7 @@ class MainOrchestratorNode(Node):
         self.create_subscription(Bool, topics.TOPIC_ROBOT_GRASP_DONE, self._robot_grasp_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_RELEASE_DONE, self._robot_release_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_HOME_DONE, self._robot_home_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE, self._turntable_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_RAIL_DONE, self._robot_rail_done_cb, 10)
 
         # 검사 결과 토픽 구독
@@ -229,12 +232,17 @@ class MainOrchestratorNode(Node):
 
     def _robot_home_done_cb(self, msg: Bool):
         # 홈 복귀 완료 전용
-        if msg.data and self._state == FsmState.HOMING_WAIT:
+        if msg.data and (self._state == FsmState.HOMING_ARM_WAIT):
             self._robot_home_done = True
+
+    def _turntable_done_cb(self, msg: Bool):
+        # 턴테이블 회전 완료 전용
+        if msg.data and self._state == FsmState.INSPECTING_WAIT_TURNTABLE:
+            self._turntable_done = True
 
     def _robot_rail_done_cb(self, msg: Bool):
         if msg.data:
-            if self._state.value.startswith("SORTING_") or self._state.value.startswith("HOMING_"):
+            if self._state == FsmState.SORTING_WAIT_RAIL or self._state == FsmState.HOMING_RAIL_WAIT:
                 self._robot_rail_done = True
 
     def _inspect_result_cb(self, msg: InspectionResult):
@@ -339,9 +347,24 @@ class MainOrchestratorNode(Node):
             angle_msg.data = angle
             self._turntable_pub.publish(angle_msg)
             self.get_logger().info(f'턴테이블 {angle}도 회전 명령 전송')
-            
+
+            self._turntable_done = False
             self._state_timer_counter = 0
-            self._state = FsmState.INSPECTING_CAPTURE
+            self._state = FsmState.INSPECTING_WAIT_TURNTABLE
+
+        elif self._state == FsmState.INSPECTING_WAIT_TURNTABLE:
+            self._state_timer_counter += 1
+            if self._turntable_done:
+                self.get_logger().info(f'턴테이블 {self._inspect_angles[self._inspect_angle_idx]}도 회전 완료 확인')
+                self._state_timer_counter = 0
+                self._state = FsmState.INSPECTING_CAPTURE
+            elif self._state_timer_counter > int(self._step_delay * self._loop_rate * 2):
+                self.get_logger().warn(
+                    f'턴테이블 완료 대기 타임아웃 — '
+                    f'{self._inspect_angles[self._inspect_angle_idx]}도 회전이 늦어지고 있습니다. '
+                    f'그래도 다음 단계로 진행합니다.')
+                self._state_timer_counter = 0
+                self._state = FsmState.INSPECTING_CAPTURE
 
         elif self._state == FsmState.INSPECTING_CAPTURE:
             self._state_timer_counter += 1
