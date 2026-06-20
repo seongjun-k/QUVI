@@ -27,7 +27,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, Int32
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
-from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get, BinaryCache, encode_bgr
+from quvi_robot_control.utils import decode_compressed, decode_raw, BinaryCache, encode_bgr
 
 
 class InspectNode(Node):
@@ -87,41 +87,40 @@ class InspectNode(Node):
     # 파라미터 (선언 + 로드 통합)
     # ─────────────────────────────────────────────
     def _load_params(self):
-        """declare_and_get 으로 선언과 로드를 1단계로 처리한다."""
-        g = lambda name, default: declare_and_get(self, name, default)
+        """모든 파라미터를 선언하고 로컬 멤버 변수로 로드합니다."""
+        params = [
+            ('camera_topic',            '/camera2/image_raw/compressed',    '_camera_topic'),
+            ('use_compressed',          True,                               '_use_compressed'),
+            ('reference_image_dir',     '/workspace/data/reference_images',  '_ref_dir'),
+            ('ssim_threshold',          0.85,                               '_ssim_thresh'),
+            ('area_ratio_min',          0.90,                               '_area_min'),
+            ('area_ratio_max',          1.10,                               '_area_max'),
+            ('pixel_diff_threshold',    0.10,                               '_px_diff_thresh'),
+            ('solidity_min',            0.85,                               '_sol_min'),
+            ('solidity_max',            1.00,                               '_sol_max'),
+            ('feature_area_ratio_min',  0.90,                               '_f_area_min'),
+            ('feature_area_ratio_max',  1.10,                               '_f_area_max'),
+            ('hole_count_max',          2,                                  '_hole_max'),
+            ('hole_area_ratio_max',     0.05,                               '_hole_area_max'),
+            ('texture_variance_max',    500.0,                              '_tex_var_max'),
+            ('min_hole_area_px',        50,                                 '_min_hole_px'),
+            ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
+            ('roi_margin',              20,                                 '_roi_margin'),
+            ('gaussian_blur_ksize',     5,                                  '_blur_k'),
+            ('binary_threshold',        127,                                '_bin_thresh'),
+            ('alignment_enabled',       True,                               '_align_enabled'),
+            ('align_max_dimension',     200,                                '_align_max_dim'),
+            ('align_padding_pct',       0.15,                               '_align_padding'),
+            ('align_min_bbox_area',     500,                                '_align_min_area'),
+            ('save_inspection_images',  True,                               '_save_images'),
+            ('inspection_log_dir',      '/workspace/data/inspection_logs',  '_log_dir'),
+            ('publish_debug_image',     True,                               '_pub_debug'),
+            ('debug_image_topic',       '/inspect/debug_image',             '_debug_topic'),
+        ]
 
-        self._camera_topic   = g('camera_topic',            '/camera2/image_raw/compressed')
-        self._use_compressed = g('use_compressed',          True)
-        self._ref_dir        = g('reference_image_dir',     '/workspace/data/reference_images')
-        # CAD 비교
-        self._ssim_thresh    = g('ssim_threshold',          0.85)
-        self._area_min       = g('area_ratio_min',          0.90)
-        self._area_max       = g('area_ratio_max',          1.10)
-        self._px_diff_thresh = g('pixel_diff_threshold',    0.10)
-        # 표면 특징
-        self._sol_min        = g('solidity_min',            0.85)
-        self._sol_max        = g('solidity_max',            1.00)
-        self._f_area_min     = g('feature_area_ratio_min',  0.90)
-        self._f_area_max     = g('feature_area_ratio_max',  1.10)
-        self._hole_max       = g('hole_count_max',          2)
-        self._hole_area_max  = g('hole_area_ratio_max',     0.05)
-        self._tex_var_max    = g('texture_variance_max',    500.0)
-        self._min_hole_px    = g('min_hole_area_px',        50)
-        self._angles         = g('turntable_angles',        [0, 90, 180, 270])
-        # 전처리
-        self._roi_margin     = g('roi_margin',              20)
-        self._blur_k         = g('gaussian_blur_ksize',     5)
-        self._bin_thresh     = g('binary_threshold',        127)
-        # 소프트웨어 정렬
-        self._align_enabled  = g('alignment_enabled',       True)
-        self._align_max_dim  = g('align_max_dimension',     200)
-        self._align_padding  = g('align_padding_pct',       0.15)
-        self._align_min_area = g('align_min_bbox_area',     500)
-        # 디버그
-        self._save_images    = g('save_inspection_images',  True)
-        self._log_dir        = g('inspection_log_dir',      '/workspace/data/inspection_logs')
-        self._pub_debug      = g('publish_debug_image',     True)
-        self._debug_topic    = g('debug_image_topic',       '/inspect/debug_image')
+        for name, default, attr_name in params:
+            self.declare_parameter(name, default)
+            setattr(self, attr_name, self.get_parameter(name).value)
 
     # ─────────────────────────────────────────────
     # 기준 이미지 로드

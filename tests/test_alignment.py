@@ -29,6 +29,16 @@ def _install_ros_stubs() -> None:
     global _STUBS_INSTALLED
     if _STUBS_INSTALLED:
         return
+
+    # 실제 라이브러리가 이미 존재한다면 스텁을 등록하지 않음
+    try:
+        import rclpy
+        import cv_bridge
+        import sensor_msgs
+        return
+    except ImportError:
+        pass
+
     import types
 
     for mod_name in (

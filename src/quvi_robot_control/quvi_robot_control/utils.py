@@ -5,7 +5,6 @@ QUVI 공통 유틸리티
 
 포함 내용:
   - decode_compressed / decode_raw : CompressedImage / Image → BGR ndarray
-  - declare_and_get                : 파라미터 선언+로드 1단계 처리
   - BinaryCache                    : 단일 이미지 이진화+윤곽 결과 캐싱
                                      (동일 이미지에 대한 중복 threshold/findContours 제거)
 """
@@ -41,16 +40,6 @@ def decode_raw(msg: Image) -> Optional[np.ndarray]:
         import logging
         logging.getLogger(__name__).warning(f'decode_raw 실패: {e}')
         return None
-
-
-# ─────────────────────────────────────────────
-# 파라미터 헬퍼
-# ─────────────────────────────────────────────
-
-def declare_and_get(node: Node, name: str, default):
-    """파라미터 선언과 로드를 한 번에 처리한다."""
-    node.declare_parameter(name, default)
-    return node.get_parameter(name).value
 
 
 def encode_bgr(frame: np.ndarray) -> Image:

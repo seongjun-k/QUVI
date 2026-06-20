@@ -26,6 +26,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=all
       - ROS_DOMAIN_ID=42
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+      - PIP_ROOT_USER_ACTION=ignore
 
     stdin_open: true
     tty: true

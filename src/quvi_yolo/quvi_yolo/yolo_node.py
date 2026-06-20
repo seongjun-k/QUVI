@@ -22,7 +22,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool
 
 from quvi_msgs.msg import DetectedObject, ObjectArray
-from quvi_robot_control.utils import decode_compressed, decode_raw, declare_and_get, encode_bgr
+from quvi_robot_control.utils import decode_compressed, decode_raw, encode_bgr
 
 
 class YoloNode(Node):
@@ -70,22 +70,27 @@ class YoloNode(Node):
     # 파라미터 (선언 + 로드 통합)
     # ─────────────────────────────────────────────
     def _load_params(self):
-        g = lambda name, default: declare_and_get(self, name, default)
+        """모든 파라미터를 선언하고 로컬 멤버 변수로 로드합니다."""
+        params = [
+            ('camera_topic',           '/camera1/image_raw/compressed',    '_camera_topic'),
+            ('use_compressed',         True,                               '_use_compressed'),
+            ('model_path',             '',                                 '_model_path'),
+            ('confidence_threshold',   0.5,                                '_conf_thresh'),
+            ('iou_threshold',          0.45,                               '_iou_thresh'),
+            ('max_detections',         20,                                 '_max_det'),
+            ('target_classes',         ['print_object'],                   '_target_classes'),
+            ('min_bbox_area',          500,                                '_min_bbox_area'),
+            ('proximity_warning_px',   60,                                 '_proximity_px'),
+            ('sort_direction',         'left_to_right',                    '_sort_dir'),
+            ('input_width',            640,                                '_input_w'),
+            ('input_height',           480,                                '_input_h'),
+            ('publish_debug_image',    True,                               '_pub_debug'),
+            ('debug_image_topic',      '/yolo/debug_image',                '_debug_topic'),
+        ]
 
-        self._camera_topic    = g('camera_topic',           '/camera1/image_raw/compressed')
-        self._use_compressed  = g('use_compressed',         True)
-        self._model_path      = g('model_path',             '')
-        self._conf_thresh     = g('confidence_threshold',   0.5)
-        self._iou_thresh      = g('iou_threshold',          0.45)
-        self._max_det         = g('max_detections',         20)
-        self._target_classes  = g('target_classes',         ['print_object'])
-        self._min_bbox_area   = g('min_bbox_area',          500)
-        self._proximity_px    = g('proximity_warning_px',   60)
-        self._sort_dir        = g('sort_direction',         'left_to_right')
-        self._input_w         = g('input_width',            640)
-        self._input_h         = g('input_height',           480)
-        self._pub_debug       = g('publish_debug_image',    True)
-        self._debug_topic     = g('debug_image_topic',      '/yolo/debug_image')
+        for name, default, attr_name in params:
+            self.declare_parameter(name, default)
+            setattr(self, attr_name, self.get_parameter(name).value)
 
     # ─────────────────────────────────────────────
     # 모델 로드

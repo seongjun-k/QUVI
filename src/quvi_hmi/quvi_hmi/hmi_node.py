@@ -155,7 +155,10 @@ class HmiNode(Node):
     def _status_cb(self, msg: SystemStatus):
         with self._lock:
             if self._system_status.get('teleop_active', False):
-                self._system_status['current_state'] = 'TELEOPING'
+                if msg.current_state == 'ERROR':
+                    self._system_status['current_state'] = 'ERROR'
+                else:
+                    self._system_status['current_state'] = 'TELEOPING'
             else:
                 self._system_status['current_state'] = msg.current_state
             self._system_status['total_objects'] = msg.total_objects
@@ -388,7 +391,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node._teleop_pub.publish(msg)
             with hmi_node._lock:
                 hmi_node._system_status['teleop_active'] = True
-                hmi_node._system_status['current_state'] = 'TELEOPING'
             return jsonify({'ok': True, 'teleop': 'on'})
         elif action == 'off':
             msg = Bool()
@@ -396,7 +398,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node._teleop_pub.publish(msg)
             with hmi_node._lock:
                 hmi_node._system_status['teleop_active'] = False
-                hmi_node._system_status['current_state'] = 'IDLE'
             return jsonify({'ok': True, 'teleop': 'off'})
         else:
             return jsonify({'error': f'Invalid teleop action: {action}'}), 400

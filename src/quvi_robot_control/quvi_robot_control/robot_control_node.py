@@ -305,8 +305,6 @@ class RobotControlNode(Node):
 
         self.get_logger().info(f'ACT 모델 로드 중: {resolved_path}')
         try:
-            import torch
-            from lerobot.policies.act.modeling_act import ACTPolicy
             if not resolved_path.exists():
                 raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
             self._act_policy = ACTPolicy.from_pretrained(str(resolved_path))
