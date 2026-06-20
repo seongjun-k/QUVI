@@ -155,6 +155,8 @@ class MainOrchestratorNode(Node):
         # 로봇 피드백 완료 토픽 구독
         self.create_subscription(Bool, topics.TOPIC_ROBOT_ACT_DONE, self._robot_act_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_GRASP_DONE, self._robot_grasp_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_RELEASE_DONE, self._robot_release_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_HOME_DONE, self._robot_home_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_RAIL_DONE, self._robot_rail_done_cb, 10)
 
         # 검사 결과 토픽 구독
@@ -212,18 +214,23 @@ class MainOrchestratorNode(Node):
         self._yolo_online = True
 
     def _robot_act_done_cb(self, msg: Bool):
-        if msg.data and self._state.value.startswith("GRASPING_"):
+        if msg.data and self._state == FsmState.GRASPING_WAIT:
             self._robot_grasp_done = True
 
     def _robot_grasp_done_cb(self, msg: Bool):
-        # release, grasp, home 동작의 피드백 완료 통합 처리
-        if msg.data:
-            if self._state.value.startswith("GRASPING_"):
-                self._robot_grasp_done = True
-            elif self._state.value.startswith("RELEASING_"):
-                self._robot_release_done = True
-            elif self._state.value.startswith("HOMING_"):
-                self._robot_home_done = True
+        # 파지 완료 전용
+        if msg.data and self._state == FsmState.GRASPING_WAIT:
+            self._robot_grasp_done = True
+
+    def _robot_release_done_cb(self, msg: Bool):
+        # 투하 완료 전용
+        if msg.data and self._state == FsmState.RELEASING_WAIT:
+            self._robot_release_done = True
+
+    def _robot_home_done_cb(self, msg: Bool):
+        # 홈 복귀 완료 전용
+        if msg.data and self._state == FsmState.HOMING_WAIT:
+            self._robot_home_done = True
 
     def _robot_rail_done_cb(self, msg: Bool):
         if msg.data:

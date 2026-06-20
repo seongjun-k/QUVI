@@ -384,6 +384,12 @@ class RobotControlNode(Node):
         self._grasp_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_GRASP_DONE, 10)
 
+        self._release_done_pub = self.create_publisher(
+            Bool, '/robot/release_done', 10)
+
+        self._home_done_pub = self.create_publisher(
+            Bool, '/robot/home_done', 10)
+
         self._rail_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_RAIL_DONE, 10)
 
@@ -485,8 +491,7 @@ class RobotControlNode(Node):
         """비상 정지 수신."""
         if msg.data:
             self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 천이')
-            self._set_state(RobotState.ERROR)
-            self._publish_status('ERROR: ESTOP ACTIVE')
+            self._safe_estop_cleanup()
 
     # ─────────────────────────────────────────────
     # 서비스 핸들러 (동기 — Main Orchestrator가 완료 대기)
@@ -566,6 +571,12 @@ class RobotControlNode(Node):
 
             # 관절 상태: lerobot bus에서 raw 위치 읽기 → 라디안 변환 (0~4095 = 0~2π)
             raw_positions = self._read_raw_positions()
+            if raw_positions is None:
+                self.get_logger().error('관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
+                self._set_state(RobotState.ERROR)
+                self._publish_status('ERROR: Dynamixel 통신 오류')
+                return False
+
             joint_rad = [
                 (raw_positions[name] / 4095.0) * 2 * math.pi
                 for name in JOINT_NAMES
@@ -594,9 +605,20 @@ class RobotControlNode(Node):
                 f'추론 시간={(time.time()-start)*1000:.1f}ms')
 
             # ── 액션 청크 실행 ──
+            if self._get_state() == RobotState.ERROR:
+                self.get_logger().error('ESTOP 감지 — ACT 청크 실행을 중단합니다.')
+                self._safe_estop_cleanup()
+                return False
+
             dt = 1.0 / ACT_CONTROL_HZ
             for i, action in enumerate(action_chunk):
                 step_start = time.time()
+
+                # 매 스텝마다 ESTOP 상태 검증
+                if self._get_state() == RobotState.ERROR:
+                    self.get_logger().error(f'ESTOP 감지 — ACT 실행 중단 (스텝 {i}/{len(action_chunk)})')
+                    self._safe_estop_cleanup()
+                    return False
 
                 if self._use_real_hardware and self._dxl_ready:
                     # lerobot 공식 API를 통한 캘리브레이션/변환 적용 및 모터 전송
@@ -724,7 +746,7 @@ class RobotControlNode(Node):
 
         done_msg = Bool()
         done_msg.data = True
-        self._grasp_done_pub.publish(done_msg)
+        self._release_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
         self._publish_status('투하 완료')
@@ -745,7 +767,7 @@ class RobotControlNode(Node):
         # 홈 복귀 완료 신호 발행
         done_msg = Bool()
         done_msg.data = True
-        self._grasp_done_pub.publish(done_msg)
+        self._home_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
         self._publish_status('홈 복귀 완료')
@@ -774,11 +796,11 @@ class RobotControlNode(Node):
             self.get_logger().error(f'lerobot sync_write 오류: {e}')
             return False
 
-    def _read_raw_positions(self) -> dict:
+    def _read_raw_positions(self) -> Optional[dict]:
         """lerobot bus를 통해 현재 raw 위치값 읽기 (normalize=False).
 
         Returns:
-            {'shoulder_pan': 2048, ...} 형태의 dict.
+            {'shoulder_pan': 2048, ...} 형태의 dict. 실패 시 None.
         """
         if not self._use_real_hardware or not self._dxl_ready:
             return {name: 2048 for name in JOINT_NAMES}
@@ -789,7 +811,7 @@ class RobotControlNode(Node):
                     'Present_Position', normalize=False)
         except Exception as e:
             self.get_logger().error(f'lerobot sync_read 오류: {e}')
-            return {name: 2048 for name in JOINT_NAMES}
+            return None
 
     # ─────────────────────────────────────────────
     # 관절 상태 발행 (30 Hz 타이머)
@@ -797,6 +819,8 @@ class RobotControlNode(Node):
     def _publish_joint_states(self):
         """현재 관절 위치를 JointState 토픽으로 발행."""
         raw_positions = self._read_raw_positions()
+        if raw_positions is None:
+            return
 
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
@@ -824,6 +848,21 @@ class RobotControlNode(Node):
         status_msg = String()
         status_msg.data = f'[ROBOT] {msg}'
         self._status_pub.publish(status_msg)
+
+    def _safe_estop_cleanup(self):
+        """ESTOP 발생 시 안전하게 Dynamixel 토크를 해제하고 상태를 정리한다."""
+        try:
+            if self._dxl_ready and self._follower:
+                if hasattr(self._follower, 'bus'):
+                    torque_off = {name: 0 for name in JOINT_NAMES}
+                    with self._dxl_io_lock:
+                        self._follower.bus.sync_write('Torque_Enable', torque_off, normalize=False)
+                self._dxl_ready = False
+        except Exception as e:
+            self.get_logger().error(f'ESTOP cleanup 중 오류: {e}')
+
+        self._set_state(RobotState.ERROR)
+        self._publish_status('ERROR: ESTOP ACTIVE — 토크 해제됨')
 
     # ─────────────────────────────────────────────
     # 종료 처리
