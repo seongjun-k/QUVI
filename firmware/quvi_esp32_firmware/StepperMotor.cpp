@@ -1,10 +1,10 @@
 #include "StepperMotor.h"
 
 // Constructor
-// dirPin/pulPin 순서 교환으로 AccelStepper 하드웨어 방향 반전
-StepperMotor::StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin)
+StepperMotor::StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin, bool invertDir)
     : _stepper(AccelStepper::DRIVER, pulPin, dirPin),
-      _pulPin(pulPin), _dirPin(dirPin), _enaPin(enaPin), _limitPin(limitPin), _enabled(false) {
+      _pulPin(pulPin), _dirPin(dirPin), _enaPin(enaPin), _limitPin(limitPin),
+      _invertDir(invertDir), _enabled(false) {
 }
 
 // Initialize GPIOs
@@ -15,6 +15,10 @@ void StepperMotor::begin() {
     if (_enaPin >= 0) {
         pinMode(_enaPin, OUTPUT);
         digitalWrite(_enaPin, HIGH); // Disable by default (Active LOW)
+    }
+    // DIR 핀 극성 반전 (invertDir=true 시 호밍/주행 모두 적용)
+    if (_invertDir) {
+        _stepper.setPinsInverted(false, true);
     }
     _enabled = false;
 }

@@ -6,8 +6,8 @@
 
 class StepperMotor {
 public:
-    // Constructor
-    StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin = -1);
+    // invertDir=true 시 DIR 핀 극성 반전 (호밍/주행 모두 적용)
+    StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin = -1, bool invertDir = false);
 
     // Initialization
     void begin();
@@ -18,7 +18,7 @@ public:
     void setMaxSpeed(float speed);
     void setAcceleration(float accel);
     
-    // Motor enable / disable (no-op or simple status tracking since EN pin is removed)
+    // Motor enable / disable
     void enable();
     void disable();
     bool isEnabled() const;
@@ -47,7 +47,8 @@ private:
     int8_t _dirPin;
     int8_t _enaPin;
     int8_t _limitPin;
-    bool _enabled;
+    bool   _invertDir;
+    bool   _enabled;
 };
 
 #endif // STEPPER_MOTOR_H
