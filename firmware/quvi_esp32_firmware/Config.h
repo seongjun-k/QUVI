@@ -74,8 +74,8 @@
 // Speed & Acceleration Limits
 #define RAIL_MAX_SPEED        16000.0 // Maximum speed in steps/sec (equivalent to 400mm/s)
 #define RAIL_ACCELERATION     40000.0 // Acceleration rate in steps/sec^2
-#define TURN_MAX_SPEED        1500.0 // Maximum speed in steps/sec (turntable)
-#define TURN_ACCELERATION     2000.0 // Acceleration rate in steps/sec^2
+#define TURN_MAX_SPEED        600.0  // Maximum speed in steps/sec (turntable)
+#define TURN_ACCELERATION     1000.0 // Acceleration rate in steps/sec^2
 
 // Homing Calibration Parameters (Rail)
 // The limit switch is on the motor side (left side).
