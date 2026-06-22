@@ -18,7 +18,7 @@ void StepperMotor::begin() {
     }
     // DIR 핀 극성 반전 (invertDir=true 시 호밍/주행 모두 적용)
     if (_invertDir) {
-        _stepper.setPinsInverted(false, true);
+        _stepper.setPinsInverted(true, true);
     }
     _enabled = false;
 }

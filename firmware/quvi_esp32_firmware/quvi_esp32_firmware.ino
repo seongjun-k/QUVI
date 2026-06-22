@@ -163,15 +163,18 @@ void loop() {
 void vMotorTask(void *pvParameters) {
     (void) pvParameters;
     
-    // Safety check loop frequency: 100 kHz (10 microseconds sleep)
-    TickType_t xLastWakeTime = xTaskGetTickCount();
+    // Track last applied LED color to avoid redundant and blocking WS2812 writes
+    static uint32_t lastAppliedColor = 0xFFFFFFFF;
 
     for (;;) {
         if (isEmergencyStopped) {
             railMotor.disable();
             turnMotor.disable();
             digitalWrite(TURN_LED_RELAY_PIN, LOW); // E-STOP safety action
-            setLedColor(COLOR_RED);
+            if (lastAppliedColor != COLOR_RED) {
+                setLedColor(COLOR_RED);
+                lastAppliedColor = COLOR_RED;
+            }
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
@@ -187,20 +190,44 @@ void vMotorTask(void *pvParameters) {
             static bool blinkState = false;
             if (millis() - lastBlink > 250) {
                 blinkState = !blinkState;
-                setLedColor(blinkState ? COLOR_YELLOW : COLOR_OFF);
+                uint32_t targetColor = blinkState ? COLOR_YELLOW : COLOR_OFF;
+                if (lastAppliedColor != targetColor) {
+                    setLedColor(targetColor);
+                    lastAppliedColor = targetColor;
+                }
                 lastBlink = millis();
             }
         } else if (railMoving || turnMoving) {
             // Green when moving and healthy
-            setLedColor(COLOR_GREEN);
+            if (lastAppliedColor != COLOR_GREEN) {
+                setLedColor(COLOR_GREEN);
+                lastAppliedColor = COLOR_GREEN;
+            }
         } else {
             // Static blue when idle and calibrated
-            setLedColor(COLOR_BLUE);
+            if (lastAppliedColor != COLOR_BLUE) {
+                setLedColor(COLOR_BLUE);
+                lastAppliedColor = COLOR_BLUE;
+            }
         }
 
-        // Microsecond precision scheduling
         // Yield execution to prevent ESP32 Core 0 watchdog triggers
-        delayMicroseconds(10);
+        static uint32_t loopCounter = 0;
+        if (!railMoving && !turnMoving) {
+            // When motors are idle, yield CPU completely to allow IDLE task to feed watchdog
+            vTaskDelay(pdMS_TO_TICKS(10));
+            loopCounter = 0;
+        } else {
+            // When moving, poll at high speed
+            delayMicroseconds(10);
+            
+            // Periodically yield for 1ms (every ~20ms of movement) to prevent watchdog timeout
+            loopCounter++;
+            if (loopCounter >= 2000) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+                loopCounter = 0;
+            }
+        }
     }
 }
 
@@ -219,6 +246,12 @@ void performHomingCalibration() {
 
     // Calibrate linear rail (towards motor on left)
     railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF);
+
+    // Restore operating speed & acceleration profiles which were overridden during homing sequence
+    railMotor.setMaxSpeed(RAIL_MAX_SPEED);
+    railMotor.setAcceleration(RAIL_ACCELERATION);
+    turnMotor.setMaxSpeed(TURN_MAX_SPEED);
+    turnMotor.setAcceleration(TURN_ACCELERATION);
 
     // Calibrate turntable (optional - reset absolute zero position on boot)
     turnMotor.setCurrentPosition(0);

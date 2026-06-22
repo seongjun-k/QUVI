@@ -8,7 +8,7 @@
 // =============================================================================
 // Comment out the line below to switch the firmware to "Standard Serial Mode" (UART).
 // When defined, the ESP32-S3 will run micro-ROS and expect a micro-ROS agent on the host.
-#define USE_MICRO_ROS
+//#define USE_MICRO_ROS
 
 #ifdef USE_MICRO_ROS
   // micro-ROS agent 와 반드시 일치해야 하는 전송 보드레이트.
@@ -72,15 +72,15 @@
 // MOTION STYLES & CALIBRATION (TRAPEZOIDAL CONTROL)
 // =============================================================================
 // Speed & Acceleration Limits
-#define RAIL_MAX_SPEED        8000.0 // Maximum speed in steps/sec (equivalent to 100mm/s)
-#define RAIL_ACCELERATION     5000.0 // Acceleration rate in steps/sec^2
+#define RAIL_MAX_SPEED        16000.0 // Maximum speed in steps/sec (equivalent to 400mm/s)
+#define RAIL_ACCELERATION     40000.0 // Acceleration rate in steps/sec^2
 #define TURN_MAX_SPEED        1500.0 // Maximum speed in steps/sec (turntable)
 #define TURN_ACCELERATION     2000.0 // Acceleration rate in steps/sec^2
 
 // Homing Calibration Parameters (Rail)
 // The limit switch is on the motor side (left side).
-#define RAIL_HOMING_DIR       HIGH   // Direction value to move towards the motor (LOW or HIGH)
-#define RAIL_RUNNING_DIR      LOW    // Direction value to move away from motor (positive step increment)
+#define RAIL_HOMING_DIR       LOW    // Direction value to move towards the motor (LOW or HIGH)
+#define RAIL_RUNNING_DIR      HIGH   // Direction value to move away from motor (positive step increment)
 
 #define RAIL_HOME_COARSE_SPD  800.0  // Rapid search speed (steps/sec)
 #define RAIL_HOME_FINE_SPD    200.0  // High-precision slow search speed (steps/sec)
