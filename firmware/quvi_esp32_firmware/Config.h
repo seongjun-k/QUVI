@@ -79,8 +79,8 @@
 
 // Homing Calibration Parameters (Rail)
 // The limit switch is on the motor side (left side).
-#define RAIL_HOMING_DIR       LOW    // Direction value to move towards the motor (LOW or HIGH)
-#define RAIL_RUNNING_DIR      HIGH   // Direction value to move away from motor (positive step increment)
+#define RAIL_HOMING_DIR       HIGH   // Direction value to move towards the motor (LOW or HIGH)
+#define RAIL_RUNNING_DIR      LOW    // Direction value to move away from motor (positive step increment)
 
 #define RAIL_HOME_COARSE_SPD  800.0  // Rapid search speed (steps/sec)
 #define RAIL_HOME_FINE_SPD    200.0  // High-precision slow search speed (steps/sec)
