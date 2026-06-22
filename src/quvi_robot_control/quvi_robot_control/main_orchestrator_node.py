@@ -21,15 +21,19 @@ import quvi_robot_control.topics as topics
 class FsmState(Enum):
     INIT = "INIT"
     IDLE = "IDLE"
-    DETECTING_TRIGGER = "DETECTING_TRIGGER"
-    DETECTING_WAIT = "DETECTING_WAIT"
+    START_RAIL_MOVE_BED_TRIGGER = "START_RAIL_MOVE_BED_TRIGGER"
+    START_RAIL_MOVE_BED_WAIT = "START_RAIL_MOVE_BED_WAIT"
     GRASPING_TRIGGER = "GRASPING_TRIGGER"
     GRASPING_WAIT = "GRASPING_WAIT"
+    PLACING_CHAMBER_TRIGGER = "PLACING_CHAMBER_TRIGGER"
+    PLACING_CHAMBER_WAIT = "PLACING_CHAMBER_WAIT"
     INSPECTING_TRIGGER = "INSPECTING_TRIGGER"
     INSPECTING_ROTATE = "INSPECTING_ROTATE"
     INSPECTING_WAIT_TURNTABLE = "INSPECTING_WAIT_TURNTABLE"
     INSPECTING_CAPTURE = "INSPECTING_CAPTURE"
     INSPECTING_WAIT_RESULT = "INSPECTING_WAIT_RESULT"
+    PICKING_CHAMBER_TRIGGER = "PICKING_CHAMBER_TRIGGER"
+    PICKING_CHAMBER_WAIT = "PICKING_CHAMBER_WAIT"
     SORTING_TRIGGER = "SORTING_TRIGGER"
     SORTING_WAIT_RAIL = "SORTING_WAIT_RAIL"
     RELEASING_TRIGGER = "RELEASING_TRIGGER"
@@ -115,6 +119,9 @@ class MainOrchestratorNode(Node):
         self._robot_home_done = False
         self._inspect_done = False
         self._turntable_done = False
+        self._robot_rotate_done = False
+        self._place_chamber_done = False
+        self._pick_chamber_done = False
 
         # 타이머 카운터 (FSM 딜레이 대기용)
         self._state_timer_counter = 0
@@ -147,6 +154,8 @@ class MainOrchestratorNode(Node):
         self._robot_home_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_HOME_CMD, 10)
         self._robot_reset_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RESET_CMD, 10)
         self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
+        self._robot_place_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_CMD, 10)
+        self._robot_pick_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_CMD, 10)
 
     def _setup_subscribers(self):
         # HMI 제어 명령 수신
@@ -162,6 +171,9 @@ class MainOrchestratorNode(Node):
         self.create_subscription(Bool, topics.TOPIC_ROBOT_HOME_DONE, self._robot_home_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE, self._turntable_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_RAIL_DONE, self._robot_rail_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_ROTATE_DONE, self._robot_rotate_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_DONE, self._place_chamber_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_DONE, self._pick_chamber_done_cb, 10)
 
         # 검사 결과 토픽 구독
         self.create_subscription(InspectionResult, '/inspection/result', self._inspect_result_cb, 10)
@@ -184,7 +196,7 @@ class MainOrchestratorNode(Node):
                     self._error_msg = "ACT NOT READY"
                     self._state = FsmState.ERROR
                     return
-                self._state = FsmState.DETECTING_TRIGGER
+                self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER
                 self.get_logger().info('자율 구동 시퀀스를 시작합니다.')
         elif command == "STOP":
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
@@ -231,6 +243,18 @@ class MainOrchestratorNode(Node):
         if msg.data and self._state == FsmState.GRASPING_WAIT:
             self._robot_grasp_done = True
 
+    def _robot_rotate_done_cb(self, msg: Bool):
+        if msg.data and (self._state == FsmState.PICKING_CHAMBER_WAIT or self._state == FsmState.PLACING_CHAMBER_WAIT):
+            self._robot_rotate_done = True
+
+    def _place_chamber_done_cb(self, msg: Bool):
+        if msg.data and self._state == FsmState.PLACING_CHAMBER_WAIT:
+            self._place_chamber_done = True
+
+    def _pick_chamber_done_cb(self, msg: Bool):
+        if msg.data and self._state == FsmState.PICKING_CHAMBER_WAIT:
+            self._pick_chamber_done = True
+
     def _robot_release_done_cb(self, msg: Bool):
         # 투하 완료 전용
         if msg.data and self._state == FsmState.RELEASING_WAIT:
@@ -248,7 +272,7 @@ class MainOrchestratorNode(Node):
 
     def _robot_rail_done_cb(self, msg: Bool):
         if msg.data:
-            if self._state == FsmState.SORTING_WAIT_RAIL or self._state == FsmState.HOMING_RAIL_WAIT:
+            if self._state in (FsmState.SORTING_WAIT_RAIL, FsmState.HOMING_RAIL_WAIT, FsmState.START_RAIL_MOVE_BED_WAIT):
                 self._robot_rail_done = True
 
     def _inspect_result_cb(self, msg: InspectionResult):
@@ -279,60 +303,70 @@ class MainOrchestratorNode(Node):
             # HMI로부터 START 대기 (Callback에서 처리)
             pass
 
-        elif self._state == FsmState.DETECTING_TRIGGER:
-            self._yolo_received = False
+        elif self._state == FsmState.START_RAIL_MOVE_BED_TRIGGER:
+            self._robot_rail_done = False
             self._state_timer_counter = 0
-            trigger = Bool()
-            trigger.data = True
-            self._yolo_trigger_pub.publish(trigger)
-            self._state = FsmState.DETECTING_WAIT
+            rail_cmd = Int32()
+            rail_cmd.data = 0  # RailPosition.BED
+            self._robot_rail_pub.publish(rail_cmd)
+            self.get_logger().info('레일 베드 위치(30,500스텝) 이동 명령 전송')
+            self._state = FsmState.START_RAIL_MOVE_BED_WAIT
 
-        elif self._state == FsmState.DETECTING_WAIT:
+        elif self._state == FsmState.START_RAIL_MOVE_BED_WAIT:
             self._state_timer_counter += 1
-            if self._yolo_received:
-                if self._total_objects > 0:
-                    self._state = FsmState.GRASPING_TRIGGER
-                else:
-                    self.get_logger().info('탐지된 객체가 없어 대기 상태로 복귀합니다.')
-                    self._state = FsmState.FINISHED
-            elif self._state_timer_counter > int(self._detecting_timeout * self._loop_rate):
-                self.get_logger().error('YOLO 탐지 대기 타임아웃! ERROR 상태로 천이')
-                self._error_msg = 'DETECTING_TIMEOUT'
+            if self._robot_rail_done:
+                self.get_logger().info('레일 베드 위치 이동 완료')
+                self._state = FsmState.GRASPING_TRIGGER
+            elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
+                self.get_logger().error('레일 베드 이동 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'START_RAIL_BED_TIMEOUT'
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.GRASPING_TRIGGER:
-            if self._current_object_idx < self._total_objects:
-                obj = self._detected_objects[self._current_object_idx]
-                goal = GraspGoal()
-                goal.header.stamp = self.get_clock().now().to_msg()
-                goal.header.frame_id = "camera_handcam"
+            self._total_objects = 1
+            self._current_object_idx = 0
+            
+            goal = GraspGoal()
+            goal.header.stamp = self.get_clock().now().to_msg()
+            goal.header.frame_id = "camera_handcam"
+            goal.target_x = 0.0
+            goal.target_y = 0.0
+            goal.target_z = float(self._target_z)
+            goal.object_index = 0
 
-                # 픽셀 좌표 -> 실공간 물리 좌표 변환 적용
-                goal.target_x = float(obj.x * self._px_to_mm_x + self._offset_x)
-                goal.target_y = float(obj.y * self._px_to_mm_y + self._offset_y)
-                goal.target_z = float(self._target_z)
-                goal.object_index = int(self._current_object_idx)
-
-                self.get_logger().info(
-                    f'[{self._current_object_idx + 1}/{self._total_objects}] '
-                    f'로봇 파지 명령 발행: x={goal.target_x:.2f}, y={goal.target_y:.2f}'
-                )
-
-                self._robot_grasp_done = False
-                self._state_timer_counter = 0
-                self._robot_grasp_pub.publish(goal)
-                self._state = FsmState.GRASPING_WAIT
-            else:
-                self._state = FsmState.FINISHED
+            self.get_logger().info('로봇 ACT 파지 명령 발행')
+            self._robot_grasp_done = False
+            self._state_timer_counter = 0
+            self._robot_grasp_pub.publish(goal)
+            self._state = FsmState.GRASPING_WAIT
 
         elif self._state == FsmState.GRASPING_WAIT:
             self._state_timer_counter += 1
             if self._robot_grasp_done:
-                self.get_logger().info('로봇 파지 및 챔버 이송 시퀀스 완료')
-                self._state = FsmState.INSPECTING_TRIGGER
+                self.get_logger().info('로봇 ACT 파지 완료. 검사장 안착 단계로 진입')
+                self._state = FsmState.PLACING_CHAMBER_TRIGGER
             elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
                 self.get_logger().error('로봇 파지 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'GRASP_TIMEOUT'
+                self._state = FsmState.ERROR
+
+        elif self._state == FsmState.PLACING_CHAMBER_TRIGGER:
+            self._place_chamber_done = False
+            self._state_timer_counter = 0
+            cmd = Bool()
+            cmd.data = True
+            self._robot_place_chamber_pub.publish(cmd)
+            self.get_logger().info('검사장(턴테이블) 안착 명령 전송')
+            self._state = FsmState.PLACING_CHAMBER_WAIT
+
+        elif self._state == FsmState.PLACING_CHAMBER_WAIT:
+            self._state_timer_counter += 1
+            if self._place_chamber_done:
+                self.get_logger().info('검사장 안착 완료. 품질 검사 단계로 진입')
+                self._state = FsmState.INSPECTING_TRIGGER
+            elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
+                self.get_logger().error('검사장 안착 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'PLACE_CHAMBER_TIMEOUT'
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.INSPECTING_TRIGGER:
@@ -386,10 +420,29 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.INSPECTING_WAIT_RESULT:
             self._state_timer_counter += 1
             if self._inspect_done:
-                self._state = FsmState.SORTING_TRIGGER
+                self._state = FsmState.PICKING_CHAMBER_TRIGGER
             elif self._state_timer_counter > int(self._inspect_timeout * self._loop_rate):
                 self.get_logger().error('품질 검사 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'INSPECT_TIMEOUT'
+                self._state = FsmState.ERROR
+
+        elif self._state == FsmState.PICKING_CHAMBER_TRIGGER:
+            self._pick_chamber_done = False
+            self._state_timer_counter = 0
+            cmd = Bool()
+            cmd.data = True
+            self._robot_pick_chamber_pub.publish(cmd)
+            self.get_logger().info('검사장 재파지 명령 전송')
+            self._state = FsmState.PICKING_CHAMBER_WAIT
+
+        elif self._state == FsmState.PICKING_CHAMBER_WAIT:
+            self._state_timer_counter += 1
+            if self._pick_chamber_done:
+                self.get_logger().info('검사장 재파지 완료. 분류 이송 단계로 진입')
+                self._state = FsmState.SORTING_TRIGGER
+            elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
+                self.get_logger().error('검사장 재파지 대기 타임아웃! ERROR 상태로 천이')
+                self._error_msg = 'PICK_CHAMBER_TIMEOUT'
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.SORTING_TRIGGER:

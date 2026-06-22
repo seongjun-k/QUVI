@@ -138,8 +138,8 @@ function updateStatusTab(status) {
         const railPos = parseInt(status.rail_position);
         const stationMap = status.rail_station_map || [
             { name: 'INSPECT (A)', steps: 1000 },
-            { name: 'PASS (B)',    steps: 1700 },
-            { name: 'FAIL (C)',    steps: 2400 },
+            { name: 'PASS (B)',    steps: 2000 },
+            { name: 'FAIL (C)',    steps: 10000 },
             { name: 'BED (D)',      steps: 30500 },
         ];
         const maxSteps = Math.max(...stationMap.map(s => s.steps)) || 30500;

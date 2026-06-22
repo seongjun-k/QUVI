@@ -196,6 +196,6 @@ def generate_launch_description():
         # 노드
         camera1_node,
         camera2_node,
-        yolo_node,
+        # yolo_node,  # YOLO 비활성화
         inspect_node,
     ])

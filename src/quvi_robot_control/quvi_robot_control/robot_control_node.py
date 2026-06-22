@@ -134,6 +134,18 @@ POSE_PLACE = {
     'wrist_flex': 2048, 'wrist_roll': 2048, 'gripper': 2300,
 }
 
+POSE_LIFT_ARM = {
+    'shoulder_lift': 1800, 'elbow_flex': 1200, 'wrist_flex': 2048, 'wrist_roll': 2048,
+}
+
+POSE_PLACE_CHAMBER = {
+    'shoulder_lift': 1400, 'elbow_flex': 900, 'wrist_flex': 1800,
+}
+
+POSE_CHAMBER_PRE_PICK = {
+    'shoulder_pan': 0, 'shoulder_lift': 1400, 'elbow_flex': 900, 'wrist_flex': 1800, 'gripper': GRIPPER_OPEN,
+}
+
 # 그리퍼 raw 위치값 (XL330-M288T)
 GRIPPER_OPEN  = 2300
 GRIPPER_CLOSE = 1800
@@ -226,8 +238,8 @@ class RobotControlNode(Node):
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
         self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
-        self.declare_parameter('rail_mm_pass',    21.25)
-        self.declare_parameter('rail_mm_fail',    30.0)
+        self.declare_parameter('rail_mm_pass',    25.0)   # 2000 steps
+        self.declare_parameter('rail_mm_fail',    125.0)  # 10000 steps
         # 카메라
         self.declare_parameter('handcam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('use_compressed', True)
@@ -357,6 +369,14 @@ class RobotControlNode(Node):
             Bool, topics.TOPIC_ROBOT_HOME_CMD,
             self._home_cmd_callback, 10)
 
+        self._place_chamber_cmd_sub = self.create_subscription(
+            Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_CMD,
+            self._place_chamber_cmd_callback, 10)
+
+        self._pick_chamber_cmd_sub = self.create_subscription(
+            Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_CMD,
+            self._pick_chamber_cmd_callback, 10)
+
         self._teleop_cmd_sub = self.create_subscription(
             Bool, '/robot/teleop_command',
             self._teleop_cmd_callback, 10,
@@ -397,6 +417,15 @@ class RobotControlNode(Node):
 
         self._rail_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_RAIL_DONE, 10)
+
+        self._rotate_done_pub = self.create_publisher(
+            Bool, topics.TOPIC_ROBOT_ROTATE_DONE, 10)
+
+        self._place_chamber_done_pub = self.create_publisher(
+            Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_DONE, 10)
+
+        self._pick_chamber_done_pub = self.create_publisher(
+            Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_DONE, 10)
 
         # ── Services ──
         self._act_grasp_srv = self.create_service(
@@ -477,8 +506,9 @@ class RobotControlNode(Node):
 
     def _rotate_cmd_callback(self, msg: Bool):
         """베이스 회전 명령 수신. true → 뒤 방향 / false → 앞 방향"""
-        pose = POSE_BACK if msg.data else POSE_FRONT
-        self._try_start_command(RobotState.ROTATING_BASE, self._execute_pose, pose, '베이스 회전')
+        pan_val = 0 if msg.data else 2048
+        pose = {'shoulder_pan': pan_val}
+        self._try_start_command(RobotState.ROTATING_BASE, self._execute_pose, pose, f'베이스 회전(pan={pan_val})')
 
     def _release_cmd_callback(self, msg: Bool):
         """투하 명령 수신."""
@@ -491,6 +521,18 @@ class RobotControlNode(Node):
         if not msg.data:
             return
         self._try_start_command(RobotState.HOMING, self._execute_home)
+
+    def _place_chamber_cmd_callback(self, msg: Bool):
+        """검사장(턴테이블) 안착 명령 수신."""
+        if not msg.data:
+            return
+        self._try_start_command(RobotState.RELEASING, self._execute_place_in_chamber)
+
+    def _pick_chamber_cmd_callback(self, msg: Bool):
+        """검사장에서 재파지 명령 수신."""
+        if not msg.data:
+            return
+        self._try_start_command(RobotState.ACT_GRASPING, self._execute_pick_from_chamber)
 
     def _estop_cmd_callback(self, msg: Bool):
         """비상 정지 수신."""
@@ -635,6 +677,7 @@ class RobotControlNode(Node):
                 if self._use_real_hardware and self._dxl_ready:
                     # lerobot 공식 API를 통한 캘리브레이션/변환 적용 및 모터 전송
                     action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
+                    action_dict = self._clip_shoulder_lift(action_dict, is_raw=False)
                     with self._dxl_io_lock:
                         self._follower.send_action(action_dict)
                 else:
@@ -745,6 +788,11 @@ class RobotControlNode(Node):
 
         self._set_state(RobotState.IDLE)
         self._publish_status(f'자세 변경 완료: {label}')
+
+        done_msg = Bool()
+        done_msg.data = True
+        self._rotate_done_pub.publish(done_msg)
+
         return success
 
     # ─────────────────────────────────────────────
@@ -788,6 +836,96 @@ class RobotControlNode(Node):
         self._publish_status('홈 복귀 완료')
         return success
 
+    def _execute_place_in_chamber(self) -> bool:
+        """베드 위 출력물을 쥔 채로 180도 우회전하여 검사장에 배치하고 홈 복귀."""
+        self._set_state(RobotState.RELEASING)
+        self._publish_status('검사장 안착 시퀀스 시작')
+        self.get_logger().info('검사장 안착 시퀀스 시작')
+
+        # 1. 안전 높이로 팔 들기 (그리퍼 보존)
+        self._write_raw_position(POSE_LIFT_ARM)
+        time.sleep(1.5)
+
+        # 2. 베이스 180도 우회전 (shoulder_pan = 0, 그리퍼 보존)
+        self._write_raw_position({'shoulder_pan': 0})
+        time.sleep(1.5)
+
+        # 3. 검사장 위치로 내리기 (그리퍼 보존)
+        self._write_raw_position(POSE_PLACE_CHAMBER)
+        time.sleep(1.5)
+
+        # 4. 그리퍼 열기
+        self._write_raw_position({'gripper': GRIPPER_OPEN})
+        time.sleep(1.0)
+
+        # 5. 홈 자세 복귀 (베이스 앞 방향 2048 복귀, 그리퍼 열림 유지)
+        success = self._write_raw_position(POSE_HOME)
+        time.sleep(2.0)
+
+        # 완료 토픽 발행
+        done_msg = Bool()
+        done_msg.data = True
+        self._place_chamber_done_pub.publish(done_msg)
+
+        self._set_state(RobotState.IDLE)
+        self._publish_status('검사장 안착 완료')
+        return success
+
+    def _execute_pick_from_chamber(self) -> bool:
+        """검사장에서 출력물을 집고(Grasp) 베이스를 왼쪽으로 180도 좌회전시킴."""
+        self._set_state(RobotState.ACT_GRASPING)
+        self._publish_status('검사장 재파지 시퀀스 시작')
+        self.get_logger().info('검사장 재파지 시퀀스 시작')
+
+        # 1. 검사장 파지 자세 진입 (그리퍼 열린 채로 하강)
+        self._write_raw_position(POSE_CHAMBER_PRE_PICK)
+        time.sleep(1.5)
+
+        # 2. 그리퍼 닫기
+        self._write_raw_position({'gripper': GRIPPER_CLOSE})
+        time.sleep(1.0)
+
+        # 3. 안전 높이로 팔 들기 (그리퍼 보존)
+        self._write_raw_position(POSE_LIFT_ARM)
+        time.sleep(1.5)
+
+        # 4. 베이스 180도 좌회전 (앞 방향 2048 복귀, 그리퍼 보존)
+        success = self._write_raw_position({'shoulder_pan': 2048})
+        time.sleep(1.5)
+
+        # 완료 토픽 발행
+        done_msg = Bool()
+        done_msg.data = True
+        self._pick_chamber_done_pub.publish(done_msg)
+
+        self._set_state(RobotState.IDLE)
+        self._publish_status('검사장 재파지 완료')
+        return success
+
+    def _clip_shoulder_lift(self, positions: dict, is_raw: bool) -> dict:
+        """모터 12 (shoulder_lift)의 한계를 항상 90도 이상으로 보장."""
+        positions = dict(positions)
+        if 'shoulder_lift' in positions:
+            limit = 1024 if is_raw else (math.pi / 2.0)
+            if positions['shoulder_lift'] < limit:
+                self.get_logger().warn(
+                    f"[Limit] shoulder_lift 값이 한계치(90도={limit:.2f})보다 작아 제한을 적용합니다: "
+                    f"{positions['shoulder_lift']} -> {limit:.2f}"
+                )
+                positions['shoulder_lift'] = limit
+        
+        # 만약 key 가 'shoulder_lift.pos' 형태인 경우 (send_action 의 action_dict 등)
+        if 'shoulder_lift.pos' in positions:
+            limit = 1024 if is_raw else (math.pi / 2.0)
+            if positions['shoulder_lift.pos'] < limit:
+                self.get_logger().warn(
+                    f"[Limit] shoulder_lift.pos 값이 한계치(90도={limit:.2f})보다 작아 제한을 적용합니다: "
+                    f"{positions['shoulder_lift.pos']} -> {limit:.2f}"
+                )
+                positions['shoulder_lift.pos'] = limit
+                
+        return positions
+
     # ─────────────────────────────────────────────
     # lerobot bus 기반 모터 I/O
     # ─────────────────────────────────────────────
@@ -798,6 +936,7 @@ class RobotControlNode(Node):
             positions: {'shoulder_pan': 2048, 'gripper': 2300, ...} 형태의 dict.
                        전체 6관절 또는 일부 관절만 지정 가능.
         """
+        positions = self._clip_shoulder_lift(positions, is_raw=True)
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
             return True
@@ -1076,7 +1215,7 @@ class RobotControlNode(Node):
                     # 락 경합 최소화를 위해 리더 읽기와 팔로워 쓰기 락을 각각 분할하여 획득
                     with self._dxl_io_lock:
                         action = self._leader.get_action()
-                    
+                    action = self._clip_shoulder_lift(action, is_raw=False)
                     with self._dxl_io_lock:
                         self._follower.send_action(action)
                 except Exception as e:

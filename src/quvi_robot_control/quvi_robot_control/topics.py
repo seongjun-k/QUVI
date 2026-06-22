@@ -35,3 +35,10 @@ TOPIC_INSPECTION_TRIGGER = '/inspection/trigger'
 
 # Global Status
 TOPIC_ESTOP = '/system/estop'
+
+TOPIC_ROBOT_ROTATE_DONE = '/robot/rotate_done'
+
+TOPIC_ROBOT_PLACE_CHAMBER_CMD = '/robot/place_in_chamber'
+TOPIC_ROBOT_PLACE_CHAMBER_DONE = '/robot/place_in_chamber_done'
+TOPIC_ROBOT_PICK_CHAMBER_CMD = '/robot/pick_in_chamber'
+TOPIC_ROBOT_PICK_CHAMBER_DONE = '/robot/pick_in_chamber_done'

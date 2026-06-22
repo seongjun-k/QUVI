@@ -43,8 +43,8 @@ from flask_socketio import SocketIO
 # 캘리브레이션 후 steps 값을 여기서만 수정하면 UI에 자동 반영된다.
 RAIL_STATION_MAP = [
     {'name': 'INSPECT (A)', 'steps': 1000},
-    {'name': 'PASS (B)',    'steps': 1700},
-    {'name': 'FAIL (C)',    'steps': 2400},
+    {'name': 'PASS (B)',    'steps': 2000},
+    {'name': 'FAIL (C)',    'steps': 10000},
     {'name': 'BED (D)',      'steps': 30500},
 ]
 
