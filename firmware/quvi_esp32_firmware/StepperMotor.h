@@ -42,7 +42,7 @@ public:
     bool isMoving() const;
 
 private:
-    AccelStepper _stepper;
+    mutable AccelStepper _stepper; // mutable: AccelStepper 액세서가 non-const이므로 const 멤버에서 호출 가능하도록 선언
     int8_t _pulPin;
     int8_t _dirPin;
     int8_t _enaPin;
