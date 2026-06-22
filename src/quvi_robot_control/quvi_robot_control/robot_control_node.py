@@ -224,7 +224,7 @@ class RobotControlNode(Node):
         self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
-        self.declare_parameter('rail_mm_bed',      0.0)
+        self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
         self.declare_parameter('rail_mm_pass',    21.25)
         self.declare_parameter('rail_mm_fail',    30.0)
