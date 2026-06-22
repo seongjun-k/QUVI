@@ -8,7 +8,7 @@
 // =============================================================================
 // Comment out the line below to switch the firmware to "Standard Serial Mode" (UART).
 // When defined, the ESP32-S3 will run micro-ROS and expect a micro-ROS agent on the host.
-//#define USE_MICRO_ROS
+#define USE_MICRO_ROS
 
 #ifdef USE_MICRO_ROS
   // micro-ROS agent 와 반드시 일치해야 하는 전송 보드레이트.
