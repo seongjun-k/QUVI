@@ -42,10 +42,10 @@ from flask_socketio import SocketIO
 # 레일 스테이션 맵 (index → {name, steps})
 # 캘리브레이션 후 steps 값을 여기서만 수정하면 UI에 자동 반영된다.
 RAIL_STATION_MAP = [
-    {'name': 'BED (D)',      'steps': 0},
     {'name': 'INSPECT (A)', 'steps': 1000},
     {'name': 'PASS (B)',    'steps': 1700},
     {'name': 'FAIL (C)',    'steps': 2400},
+    {'name': 'BED (D)',      'steps': 30500},
 ]
 
 

@@ -197,9 +197,9 @@ class RobotControlNode(Node):
         # ─── ROS 통신 ───
         self._setup_ros_interfaces()
 
-        # ─── 관절 상태 발행 타이머 (30 Hz) ───
+        # ─── 관절 상태 발행 타이머 (10 Hz) ───
         self._joint_pub_timer = self.create_timer(
-            1.0 / ACT_CONTROL_HZ, self._publish_joint_states,
+            1.0 / 10.0, self._publish_joint_states,
             callback_group=self._cb_group)
 
         self.get_logger().info(
@@ -671,6 +671,9 @@ class RobotControlNode(Node):
 
         except Exception as e:
             self.get_logger().error(f'ACT 파지 중 오류: {e}')
+            # Recovery: reset port_handler is_using flag on failure
+            if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                self._follower.bus.port_handler.is_using = False
             self._set_state(RobotState.ERROR)
             self._publish_status(f'ERROR: {e}')
             return False
@@ -806,6 +809,9 @@ class RobotControlNode(Node):
             return True
         except Exception as e:
             self.get_logger().error(f'lerobot sync_write 오류: {e}')
+            # Recovery: reset port_handler is_using flag on failure
+            if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                self._follower.bus.port_handler.is_using = False
             return False
 
     def _read_raw_positions(self) -> Optional[dict]:
@@ -817,13 +823,22 @@ class RobotControlNode(Node):
         if not self._use_real_hardware or not self._dxl_ready:
             return {name: 2048 for name in JOINT_NAMES}
 
+        # 30Hz 타이머와 제어 루프 간 경합 방지를 위해 non-blocking lock 획득
+        acquired = self._dxl_io_lock.acquire(blocking=False)
+        if not acquired:
+            return None
+
         try:
-            with self._dxl_io_lock:
-                return self._follower.bus.sync_read(
-                    'Present_Position', normalize=False)
+            return self._follower.bus.sync_read(
+                'Present_Position', normalize=False)
         except Exception as e:
             self.get_logger().error(f'lerobot sync_read 오류: {e}')
+            # Recovery: reset port_handler is_using flag on failure
+            if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                self._follower.bus.port_handler.is_using = False
             return None
+        finally:
+            self._dxl_io_lock.release()
 
     # ─────────────────────────────────────────────
     # 관절 상태 발행 (30 Hz 타이머)
@@ -948,24 +963,74 @@ class RobotControlNode(Node):
         self.get_logger().info('텔레오퍼레이션 시작 중...')
 
         if self._use_real_hardware:
-            try:
-                leader_config = OmxLeaderConfig(
-                    port=self._leader_port_name,
-                    id='quvi_leader',
-                )
-                self._leader = OmxLeader(leader_config)
-                self._leader.connect()
-                self.get_logger().info(
-                    f'OmxLeader 연결 완료 | 포트={self._leader_port_name} | '
-                    f'모터: {list(self._leader.bus.motors.keys())}')
-            except Exception as e:
-                self.get_logger().error(f'OmxLeader 초기화 실패: {e}')
-                self._leader = None
+            max_retries = 3
+            retry_delay = 0.8
+            connected = False
+            for attempt in range(1, max_retries + 1):
+                try:
+                    leader_config = OmxLeaderConfig(
+                        port=self._leader_port_name,
+                        id='quvi_leader',
+                    )
+                    self._leader = OmxLeader(leader_config)
+                    self._leader.connect()
+                    connected = True
+                    self.get_logger().info(
+                        f'OmxLeader 연결 완료 (시도 {attempt}/{max_retries}) | 포트={self._leader_port_name} | '
+                        f'모터: {list(self._leader.bus.motors.keys())}')
+                    break
+                except Exception as e:
+                    self.get_logger().warn(f'OmxLeader 연결 실패 (시도 {attempt}/{max_retries}): {e}')
+                    self._leader = None
+                    if attempt < max_retries:
+                        time.sleep(retry_delay)
+            if not connected:
+                self.get_logger().error(f'OmxLeader 연결 최종 실패 (총 {max_retries}회 시도)')
                 self._set_state(RobotState.IDLE)
-                self._publish_status(f'텔레옵 에러: {e}')
+                self._publish_status('텔레옵 에러: 리더 포트 연결 불가')
                 return False
 
         self._teleop_running = True
+
+        # 1. 텔레옵 루프 기동 전 리더 현재 위치로 팔로워 부드럽게 정렬 (Smooth Alignment)
+        if self._use_real_hardware and self._leader and self._follower:
+            try:
+                self.get_logger().info('텔레옵 시작 전 리더-팔로워 위치 정렬 중...')
+                with self._dxl_io_lock:
+                    target_action = self._leader.get_action()
+                
+                # 팔로워 현재 관절 각도(정규화) 가져오기
+                with self._dxl_io_lock:
+                    current_norm_positions = self._follower.bus.sync_read("Present_Position")
+                
+                if current_norm_positions and target_action:
+                    # 1.5초 동안 30단계로 부드럽게 보간 이동
+                    steps = 30
+                    dt = 1.5 / steps
+                    target_goals = {key.removesuffix(".pos"): val for key, val in target_action.items() if key.endswith(".pos")}
+                    
+                    for step in range(1, steps + 1):
+                        if not self._teleop_running:
+                            break
+                        alpha = step / float(steps)
+                        interpolated_action = {}
+                        for joint in JOINT_NAMES:
+                            start_val = current_norm_positions.get(joint, 0.0)
+                            target_val = target_goals.get(joint, start_val)
+                            interp_val = start_val + alpha * (target_val - start_val)
+                            interpolated_action[f"{joint}.pos"] = interp_val
+                        
+                        with self._dxl_io_lock:
+                            self._follower.send_action(interpolated_action)
+                        time.sleep(dt)
+                self.get_logger().info('리더-팔로워 정렬 완료.')
+            except Exception as align_err:
+                self.get_logger().warn(f'텔레옵 시작 정렬 중 에러 (무시하고 진행): {align_err}')
+                if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                    self._follower.bus.port_handler.is_using = False
+                if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
+                    self._leader.bus.port_handler.is_using = False
+
         self._teleop_thread = threading.Thread(target=self._teleop_loop, daemon=True)
         self._teleop_thread.start()
         self.get_logger().info('텔레오퍼레이션 루프 시작됨')
@@ -994,13 +1059,13 @@ class RobotControlNode(Node):
         return True
 
     def _teleop_loop(self):
-        """lerobot OmxLeader → OmxFollower 텔레오퍼레이션 루프 (100Hz).
+        """lerobot OmxLeader → OmxFollower 텔레오퍼레이션 루프 (50Hz).
 
         공식 API 사용:
           - leader.get_action()  → 리더 관절 위치 (정규화된 값)
           - follower.send_action(action) → 팔로워에 전송 (정규화 → raw 변환 자동)
         """
-        dt = 1.0 / 100.0
+        dt = 1.0 / 50.0
         sim_angle = 0.0
 
         while self._teleop_running and rclpy.ok():
@@ -1008,12 +1073,19 @@ class RobotControlNode(Node):
 
             if self._use_real_hardware and self._leader and self._follower:
                 try:
-                    # lerobot 공식 API: 정규화된 값으로 리더→팔로워 직접 매핑
+                    # 락 경합 최소화를 위해 리더 읽기와 팔로워 쓰기 락을 각각 분할하여 획득
                     with self._dxl_io_lock:
                         action = self._leader.get_action()
+                    
+                    with self._dxl_io_lock:
                         self._follower.send_action(action)
                 except Exception as e:
                     self.get_logger().warn(f'텔레옵 루프 오류: {e}')
+                    # Recovery: reset port_handler is_using flag on failure
+                    if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                        self._follower.bus.port_handler.is_using = False
+                    if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
+                        self._leader.bus.port_handler.is_using = False
             else:
                 # 시뮬레이션 모드: 부드러운 사인파 형태의 모의 각도 전송
                 sim_angle += 0.05
@@ -1027,7 +1099,7 @@ class RobotControlNode(Node):
                 }
                 self._write_raw_position(sim_pose)
 
-            # 30Hz 제어 속도 타이밍 대기
+            # 제어 주기 타이밍 대기
             elapsed = time.time() - start_time
             sleep_time = dt - elapsed
             if sleep_time > 0:

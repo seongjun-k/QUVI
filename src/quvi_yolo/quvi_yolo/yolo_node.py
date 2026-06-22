@@ -120,6 +120,7 @@ class YoloNode(Node):
         model = YOLO(model_path)
 
         model_classes = list(model.names.values())
+        self._target_classes = [tc for tc in self._target_classes if tc]
         for tc in self._target_classes:
             if tc not in model_classes:
                 self.get_logger().fatal(f'Target class "{tc}"가 로드된 모델의 클래스 목록에 없습니다: {model_classes}')

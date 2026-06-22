@@ -30,9 +30,9 @@ activation: alwaysOn
 |---|---|
 | OS / 미들웨어 | Ubuntu 24.04 / ROS 2 Jazzy Jalisco |
 | 실행 환경 | Docker quvi-dev `/workspace` |
-| ESP32-S3 | `/dev/ttyUSB0`, micro-ROS, 921600 baud |
-| 핸드캠 (Zone 1) | `/dev/video0`, 1920x1080 MJPEG, ACT 입력 640x480, AutoFocus OFF |
-| 사이드캠 (Zone 2) | `/dev/video2`, 1920x1080 MJPEG, AutoFocus OFF, Focus=80 |
+| ESP32-S3 | `/dev/ttyESP32` (물리포트 연결에 따라 `/dev/ttyUSB1`로 자동 링크), micro-ROS, 921600 baud |
+| 핸드캠 (Zone 1) | `/dev/handcam` (물리포트 연결에 따라 `/dev/video4`로 자동 링크), 1920x1080 MJPEG, ACT 입력 640x480, AutoFocus OFF |
+| 사이드캠 (Zone 2) | `/dev/fixed_cam` (물리포트 연결에 따라 `/dev/video2`로 자동 링크), 1920x1080 MJPEG, AutoFocus OFF, Focus=80 |
 | 리니어 레일 | ESP32-S3 제어, 0.2mm/스텝 |
 | 턴테이블 | NEMA17, 90° = 400스텝 (1/8 마이크로스텝) |
 | 로봇팔 | OMX 5DOF, Dynamixel XL430/XL330, LeRobot ACT 연동 |

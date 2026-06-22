@@ -137,12 +137,12 @@ function updateStatusTab(status) {
     if (status.rail_position !== undefined) {
         const railPos = parseInt(status.rail_position);
         const stationMap = status.rail_station_map || [
-            { name: 'BED (D)',      steps: 0    },
             { name: 'INSPECT (A)', steps: 1000 },
             { name: 'PASS (B)',    steps: 1700 },
             { name: 'FAIL (C)',    steps: 2400 },
+            { name: 'BED (D)',      steps: 30500 },
         ];
-        const maxSteps = stationMap[stationMap.length - 1].steps || 2400;
+        const maxSteps = Math.max(...stationMap.map(s => s.steps)) || 30500;
 
         // railPos(실제 스텝 값)과 가장 가까운 스테이션 탐색 (허용 오차 100 스텝)
         let station = stationMap.find(s => Math.abs(s.steps - railPos) < 100);
@@ -165,7 +165,7 @@ function updateStatusTab(status) {
 
         // 구역 표시핀 하이라이트 및 스텝 값 동적 반영
         const matchedIdx = stationMap.findIndex(s => s.name === station.name);
-        const stationIds = ['station_bed', 'station_inspect', 'station_pass', 'station_fail'];
+        const stationIds = ['station_inspect', 'station_pass', 'station_fail', 'station_bed'];
         stationIds.forEach((id, idx) => {
             const el = document.getElementById(id);
             if (el) {

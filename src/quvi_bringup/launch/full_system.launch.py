@@ -70,11 +70,11 @@ def generate_launch_description():
         description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
     micro_ros_port_arg = DeclareLaunchArgument(
-        'micro_ros_port', default_value='/dev/ttyACM0',
+        'micro_ros_port', default_value='/dev/ttyESP32',
         description='micro-ROS agent 시리얼 포트')
 
     micro_ros_baud_arg = DeclareLaunchArgument(
-        'micro_ros_baud', default_value='115200',
+        'micro_ros_baud', default_value='921600',
         description='micro-ROS agent 보 레이트')
 
     # ─── Vision Pipeline 포함 ───

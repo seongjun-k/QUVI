@@ -137,12 +137,9 @@ def _measure_residual_angle(aligned: np.ndarray) -> float:
     largest = max(contours, key=cv2.contourArea)
     (_, _), (w, h), angle = cv2.minAreaRect(largest)
 
-    # 정규화: 정렬 후 이상적 각도는 0°
-    if w < h:
-        angle += 90
-    if angle > 45:
-        angle -= 90
-    return abs(angle)
+    # 90도 주기로 최적 각도 정규화 (축 정렬 기준)
+    angle_mod = (angle + 45) % 90 - 45
+    return abs(angle_mod)
 
 
 # ─────────────────────────────────────────────
