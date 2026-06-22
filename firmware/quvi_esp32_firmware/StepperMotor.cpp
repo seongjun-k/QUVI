@@ -1,6 +1,7 @@
 #include "StepperMotor.h"
 
 // Constructor
+// dirPin/pulPin 순서 교환으로 AccelStepper 하드웨어 방향 반전
 StepperMotor::StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin)
     : _stepper(AccelStepper::DRIVER, pulPin, dirPin),
       _pulPin(pulPin), _dirPin(dirPin), _enaPin(enaPin), _limitPin(limitPin), _enabled(false) {
@@ -40,9 +41,8 @@ bool StepperMotor::isEnabled() const {
 }
 
 // Set target position (steps)
-// 부호 반전: AccelStepper 양수 방향이 리밋 스위치 쪽이므로 외부 좌표계와 반전
 void StepperMotor::setTargetPosition(long target) {
-    _stepper.moveTo(-target);
+    _stepper.moveTo(target);
 }
 
 // Force-override current position
@@ -72,9 +72,8 @@ bool StepperMotor::update() {
     }
 
     // Safety check: if limit switch is pressed and we are moving towards it, stop.
-    // setTargetPosition 부호 반전으로 리밋 방향이 양수이므로 > 0 으로 체크
     if (isLimitPressed()) {
-        if (_stepper.distanceToGo() > 0) {
+        if (_stepper.distanceToGo() < 0) {
             _stepper.stop();
             _stepper.setCurrentPosition(0);
             return false;
