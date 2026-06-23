@@ -111,6 +111,11 @@ class RobotState(IntEnum):
     ERROR         = 99
 
 
+# 그리퍼 raw 위치값 (XL330-M288T)
+GRIPPER_OPEN  = 2300
+GRIPPER_CLOSE = 1800
+
+
 # 관절 이름 (ROS 2 JointState 메시지용)
 JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
                'wrist_flex', 'wrist_roll', 'gripper']
@@ -146,10 +151,6 @@ POSE_CHAMBER_PRE_PICK = {
     'shoulder_pan': 0, 'shoulder_lift': 1400, 'elbow_flex': 900, 'wrist_flex': 1800, 'gripper': GRIPPER_OPEN,
 }
 
-# 그리퍼 raw 위치값 (XL330-M288T)
-GRIPPER_OPEN  = 2300
-GRIPPER_CLOSE = 1800
-
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
 
@@ -184,6 +185,7 @@ class RobotControlNode(Node):
         # ─── 텔레오퍼레이션 상태 ───
         self._teleop_running = False
         self._leader: Optional[OmxLeader] = None
+        self._teleop_offsets = {}
 
         # ─── 콜백 그룹 (블로킹 서비스/텔레옵과 타이머가 서로를 막지 않도록) ───
         self._cb_group = ReentrantCallbackGroup()
@@ -906,21 +908,23 @@ class RobotControlNode(Node):
         """모터 12 (shoulder_lift)의 한계를 항상 90도 이상으로 보장."""
         positions = dict(positions)
         if 'shoulder_lift' in positions:
-            limit = 1024 if is_raw else (math.pi / 2.0)
+            limit = 1024 if is_raw else -100.0
             if positions['shoulder_lift'] < limit:
                 self.get_logger().warn(
-                    f"[Limit] shoulder_lift 값이 한계치(90도={limit:.2f})보다 작아 제한을 적용합니다: "
-                    f"{positions['shoulder_lift']} -> {limit:.2f}"
+                    f"[Limit] shoulder_lift 값이 한계치(90도={limit})보다 작아 제한을 적용합니다: "
+                    f"{positions['shoulder_lift']} -> {limit}",
+                    once=True
                 )
                 positions['shoulder_lift'] = limit
         
         # 만약 key 가 'shoulder_lift.pos' 형태인 경우 (send_action 의 action_dict 등)
         if 'shoulder_lift.pos' in positions:
-            limit = 1024 if is_raw else (math.pi / 2.0)
+            limit = 1024 if is_raw else -100.0
             if positions['shoulder_lift.pos'] < limit:
                 self.get_logger().warn(
-                    f"[Limit] shoulder_lift.pos 값이 한계치(90도={limit:.2f})보다 작아 제한을 적용합니다: "
-                    f"{positions['shoulder_lift.pos']} -> {limit:.2f}"
+                    f"[Limit] shoulder_lift.pos 값이 한계치(90도={limit})보다 작아 제한을 적용합니다: "
+                    f"{positions['shoulder_lift.pos']} -> {limit}",
+                    once=True
                 )
                 positions['shoulder_lift.pos'] = limit
                 
@@ -1143,10 +1147,33 @@ class RobotControlNode(Node):
                     current_norm_positions = self._follower.bus.sync_read("Present_Position")
                 
                 if current_norm_positions and target_action:
+                    # 다회전(DEGREES) 조인트인 'shoulder_pan'과 'wrist_roll'에 대해
+                    # 리더와 팔로워 사이의 각도 차이를 최소화하는 최단거리 오프셋 계산 (선 꼬임 및 급격한 1회전 현상 방지)
+                    self._teleop_offsets = {}
+                    for joint in ['shoulder_pan', 'wrist_roll']:
+                        leader_key = f"{joint}.pos"
+                        if leader_key in target_action and joint in current_norm_positions:
+                            leader_val = target_action[leader_key]
+                            follower_val = current_norm_positions[joint]
+                            diff = leader_val - follower_val
+                            wrapped_diff = (diff + 180.0) % 360.0 - 180.0
+                            self._teleop_offsets[joint] = leader_val - (follower_val + wrapped_diff)
+                            self.get_logger().info(
+                                f"[Teleop Offset] {joint} 보정 오프셋 적용: "
+                                f"Leader={leader_val:.2f}, Follower={follower_val:.2f} -> Offset={self._teleop_offsets[joint]:.2f}"
+                            )
+
+                    # 오프셋 보정 적용
+                    corrected_target_action = dict(target_action)
+                    for joint, offset in self._teleop_offsets.items():
+                        leader_key = f"{joint}.pos"
+                        if leader_key in corrected_target_action:
+                            corrected_target_action[leader_key] -= offset
+
                     # 1.5초 동안 30단계로 부드럽게 보간 이동
                     steps = 30
                     dt = 1.5 / steps
-                    target_goals = {key.removesuffix(".pos"): val for key, val in target_action.items() if key.endswith(".pos")}
+                    target_goals = {key.removesuffix(".pos"): val for key, val in corrected_target_action.items() if key.endswith(".pos")}
                     
                     for step in range(1, steps + 1):
                         if not self._teleop_running:
@@ -1215,6 +1242,15 @@ class RobotControlNode(Node):
                     # 락 경합 최소화를 위해 리더 읽기와 팔로워 쓰기 락을 각각 분할하여 획득
                     with self._dxl_io_lock:
                         action = self._leader.get_action()
+                    
+                    # 실시간 텔레옵 시에도 오프셋을 적용하여 다회전 누적 틱에 따른 오버플로우/회전방지
+                    if hasattr(self, '_teleop_offsets') and self._teleop_offsets:
+                        action = dict(action)
+                        for joint, offset in self._teleop_offsets.items():
+                            key = f"{joint}.pos"
+                            if key in action:
+                                action[key] -= offset
+
                     action = self._clip_shoulder_lift(action, is_raw=False)
                     with self._dxl_io_lock:
                         self._follower.send_action(action)

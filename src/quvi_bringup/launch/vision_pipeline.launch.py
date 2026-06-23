@@ -108,7 +108,7 @@ def generate_launch_description():
             'video_device': LaunchConfiguration('handcam_device'),
             'image_width': 1920,
             'image_height': 1080,
-            'pixel_format': 'mjpeg2rgb',
+            'pixel_format': 'raw_mjpeg',
             'framerate': 30.0,
             'camera_name': 'handcam',
             'autoexposure': ParameterValue(LaunchConfiguration('handcam_autoexposure'), value_type=bool),

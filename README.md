@@ -122,7 +122,7 @@ ros2 launch quvi_bringup full_system.launch.py
 리더-팔로워 모드를 활성화하여 사람이 직접 시연하는 파지 데이터를 수집합니다.
 LeRobot의 공식 데이터 녹화 스크립트를 사용하여 이미지 피드와 관절 각도 상태를 기록합니다.
 ```bash
-python3 lerobot/src/lerobot/scripts/record.py \
+python3 lerobot/src/lerobot/record.py \
   --robot.path lerobot/configs/robot/omx.yaml \
   --fps 30 \
   --repo-id data/datasets/quvi_grasp \
