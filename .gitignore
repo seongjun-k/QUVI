@@ -23,6 +23,12 @@ env/
 .idea/
 *.swp
 *.swo
+.pio/
+.claude/
+ttyV0
+firmware/quvi_esp32_firmware/extra_packages/
+
+
 
 # Docker
 docker/.env

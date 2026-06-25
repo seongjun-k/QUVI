@@ -11,7 +11,11 @@
 #include <Adafruit_NeoPixel.h>
 
 #ifdef USE_MICRO_ROS
-  #include <micro_ros_arduino.h>
+  #ifdef PLATFORMIO
+    #include <micro_ros_platformio.h>
+  #else
+    #include <micro_ros_arduino.h>
+  #endif
   #include <rcl/rcl.h>
   #include <rcl/error_handling.h>
   #include <rclc/rclc.h>
@@ -120,9 +124,14 @@ void setup() {
 
     // If micro-ROS mode, initialize micro-ROS communication transport
     #ifdef USE_MICRO_ROS
+      #ifdef PLATFORMIO
+        Serial0.begin(MICRO_ROS_BAUDRATE);
+        set_microros_serial_transports(Serial0);
+      #else
         set_microros_transports();
+      #endif
     #else
-        Serial.begin(SERIAL_BAUDRATE);
+        Serial0.begin(SERIAL_BAUDRATE);
     #endif
 
     // Pin setup confirmation delay
@@ -241,7 +250,7 @@ void performHomingCalibration() {
     setLedColor(COLOR_YELLOW);
 
     #ifndef USE_MICRO_ROS
-        Serial.println("[INFO] Homing calibration started...");
+        Serial0.println("[INFO] Homing calibration started...");
     #endif
 
     // Calibrate linear rail (towards motor on left)
@@ -263,9 +272,9 @@ void performHomingCalibration() {
     setLedColor(COLOR_BLUE);
 
     #ifndef USE_MICRO_ROS
-        Serial.println("[SUCCESS] Homing complete. Position set to absolute 0.");
-        Serial.print("[STATUS] Current Rail Steps: ");
-        Serial.println(railMotor.getCurrentPosition());
+        Serial0.println("[SUCCESS] Homing complete. Position set to absolute 0.");
+        Serial0.print("[STATUS] Current Rail Steps: ");
+        Serial0.println(railMotor.getCurrentPosition());
     #endif
 }
 
@@ -341,8 +350,24 @@ void vCommTask(void *pvParameters) {
         // Initialize micro-ROS Allocator
         allocator = rcl_get_default_allocator();
 
-        // Create micro-ROS Support
-        RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+        // Initialize micro-ROS Support (Loop with retry until agent is found)
+        bool support_init_ok = false;
+        while (!support_init_ok) {
+            if (isEmergencyStopped) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+                continue;
+            }
+            
+            // Blink purple LED to indicate connection retry
+            setLedColor(COLOR_PURPLE);
+            rcl_ret_t rc = rclc_support_init(&support, 0, NULL, &allocator);
+            if (rc == RCL_RET_OK) {
+                support_init_ok = true;
+            } else {
+                setLedColor(COLOR_OFF);
+                delay(500);
+            }
+        }
 
         // Create Node
         RCCHECK(rclc_node_init_default(&node, "quvi_esp32_sub", "", &support));
@@ -444,18 +469,18 @@ void vCommTask(void *pvParameters) {
         }
 
     #else
-        // Standard Serial Mode Command Line Interface (CLI)
-        Serial.println("=================================================");
-        Serial.println("QUVI ESP32 Stepper Controller (LOLIN S3)");
-        Serial.println("Communication Mode: UART Serial");
-        Serial.println("Commands:");
-        Serial.println("  H            - Trigger Homing Calibration");
-        Serial.println("  R <steps>    - Move Linear Rail to absolute step");
-        Serial.println("  T <degrees>  - Rotate Turntable to absolute angle");
-        Serial.println("  S            - Show System Position & Limit Switch Status");
-        Serial.println("  E            - EMERGENCY STOP");
-        Serial.println("  L <0 or 1>   - Turntable LED Ring Relay (0:OFF, 1:ON)");
-        Serial.println("=================================================");
+        // Standard Serial0 Mode Command Line Interface (CLI)
+        Serial0.println("=================================================");
+        Serial0.println("QUVI ESP32 Stepper Controller (LOLIN S3)");
+        Serial0.println("Communication Mode: UART Serial0");
+        Serial0.println("Commands:");
+        Serial0.println("  H            - Trigger Homing Calibration");
+        Serial0.println("  R <steps>    - Move Linear Rail to absolute step");
+        Serial0.println("  T <degrees>  - Rotate Turntable to absolute angle");
+        Serial0.println("  S            - Show System Position & Limit Switch Status");
+        Serial0.println("  E            - EMERGENCY STOP");
+        Serial0.println("  L <0 or 1>   - Turntable LED Ring Relay (0:OFF, 1:ON)");
+        Serial0.println("=================================================");
 
         // Automatically trigger homing calibration on boot in serial mode
         performHomingCalibration();
@@ -464,16 +489,16 @@ void vCommTask(void *pvParameters) {
 
         for (;;) {
             if (isEmergencyStopped) {
-                if (Serial.available()) {
-                    String clr = Serial.readStringUntil('\n');
-                    Serial.println("[EMERGENCY] Hardware locked. Reset board to recover.");
+                if (Serial0.available()) {
+                    String clr = Serial0.readStringUntil('\n');
+                    Serial0.println("[EMERGENCY] Hardware locked. Reset board to recover.");
                 }
                 vTaskDelay(pdMS_TO_TICKS(200));
                 continue;
             }
 
-            while (Serial.available() > 0) {
-                char ch = Serial.read();
+            while (Serial0.available() > 0) {
+                char ch = Serial0.read();
                 if (ch == '\n' || ch == '\r') {
                     inputBuffer.trim();
                     if (inputBuffer.length() > 0) {
@@ -487,19 +512,19 @@ void vCommTask(void *pvParameters) {
                         else if (cmd == 'R') {
                             long steps = inputBuffer.substring(2).toInt();
                             if (steps >= RAIL_MIN_LIMIT && steps <= RAIL_MAX_LIMIT) {
-                                Serial.print("[MOVE] Linear Rail set to target steps: ");
-                                Serial.println(steps);
+                                Serial0.print("[MOVE] Linear Rail set to target steps: ");
+                                Serial0.println(steps);
                                 railMotor.setTargetPosition(steps);
                             } else {
-                                Serial.print("[ERROR] Step value out of soft-limits (0 - ");
-                                Serial.print(RAIL_MAX_LIMIT);
-                                Serial.println(")");
+                                Serial0.print("[ERROR] Step value out of soft-limits (0 - ");
+                                Serial0.print(RAIL_MAX_LIMIT);
+                                Serial0.println(")");
                             }
                         }
                         else if (cmd == 'T') {
                             double angle = inputBuffer.substring(2).toFloat();
-                            Serial.print("[MOVE] Turntable set to target degrees: ");
-                            Serial.println(angle);
+                            Serial0.print("[MOVE] Turntable set to target degrees: ");
+                            Serial0.println(angle);
 
                             // Shortest path logic
                             float currentAngle = turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE;
@@ -516,13 +541,13 @@ void vCommTask(void *pvParameters) {
                             turnMotor.setTargetPosition(targetSteps);
                         }
                         else if (cmd == 'S') {
-                            Serial.println("----------------------------------------");
-                            Serial.print("Rail Position:   "); Serial.print(railMotor.getCurrentPosition()); Serial.println(" steps");
-                            Serial.print("Rail Target:     "); Serial.print(railMotor.getTargetPosition()); Serial.println(" steps");
-                            Serial.print("Rail Limit Switch: "); Serial.println(railMotor.isLimitPressed() ? "ACTIVE (PRESSED)" : "INACTIVE");
-                            Serial.print("Turntable Steps: "); Serial.print(turnMotor.getCurrentPosition()); Serial.println(" steps");
-                            Serial.print("Turntable Angle: "); Serial.print(turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE); Serial.println(" deg");
-                            Serial.println("----------------------------------------");
+                            Serial0.println("----------------------------------------");
+                            Serial0.print("Rail Position:   "); Serial0.print(railMotor.getCurrentPosition()); Serial0.println(" steps");
+                            Serial0.print("Rail Target:     "); Serial0.print(railMotor.getTargetPosition()); Serial0.println(" steps");
+                            Serial0.print("Rail Limit Switch: "); Serial0.println(railMotor.isLimitPressed() ? "ACTIVE (PRESSED)" : "INACTIVE");
+                            Serial0.print("Turntable Steps: "); Serial0.print(turnMotor.getCurrentPosition()); Serial0.println(" steps");
+                            Serial0.print("Turntable Angle: "); Serial0.print(turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE); Serial0.println(" deg");
+                            Serial0.println("----------------------------------------");
                         }
                         else if (cmd == 'E') {
                             handleEmergencyStop();
@@ -531,14 +556,14 @@ void vCommTask(void *pvParameters) {
                             int state = inputBuffer.substring(2).toInt();
                             if (state == 1) {
                                 digitalWrite(TURN_LED_RELAY_PIN, HIGH);
-                                Serial.println("[LED] Turntable LED Relay ON");
+                                Serial0.println("[LED] Turntable LED Relay ON");
                             } else {
                                 digitalWrite(TURN_LED_RELAY_PIN, LOW);
-                                Serial.println("[LED] Turntable LED Relay OFF");
+                                Serial0.println("[LED] Turntable LED Relay OFF");
                             }
                         }
                         else {
-                            Serial.println("[ERROR] Command syntax unrecognized.");
+                            Serial0.println("[ERROR] Command syntax unrecognized.");
                         }
                     }
                     inputBuffer = "";
