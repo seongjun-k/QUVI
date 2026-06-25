@@ -46,14 +46,14 @@ LEN_GOAL_POSITION        = 4
 #   30 → 약 6.9 RPM  (매우 느림)
 #   50 → 약 11.5 RPM (느림)
 #   80 → 약 18.3 RPM (보통)
-PROFILE_VELOCITY       = 20    # 팔 관절 속도 (0.229 RPM 단위 → 약 4.6 RPM)
-PROFILE_ACCEL          = 5     # 가속도 (낮을수록 부드럽게 출발·정지)
-PROFILE_VELOCITY_GRIP  = 40    # 그리퍼 속도
-PROFILE_ACCEL_GRIP     = 10
+PROFILE_VELOCITY       = 8     # 팔 관절 속도 (0.229 RPM 단위 → 약 1.8 RPM)
+PROFILE_ACCEL          = 3     # 가속도
+PROFILE_VELOCITY_GRIP  = 20    # 그리퍼 속도
+PROFILE_ACCEL_GRIP     = 5
 
 # 이동 완료 대기 시간 (Profile_Velocity 기준 예상 시간 + 여유)
-MOVE_WAIT              = 6.0   # 초 (관절 이동)
-GRIPPER_WAIT           = 2.0   # 초 (그리퍼)
+MOVE_WAIT              = 15.0  # 초 (관절 이동 — 느린 속도에 맞게 충분히)
+GRIPPER_WAIT           = 3.0   # 초 (그리퍼)
 SETTLE                 = 0.3   # 정착 여유
 INSPECT_WAIT           = 3.0   # 판정 대기 (추후 실제 신호로 교체)
 
