@@ -1,7 +1,7 @@
 """
 QUVI 전체 시스템 Launch 파일
 ───────────────────────────────
-카메라 + YOLO + 검사 + HMI Web UI 한 번에 실행.
+카메라 + 검사 + HMI Web UI 한 번에 실행.
 
 사용법:
   ros2 launch quvi_bringup full_system.launch.py
@@ -40,10 +40,6 @@ def generate_launch_description():
     use_act_arg = DeclareLaunchArgument(
         'use_act', default_value='true',
         description='ACT 모방학습 정책 로드 여부')
-
-    yolo_model_path_arg = DeclareLaunchArgument(
-        'yolo_model_path', default_value='/workspace/data/models/best.pt',
-        description='YOLO 모델 파일 경로')
 
     follower_port_arg = DeclareLaunchArgument(
         'dxl_port', default_value='/dev/ttyFollower',
@@ -89,7 +85,6 @@ def generate_launch_description():
             'handcam_exposure': LaunchConfiguration('handcam_exposure'),
             'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),
             'fixed_cam_exposure': LaunchConfiguration('fixed_cam_exposure'),
-            'yolo_model_path': LaunchConfiguration('yolo_model_path'),
         }.items(),
     )
 
@@ -104,7 +99,6 @@ def generate_launch_description():
             'debug': False,
             'camera1_topic': '/camera1/image_raw/compressed',
             'camera2_topic': '/camera2/image_raw/compressed',
-            'yolo_debug_topic': '/yolo/debug_image',
             'inspect_debug_topic': '/inspect/debug_image',
             'jpeg_quality': 70,
             'stream_fps': 15,
@@ -165,7 +159,6 @@ def generate_launch_description():
         fixed_cam_arg,
         use_real_hardware_arg,
         use_act_arg,
-        yolo_model_path_arg,
         follower_port_arg,
         leader_port_arg,
         handcam_autoexposure_arg,

@@ -4,7 +4,6 @@
 **대상 파일**:
 - `src/quvi_robot_control/quvi_robot_control/robot_control_node.py`
 - `src/quvi_bringup/launch/vision_pipeline.launch.py`
-- `src/quvi_yolo/quvi_yolo/yolo_node.py`
 - `src/quvi_inspect/quvi_inspect/inspect_node.py`
 - `src/quvi_inspect/quvi_inspect/stl_renderer.py`
 - `src/quvi_hmi/quvi_hmi/hmi_node.py`
@@ -18,7 +17,7 @@
 | # | 이슈 | 영향도 | 예상 공수 |
 |---|------|--------|----------|
 | 1 | ACTPolicy import 중복 (`_load_act_policy`) | **낮음** — dead code | 5분 |
-| 2 | `yolo_config`/`inspect_config` YAML 실제 로드 미구현 | **중간** — 설정 변경이 코드 수정 필요 | 1일 |
+| 2 | `inspect_config` YAML 실제 로드 미구현 | **중간** — 설정 변경이 코드 수정 필요 | 0.5일 |
 | 3 | `_load_params()`의 lambda 패턴 가독성 | **낮음** — 코드 스타일 | 10분 |
 | 4 | `stl_renderer.py` 미사용 import 정리 | **낮음** — dead code | 5분 |
 | 5 | HMI 텔레옵 상태 관리 개선 | **낮음** — race condition 가능성 | 0.5일 |
@@ -103,7 +102,7 @@ def _load_act_policy(self):
 
 ### 현재 상태
 
-`vision_pipeline.launch.py`에는 `yolo_config`와 `inspect_config` launch argument가 선언되어 있지만(L72-78), **실제 YAML 파일을 로드하는 로직이 없습니다**. 대신 모든 파라미터가 launch 파일 내에 하드코딩되어 있습니다:
+`vision_pipeline.launch.py`에는 `inspect_config` launch argument가 선언되어 있지만, **실제 YAML 파일을 로드하는 로직이 없습니다**. 대신 모든 파라미터가 launch 파일 내에 하드코딩되어 있습니다:
 
 ```python
 # vision_pipeline.launch.py L141-158
@@ -384,16 +383,12 @@ yolo_node = Node(
 
 ### 현재 상태
 
-`yolo_node.py` L67과 `inspect_node.py` L95에서 lambda를 사용한 파라미터 로드 패턴:
+`inspect_node.py` L95에서 lambda를 사용한 파라미터 로드 패턴:
 
 ```python
-# yolo_node.py L67
+# inspect_node.py L95
 def _load_params(self):
     g = lambda name, default: declare_and_get(self, name, default)
-
-    self._camera_topic    = g('camera_topic',           '/camera1/image_raw/compressed')
-    self._use_compressed  = g('use_compressed',         True)
-    self._model_path      = g('model_path',             '')
     # ... 14줄
 ```
 
@@ -475,11 +470,10 @@ def _load_params(self):
 
 | 파일 | 위치 | 변경 내용 |
 |------|------|----------|
-| `yolo_node.py` | L66-82 `_load_params()` | lambda 제거, 딕셔너리 기반으로 변경 |
 | `inspect_node.py` | L93-128 `_load_params()` | lambda 제거, 딕셔너리 기반으로 변경 |
 | `utils.py` | L50-53 `declare_and_get()` | 사용처가 없으면 제거 (선택적) |
 
-> **참고**: `declare_and_get`은 `yolo_node.py`와 `inspect_node.py`에서만 사용됩니다. 두 곳 모두 변경하면 `utils.py`에서 제거할 수 있습니다. 하지만 `robot_control_node.py`는 별도의 `_declare_params` + `_load_params` 패턴을 사용하므로 영향 없습니다.
+> **참고**: `declare_and_get`은 `inspect_node.py`에서만 사용됩니다. 변경 후 `utils.py`에서 제거할 수 있습니다. `robot_control_node.py`는 별도의 `_declare_params` + `_load_params` 패턴을 사용하므로 영향 없습니다.
 
 ---
 

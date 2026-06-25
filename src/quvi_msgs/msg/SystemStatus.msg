@@ -9,7 +9,6 @@ int32 pass_count             # 합격 개수
 int32 fail_count             # 불합격 개수
 
 # 하위 시스템 상태
-bool yolo_ready
 bool grasp_ready
 bool inspect_ready
 bool motor_ready

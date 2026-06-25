@@ -542,4 +542,4 @@ _execute_rail_move()
 | `robot_control_node.py` | **약 80줄 수정/추가** (ESTOP 체크 30줄, read 오류처리 10줄, 토픽 분리 40줄) | 낮음 |
 | `main_orchestrator_node.py` | **약 30줄 수정/추가** (신규 구독 + 콜백 추가) | 낮음 |
 
-기존 FSM 타이머 로직, YOLO 노드, Inspect 노드, HMI 노드, ESP32 펌웨어는 **변경 없음**.
+기존 FSM 타이머 로직, Inspect 노드, HMI 노드, ESP32 펌웨어는 **변경 없음**.

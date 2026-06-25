@@ -62,7 +62,6 @@ function updateStatus(status) {
     document.getElementById('statTotal').textContent = status.total_objects;
     document.getElementById('statProcessed').textContent = status.processed_count;
 
-    setSubsystem('subYolo', status.yolo_ready);
     setSubsystem('subGrasp', status.grasp_ready);
     setSubsystem('subInspect', status.inspect_ready);
     setSubsystem('subMotor', status.motor_ready);

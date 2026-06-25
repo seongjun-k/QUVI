@@ -10,8 +10,7 @@
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>quvi_msgs</exec_depend>
-  <exec_depend>quvi_yolo</exec_depend>
-  <exec_depend>quvi_inspect</exec_depend>
+<exec_depend>quvi_inspect</exec_depend>
   <exec_depend>quvi_hmi</exec_depend>
   <exec_depend>quvi_robot_control</exec_depend>
   <exec_depend>usb_cam</exec_depend>

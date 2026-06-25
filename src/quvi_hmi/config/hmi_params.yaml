@@ -8,7 +8,6 @@ hmi_node:
     # ─── 카메라 토픽 ───
     camera1_topic: "/camera1/image_raw/compressed"
     camera2_topic: "/camera2/image_raw/compressed"
-    yolo_debug_topic: "/yolo/debug_image"
     inspect_debug_topic: "/inspect/debug_image"
 
     # ─── ROS 토픽 ───

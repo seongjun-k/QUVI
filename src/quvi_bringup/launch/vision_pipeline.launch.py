@@ -1,7 +1,7 @@
 """
 QUVI 비전 파이프라인 Launch 파일
 ────────────────────────────────
-YOLO_NODE + INSPECT_NODE + 카메라 노드를 한 번에 실행.
+INSPECT_NODE + 카메라 노드를 한 번에 실행.
 
 사용법:
   ros2 launch quvi_bringup vision_pipeline.launch.py
@@ -48,10 +48,6 @@ def generate_launch_description():
         'data_dir', default_value=default_data_dir,
         description='기준/로그 데이터 루트 (기본: $QUVI_DATA_DIR 또는 /workspace/data)')
 
-    yolo_model_path_arg = DeclareLaunchArgument(
-        'yolo_model_path', default_value=[LaunchConfiguration('data_dir'), '/models/best.pt'],
-        description='YOLO 모델 파일 경로')
-
     reference_dir_arg = DeclareLaunchArgument(
         'reference_image_dir',
         default_value=[LaunchConfiguration('data_dir'), '/reference_images'],
@@ -64,17 +60,11 @@ def generate_launch_description():
 
     handcam_topic_arg = DeclareLaunchArgument(
         'handcam_topic', default_value='/camera1/image_raw/compressed',
-        description='YOLO/로봇이 구독할 핸드캠 압축 이미지 토픽')
+        description='로봇이 구독할 핸드캠 압축 이미지 토픽')
 
     inspect_topic_arg = DeclareLaunchArgument(
         'inspect_topic', default_value='/camera2/image_raw/compressed',
         description='검사 노드가 구독할 검사챔버 압축 이미지 토픽')
-
-    yolo_config_arg = DeclareLaunchArgument(
-        'yolo_config',
-        default_value=os.path.join(
-            get_package_share_directory('quvi_yolo'), 'config', 'yolo_params.yaml'),
-        description='YOLO 파라미터 YAML 경로')
 
     inspect_config_arg = DeclareLaunchArgument(
         'inspect_config',
@@ -142,21 +132,6 @@ def generate_launch_description():
         ],
     )
 
-    # ─── YOLO_NODE ───
-    yolo_node = Node(
-        package='quvi_yolo',
-        executable='yolo_node',
-        name='yolo_node',
-        parameters=[
-            LaunchConfiguration('yolo_config'),
-            {
-                'camera_topic': LaunchConfiguration('handcam_topic'),
-                'model_path': LaunchConfiguration('yolo_model_path'),
-            }
-        ],
-        output='screen',
-    )
-
     # ─── INSPECT_NODE ───
     inspect_node = Node(
         package='quvi_inspect',
@@ -178,12 +153,10 @@ def generate_launch_description():
         handcam_device_arg,
         fixed_cam_device_arg,
         data_dir_arg,
-        yolo_model_path_arg,
         reference_dir_arg,
         inspection_log_dir_arg,
         handcam_topic_arg,
         inspect_topic_arg,
-        yolo_config_arg,
         inspect_config_arg,
         handcam_autoexposure_arg,
         handcam_exposure_arg,
@@ -196,6 +169,5 @@ def generate_launch_description():
         # 노드
         camera1_node,
         camera2_node,
-        # yolo_node,  # YOLO 비활성화
         inspect_node,
     ])

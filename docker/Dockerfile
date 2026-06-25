@@ -1,6 +1,6 @@
 ########################################
 # QUVI Development Environment
-# ROS 2 Jazzy + OpenCV + PyTorch + YOLO
+# ROS 2 Jazzy + OpenCV + PyTorch
 ########################################
 FROM ros:jazzy-ros-base-noble
 
@@ -52,7 +52,6 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     opencv-python-headless>=4.9.0 \
     scikit-image>=0.22.0 \
-    ultralytics>=8.1.0 \
     pyserial>=3.5 \
     Pillow>=10.0.0 \
     scipy>=1.12.0 \

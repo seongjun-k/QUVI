@@ -5,14 +5,14 @@ Flask + WebSocket 기반 Web HMI 대시보드.
 
 기능:
   - 실시간 시스템 상태 모니터링 (WebSocket)
-  - 카메라 MJPEG 스트리밍 (핸드캠 / 검사챔버 / YOLO 디버그 / 검사 디버그)
+  - 카메라 MJPEG 스트리밍 (핸드캠 / 검사챔버 / 검사 디버그)
   - 검사 결과 히스토리 + 통계 (PASS/FAIL 카운트, 그래프)
   - 시작/정지/비상정지 제어 버튼
   - 검사 로그 이미지 뷰어
 
 토픽:
   구독: /hmi/status, /detection/objects, /inspection/result,
-        /camera1/..., /camera2/..., /yolo/debug_image, /inspect/debug_image
+        /camera1/..., /camera2/..., /inspect/debug_image
   발행: /hmi/command (시작/정지/비상정지)
 """
 
@@ -65,7 +65,6 @@ class HmiNode(Node):
         self.declare_parameter('debug', False)
         self.declare_parameter('camera1_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('camera2_topic', '/camera2/image_raw/compressed')
-        self.declare_parameter('yolo_debug_topic', '/yolo/debug_image')
         self.declare_parameter('inspect_debug_topic', '/inspect/debug_image')
         self.declare_parameter('jpeg_quality', 70)
         self.declare_parameter('stream_fps', 15)
@@ -86,7 +85,6 @@ class HmiNode(Node):
             'processed_count': 0,
             'pass_count': 0,
             'fail_count': 0,
-            'yolo_ready': False,
             'grasp_ready': False,
             'inspect_ready': False,
             'motor_ready': False,
@@ -103,13 +101,11 @@ class HmiNode(Node):
         self._camera_frames = {
             'camera1': None,
             'camera2': None,
-            'yolo_debug': None,
             'inspect_debug': None,
         }
         self._jpeg_cache = {
             'camera1': None,
             'camera2': None,
-            'yolo_debug': None,
             'inspect_debug': None,
         }
 
@@ -135,7 +131,6 @@ class HmiNode(Node):
         # 카메라 스트림
         cam1_topic = self.get_parameter('camera1_topic').value
         cam2_topic = self.get_parameter('camera2_topic').value
-        yolo_topic = self.get_parameter('yolo_debug_topic').value
         inspect_topic = self.get_parameter('inspect_debug_topic').value
 
         self.create_subscription(
@@ -144,9 +139,6 @@ class HmiNode(Node):
         self.create_subscription(
             CompressedImage, cam2_topic,
             lambda msg: self._cam_cb(msg, 'camera2'), 5)
-        self.create_subscription(
-            Image, yolo_topic,
-            lambda msg: self._cam_raw_cb(msg, 'yolo_debug'), 5)
         self.create_subscription(
             Image, inspect_topic,
             lambda msg: self._cam_raw_cb(msg, 'inspect_debug'), 5)
@@ -181,7 +173,6 @@ class HmiNode(Node):
             self._system_status['processed_count'] = msg.processed_count
             self._system_status['pass_count'] = msg.pass_count
             self._system_status['fail_count'] = msg.fail_count
-            self._system_status['yolo_ready'] = msg.yolo_ready
             self._system_status['grasp_ready'] = msg.grasp_ready
             self._system_status['inspect_ready'] = msg.inspect_ready
             self._system_status['motor_ready'] = msg.motor_ready
@@ -560,7 +551,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
     @app.route('/stream/<cam_key>')
     def video_stream(cam_key):
-        valid_keys = ['camera1', 'camera2', 'yolo_debug', 'inspect_debug']
+        valid_keys = ['camera1', 'camera2', 'inspect_debug']
         if cam_key not in valid_keys:
             return 'Invalid camera key', 404
         return Response(

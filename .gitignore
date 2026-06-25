@@ -40,7 +40,7 @@ data/datasets/inspection/images/
 *.pt
 *.onnx
 *.engine
-!src/quvi_yolo/models/.gitkeep
+claude.md
 
 # OS
 .DS_Store

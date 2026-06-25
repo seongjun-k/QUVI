@@ -61,6 +61,10 @@ class InspectNode(Node):
             Bool, '/inspection/trigger',
             self._trigger_callback, 10)
 
+        self._ref_capture_sub = self.create_subscription(
+            Bool, '/inspection/capture_reference',
+            self._ref_capture_trigger_callback, 10)
+
         self._grasp_cmd_sub = self.create_subscription(
             GraspGoal, '/robot/grasp_command',
             self._grasp_cmd_callback, 10)
@@ -75,6 +79,7 @@ class InspectNode(Node):
         self._latest_frame: Optional[np.ndarray] = None
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
+        self._ref_capture_active = False
         self._current_object_index = 0
         self._last_align_info: Dict[int, Dict] = {}
 
@@ -178,7 +183,17 @@ class InspectNode(Node):
 
     def _turntable_done_callback(self, msg: Bool):
         """턴테이블 이동 완료 시 즉시 캡처."""
-        if not self._inspection_active or not msg.data:
+        if not msg.data:
+            return
+
+        if self._ref_capture_active:
+            for angle in self._angles:
+                if angle not in self._captured_images:
+                    self._capture_reference_angle(angle)
+                    break
+            return
+
+        if not self._inspection_active:
             return
 
         # 오케스트레이터가 순차적으로 명령을 보내므로, done 순서 = 각도 순서로 가정.
@@ -208,6 +223,42 @@ class InspectNode(Node):
             self.get_logger().info('검사 모드 활성화 — 턴테이블 회전 대기 중')
         else:
             self._inspection_active = False
+
+    def _ref_capture_trigger_callback(self, msg: Bool):
+        """기준 이미지 캡처 트리거 수신 (정상품을 챔버에 올려둔 상태에서 발행)."""
+        if msg.data:
+            if self._inspection_active:
+                self.get_logger().warn('검사 진행 중 — 기준 캡처 무시')
+                return
+            self._ref_capture_active = True
+            self._captured_images.clear()
+            self.get_logger().info(
+                f'기준 이미지 캡처 모드 활성화 | '
+                f'저장 경로: {self._ref_dir} | '
+                f'턴테이블 {self._angles}° 순서로 회전시키세요')
+        else:
+            self._ref_capture_active = False
+
+    def _capture_reference_angle(self, angle: int):
+        """현재 프레임을 기준 이미지로 캡처 후 파일 저장."""
+        if self._latest_frame is None:
+            self.get_logger().warn(f'{angle}° 기준 캡처 실패: 카메라 프레임 없음')
+            return
+
+        gray = self._preprocess(self._latest_frame)
+        self._captured_images[angle] = gray
+
+        os.makedirs(self._ref_dir, exist_ok=True)
+        path = os.path.join(self._ref_dir, f'ref_{angle}.png')
+        cv2.imwrite(path, gray)
+        self.get_logger().info(f'기준 이미지 저장: {path}')
+
+        if len(self._captured_images) == len(self._angles):
+            self._reference_images = dict(self._captured_images)
+            self._captured_images.clear()
+            self._ref_capture_active = False
+            self.get_logger().info(
+                f'기준 이미지 {len(self._angles)}장 캡처 완료 — 즉시 적용됨')
 
     # ─────────────────────────────────────────────
     # 메인 검사 로직

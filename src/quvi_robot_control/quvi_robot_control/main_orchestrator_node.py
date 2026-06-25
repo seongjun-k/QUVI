@@ -3,7 +3,7 @@
 QUVI MAIN_ORCHESTRATOR_NODE
 ────────────────────────────────────────────────────────────────
 전체 3D 프린터 출력물 자동 양불 판정 시스템의 핵심 두뇌.
-비전 탐지(YOLO), 로봇 파지(ACT), 다방향 품질 검사(SSIM), 분류 레일 제어를
+로봇 파지(ACT), 다방향 품질 검사(SSIM), 분류 레일 제어를
 FSM(유한상태머신)으로 자율 조율 및 통합합니다.
 
 구현 규칙 준수: 이모지 금지, 한국어 주석, 간결한 핵심 논리 중심.
@@ -111,14 +111,12 @@ class MainOrchestratorNode(Node):
         self._latest_inspection_passed = False
 
         # 하위 노드 헬스 체크용 플래그
-        self._yolo_online = False
         self._grasp_online = False
         self._inspect_online = False
         self._motor_online = False
         self._act_ready = False
 
         # 완료 토픽 수신 플래그
-        self._yolo_received = False
         self._robot_grasp_done = False
         self._robot_rail_done = False
         self._robot_release_done = False
@@ -151,7 +149,6 @@ class MainOrchestratorNode(Node):
         self._hmi_status_pub = self.create_publisher(SystemStatus, topics.TOPIC_HMI_STATUS, 10)
 
         # 하위 노드 트리거 발행
-        self._yolo_trigger_pub = self.create_publisher(Bool, topics.TOPIC_DETECTION_TRIGGER, 10)
         self._inspect_trigger_pub = self.create_publisher(Bool, topics.TOPIC_INSPECTION_TRIGGER, 10)
 
         # 로봇 및 구동부 명령 발행
@@ -175,9 +172,6 @@ class MainOrchestratorNode(Node):
         self.create_subscription(Bool, '/motor/rail_done', self._startup_inspect_done_cb, 10)
         self.create_subscription(Bool, '/motor/turntable_done', self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
-
-        # YOLO 탐지 결과 구독
-        self.create_subscription(ObjectArray, '/detection/objects', self._yolo_objects_cb, 10)
 
         # 로봇 피드백 완료 토픽 구독
         self.create_subscription(Bool, topics.TOPIC_ROBOT_ACT_DONE, self._robot_act_done_cb, 10)
@@ -241,15 +235,12 @@ class MainOrchestratorNode(Node):
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
 
-    def _yolo_objects_cb(self, msg: ObjectArray):
+    def _detection_objects_cb(self, msg: ObjectArray):
         if self._state.value.startswith("DETECTING_"):
-            self.get_logger().info(f'YOLO 객체 수집 완료: {msg.total_count}개 발견')
+            self.get_logger().info(f'객체 수집 완료: {msg.total_count}개 발견')
             self._detected_objects = msg.objects
             self._total_objects = msg.total_count
             self._current_object_idx = 0
-            self._yolo_received = True
-        # 주기적으로 감지가 수행되고 있으면 헬스체크 정상 처리
-        self._yolo_online = True
 
     def _robot_act_done_cb(self, msg: Bool):
         if msg.data and self._state == FsmState.GRASPING_WAIT:
@@ -639,7 +630,6 @@ class MainOrchestratorNode(Node):
     # ─── HMI 전송 유틸리티 ───
     def _publish_hmi_status(self):
         # Dynamically query the ROS 2 graph to check if other nodes are online
-        yolo_online = self.count_publishers('/detection/objects') > 0
         inspect_online = self.count_publishers('/inspection/result') > 0
         grasp_online = self.count_publishers('/robot/status') > 0
         motor_online = self.count_publishers('/robot/status') > 0
@@ -654,7 +644,6 @@ class MainOrchestratorNode(Node):
         msg.pass_count = int(self._pass_count)
         msg.fail_count = int(self._fail_count)
 
-        msg.yolo_ready = bool(yolo_online)
         msg.grasp_ready = bool(grasp_online)
         msg.inspect_ready = bool(inspect_online)
         msg.motor_ready = bool(motor_online)
