@@ -4,7 +4,8 @@
 dynamixel_sdk 직접 사용 — lerobot/ROS 불필요
 
 사용법 (도커 안에서):
-  python3 /workspace/scripts/test_sequence.py
+  python3 /workspace/scripts/test_sequence.py          # 자동 실행
+  python3 /workspace/scripts/test_sequence.py --step   # 스텝 모드 (Enter로 다음 단계)
 """
 
 import sys
@@ -30,9 +31,15 @@ MOTORS = {
     'gripper':       16,
 }
 
-ADDR_TORQUE_ENABLE  = 64
-ADDR_GOAL_POSITION  = 116
-LEN_GOAL_POSITION   = 4
+ADDR_TORQUE_ENABLE    = 64
+ADDR_PROFILE_VELOCITY = 112   # 0.229 RPM 단위, 0=최대속도
+ADDR_GOAL_POSITION    = 116
+LEN_GOAL_POSITION     = 4
+
+# 속도: 원래 최대 기준 20% → 약 50 (≈11 RPM)
+# 그리퍼는 더 빠르게 (100)
+SPEED_NORMAL  = 50
+SPEED_GRIPPER = 100
 
 GRIPPER_OPEN  = 2300
 GRIPPER_CLOSE = 1800
@@ -45,9 +52,11 @@ POSE_P4 = {'shoulder_pan':   20, 'shoulder_lift': 1900, 'elbow_flex': 2494, 'wri
 POSE_P5 = {'shoulder_pan': 2068, 'shoulder_lift':  868, 'elbow_flex': 2901, 'wrist_flex': 3036, 'wrist_roll': 1997, 'gripper': 2152}
 POSE_P6 = {'shoulder_pan': 2016, 'shoulder_lift': 1287, 'elbow_flex': 3025, 'wrist_flex': 2753, 'wrist_roll': 2006, 'gripper': 2152}
 
-POSE_DELAY    = 1.5   # 각 포즈 이동 후 대기 (초)
-GRIPPER_DELAY = 0.5   # 그리퍼 동작 후 대기 (초)
-INSPECT_WAIT  = 3.0   # 판정 대기 시간 (초) — 추후 실제 신호로 교체
+POSE_DELAY    = 4.0   # 속도 20%에 맞춰 대기 시간 증가
+GRIPPER_DELAY = 1.0
+INSPECT_WAIT  = 3.0   # 판정 대기 (추후 실제 신호로 교체)
+
+STEP_MODE = '--step' in sys.argv
 
 
 def open_bus():
@@ -69,32 +78,47 @@ def set_torque(port, pkt, enable: bool):
     print(f"[토크 {'ON' if enable else 'OFF'}]")
 
 
+def set_speed(port, pkt, motor_names, velocity: int):
+    """지정한 모터들의 Profile_Velocity 설정"""
+    for name in motor_names:
+        mid = MOTORS[name]
+        pkt.write4ByteTxRx(port, mid, ADDR_PROFILE_VELOCITY, velocity)
+
+
+def set_all_speed(port, pkt, velocity: int):
+    set_speed(port, pkt, [k for k in MOTORS if k != 'gripper'], velocity)
+
+
 def write_pose(port, pkt, pose: dict):
-    """pose의 모터값을 sync_write로 일괄 전송"""
     sw = GroupSyncWrite(port, pkt, ADDR_GOAL_POSITION, LEN_GOAL_POSITION)
     for name, val in pose.items():
         mid = MOTORS[name]
-        param = [
-            val & 0xFF,
-            (val >> 8) & 0xFF,
-            (val >> 16) & 0xFF,
-            (val >> 24) & 0xFF,
-        ]
+        param = [val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF]
         sw.addParam(mid, param)
     sw.txPacket()
     sw.clearParam()
+
+
+def wait_step(label: str):
+    if STEP_MODE:
+        input(f"    [스텝 모드] '{label}' 완료 — Enter로 다음 단계")
 
 
 def move_to(port, pkt, pose: dict, label: str, delay: float = POSE_DELAY):
     print(f"  → {label}")
     write_pose(port, pkt, pose)
     time.sleep(delay)
+    wait_step(label)
 
 
 def set_gripper(port, pkt, position: int, label: str):
     print(f"  → 그리퍼: {label} ({position})")
+    # 그리퍼만 빠른 속도로
+    set_speed(port, pkt, ['gripper'], SPEED_GRIPPER)
     write_pose(port, pkt, {'gripper': position})
     time.sleep(GRIPPER_DELAY)
+    # 원래 속도로 복구
+    set_speed(port, pkt, ['gripper'], SPEED_NORMAL)
 
 
 def run_sequence(port, pkt):
@@ -127,7 +151,9 @@ def run_sequence(port, pkt):
 
 def main():
     print("=" * 50)
-    print("  웨이포인트 시퀀스 테스트")
+    print("  웨이포인트 시퀀스 테스트 (속도 20%)")
+    if STEP_MODE:
+        print("  [스텝 모드] 각 단계 후 Enter로 진행")
     print(f"  포트: {PORT}  |  보드레이트: {BAUDRATE}")
     print("=" * 50)
     print("\n[Enter]로 시작, Ctrl+C로 중단")
@@ -135,6 +161,10 @@ def main():
 
     port, pkt = open_bus()
     set_torque(port, pkt, True)
+
+    print(f"[속도 설정: {SPEED_NORMAL} (약 20%)]")
+    set_all_speed(port, pkt, SPEED_NORMAL)
+    set_speed(port, pkt, ['gripper'], SPEED_NORMAL)
 
     try:
         while True:
