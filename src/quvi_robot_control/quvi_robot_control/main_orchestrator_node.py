@@ -13,7 +13,7 @@ import time
 from enum import Enum
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool, Int32, String
+from std_msgs.msg import Bool, Float32, Int32, String
 from quvi_msgs.msg import GraspGoal, InspectionResult, ObjectArray, SystemStatus
 import quvi_robot_control.topics as topics
 
@@ -21,6 +21,12 @@ import quvi_robot_control.topics as topics
 class FsmState(Enum):
     INIT = "INIT"
     IDLE = "IDLE"
+    STARTUP_RAIL_HOME_TRIGGER  = "STARTUP_RAIL_HOME_TRIGGER"   # 시작: 레일 0mm 홈이동
+    STARTUP_RAIL_HOME_WAIT     = "STARTUP_RAIL_HOME_WAIT"
+    STARTUP_INSPECT_TRIGGER    = "STARTUP_INSPECT_TRIGGER"     # 시작: 레일 12.5mm 검사장
+    STARTUP_INSPECT_WAIT       = "STARTUP_INSPECT_WAIT"
+    STARTUP_TURNTABLE_TRIGGER  = "STARTUP_TURNTABLE_TRIGGER"   # 시작: 턴테이블 0°
+    STARTUP_TURNTABLE_WAIT     = "STARTUP_TURNTABLE_WAIT"
     START_RAIL_MOVE_BED_TRIGGER = "START_RAIL_MOVE_BED_TRIGGER"
     START_RAIL_MOVE_BED_WAIT = "START_RAIL_MOVE_BED_WAIT"
     GRASPING_TRIGGER = "GRASPING_TRIGGER"
@@ -122,6 +128,8 @@ class MainOrchestratorNode(Node):
         self._robot_rotate_done = False
         self._place_chamber_done = False
         self._pick_chamber_done = False
+        self._startup_rail_done = False      # 시작 초기화 레일 done
+        self._startup_turntable_done = False # 시작 초기화 턴테이블 done
 
         # 타이머 카운터 (FSM 딜레이 대기용)
         self._state_timer_counter = 0
@@ -158,7 +166,13 @@ class MainOrchestratorNode(Node):
         self._robot_pick_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_CMD, 10)
 
     def _setup_subscribers(self):
-        # HMI 제어 명령 수신
+        # 레일 명령 퍼블리셔 (타입 일치: Float32 mm 직접 발행)
+        self._startup_rail_pub = self.create_publisher(Float32, '/motor/rail', 10)
+        # 턴테이블 명령 퍼블리셔 (개조 FSM 시작 전 초기화용)
+        self._startup_turntable_pub = self.create_publisher(Int32, '/motor/turntable_cmd', 10)
+        # 레일 done 구독 (시작 초기화 시)
+        self.create_subscription(Bool, '/motor/rail_done', self._startup_rail_done_cb, 10)
+        self.create_subscription(Bool, '/motor/turntable_done', self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
 
         # YOLO 탐지 결과 구독
@@ -192,12 +206,14 @@ class MainOrchestratorNode(Node):
         if command == "START":
             if self._state == FsmState.IDLE:
                 if self._use_act and not self._act_ready:
-                    self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 차단합니다.')
+                    self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 안 차단합니다.')
                     self._error_msg = "ACT NOT READY"
                     self._state = FsmState.ERROR
                     return
-                self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER
-                self.get_logger().info('자율 구동 시퀀스를 시작합니다.')
+                self._startup_rail_done = False
+                self._startup_turntable_done = False
+                self._state = FsmState.STARTUP_RAIL_HOME_TRIGGER
+                self.get_logger().info('시작 초기화 시퀀스: 레일 0mm 홈 이동 시작')
         elif command == "STOP":
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
             self._state = FsmState.IDLE
@@ -289,6 +305,18 @@ class MainOrchestratorNode(Node):
         if "ACT_READY" in msg.data.upper():
             self._act_ready = True
 
+    def _startup_rail_done_cb(self, msg: Bool):
+        """START 초기화 시퀀스에서 레일 done 수신."""
+        if msg.data and self._state in (
+            FsmState.STARTUP_RAIL_HOME_WAIT, FsmState.STARTUP_INSPECT_WAIT
+        ):
+            self._startup_rail_done = True
+
+    def _startup_turntable_done_cb(self, msg: Bool):
+        """START 초기화 시퀀스에서 턴테이블 done 수신."""
+        if msg.data and self._state == FsmState.STARTUP_TURNTABLE_WAIT:
+            self._startup_turntable_done = True
+
     # ─── FSM 루프 및 상태 천이 제어 ───
     def _fsm_loop(self):
         if self._state != self._prev_state:
@@ -302,6 +330,63 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.IDLE:
             # HMI로부터 START 대기 (Callback에서 처리)
             pass
+
+        # ── 시작 초기화 시퀀스: 레일 0mm → 12.5mm → 턴테이블 0° ──
+        elif self._state == FsmState.STARTUP_RAIL_HOME_TRIGGER:
+            self._startup_rail_done = False
+            self._state_timer_counter = 0
+            rail_msg = Float32()
+            rail_msg.data = 0.0  # 0mm 홈
+            self._startup_rail_pub.publish(rail_msg)
+            self.get_logger().info('[STARTUP] 레일 0mm 홈 이동 명령 발행')
+            self._state = FsmState.STARTUP_RAIL_HOME_WAIT
+
+        elif self._state == FsmState.STARTUP_RAIL_HOME_WAIT:
+            self._state_timer_counter += 1
+            if self._startup_rail_done:
+                self.get_logger().info('[STARTUP] 레일 0mm 도신. 12.5mm 검사장 이동 시작')
+                self._state = FsmState.STARTUP_INSPECT_TRIGGER
+            elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
+                self.get_logger().error('[STARTUP] 레일 홈 타임아웃! ERROR')
+                self._error_msg = 'STARTUP_RAIL_HOME_TIMEOUT'
+                self._state = FsmState.ERROR
+
+        elif self._state == FsmState.STARTUP_INSPECT_TRIGGER:
+            self._startup_rail_done = False
+            self._state_timer_counter = 0
+            rail_msg = Float32()
+            rail_msg.data = 12.5  # INSPECT(A)
+            self._startup_rail_pub.publish(rail_msg)
+            self.get_logger().info('[STARTUP] 레일 12.5mm INSPECT 이동 명령 발행')
+            self._state = FsmState.STARTUP_INSPECT_WAIT
+
+        elif self._state == FsmState.STARTUP_INSPECT_WAIT:
+            self._state_timer_counter += 1
+            if self._startup_rail_done:
+                self.get_logger().info('[STARTUP] 레일 12.5mm 도신. 턴테이블 0° 초기화 시작')
+                self._state = FsmState.STARTUP_TURNTABLE_TRIGGER
+            elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
+                self.get_logger().error('[STARTUP] 레일 검사장 타임아웃! ERROR')
+                self._error_msg = 'STARTUP_RAIL_INSPECT_TIMEOUT'
+                self._state = FsmState.ERROR
+
+        elif self._state == FsmState.STARTUP_TURNTABLE_TRIGGER:
+            self._startup_turntable_done = False
+            self._state_timer_counter = 0
+            turn_msg = Int32()
+            turn_msg.data = 0  # 0°
+            self._startup_turntable_pub.publish(turn_msg)
+            self.get_logger().info('[STARTUP] 턴테이블 0° 초기화 명령 발행')
+            self._state = FsmState.STARTUP_TURNTABLE_WAIT
+
+        elif self._state == FsmState.STARTUP_TURNTABLE_WAIT:
+            self._state_timer_counter += 1
+            if self._startup_turntable_done:
+                self.get_logger().info('[STARTUP] 터테이블 0° 완료. 자율 구동 시퀀스 진입')
+                self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER
+            elif self._state_timer_counter > int(10.0 * self._loop_rate):  # 10초 타임아웃
+                self.get_logger().warn('[STARTUP] 턴테이블 done 타임아웃 (무시하고 진행)')
+                self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER  # 타임아웃이라도 진행
 
         elif self._state == FsmState.START_RAIL_MOVE_BED_TRIGGER:
             self._robot_rail_done = False

@@ -31,6 +31,8 @@ socket.on('status_update', (data) => {
     if (data.latest_inspection) {
         updateLatestInspection(data.latest_inspection);
     }
+    // 수동 제어 패널 UI 실시간 갱신
+    updateManualControlPanel(data.status);
 });
 
 // ─── 시스템 상태 업데이트 ───
@@ -634,5 +636,149 @@ async function toggleTeleop(enable) {
         const teleopToggle = document.getElementById('teleopToggle');
         if (teleopToggle) teleopToggle.checked = !enable;
         setTeleopBadge('error');
+    }
+}
+
+// ═══════════════════════════════════════════
+// 수동 제어 패널 — 레일 / 턴테이블 / LED
+// ═══════════════════════════════════════════
+
+// 입력값 범위 클램프
+function clampInput(el, min, max) {
+    const v = parseFloat(el.value);
+    if (!isNaN(v)) {
+        if (v < min) el.value = min;
+        if (v > max) el.value = max;
+    }
+}
+
+// 레일 프리셋 칩
+function setRailPreset(mm) {
+    document.getElementById('railMmInput').value = mm;
+}
+
+// 턴테이블 프리셋 칩
+function setTurnPreset(deg) {
+    document.getElementById('turnAngleInput').value = deg;
+}
+
+// 레일 이동 실행
+async function execRailMove() {
+    const input = document.getElementById('railMmInput');
+    const btn   = document.getElementById('railExecBtn');
+    const mm    = parseFloat(input.value);
+    if (isNaN(mm) || mm < 0 || mm > 420) {
+        alert('레일 위치를 0~420mm 범위로 입력해주세요.');
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = '이동 중…';
+    try {
+        const res  = await fetch('/api/rail/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mm })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            console.log(`[QUVI] 레일 명령 완료: ${mm}mm`);
+            document.getElementById('railCurrentDisp').textContent = `명령됨: ${mm} mm`;
+        } else {
+            alert(`레일 오류: ${data.error}`);
+        }
+    } catch (e) {
+        console.error('[QUVI] 레일 이동 실패:', e);
+        alert('레일 명령 전송 실패');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> 이동';
+    }
+}
+
+// 턴테이블 회전 실행
+async function execTurnMove() {
+    const input = document.getElementById('turnAngleInput');
+    const btn   = document.getElementById('turnExecBtn');
+    const angle = parseInt(input.value);
+    if (isNaN(angle) || angle < 0 || angle > 360) {
+        alert('각도를 0~360° 범위로 입력해주세요.');
+        return;
+    }
+    btn.disabled = true;
+    btn.textContent = '회전 중…';
+    try {
+        const res  = await fetch('/api/turntable/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ angle })
+        });
+        const data = await res.json();
+        if (data.ok) {
+            console.log(`[QUVI] 턴테이블 명령 완료: ${angle}°`);
+            document.getElementById('turnCurrentDisp').textContent = `명령됨: ${angle}°`;
+        } else {
+            alert(`턴테이블 오류: ${data.error}`);
+        }
+    } catch (e) {
+        console.error('[QUVI] 턴테이블 이동 실패:', e);
+        alert('턴테이블 명령 전송 실패');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> 회전';
+    }
+}
+
+// LED 토글
+async function toggleLed(on) {
+    const indicator = document.getElementById('ledIndicator');
+    const stateText = document.getElementById('ledStateText');
+    try {
+        const action = on ? 'on' : 'off';
+        const res  = await fetch(`/api/led/${action}`, { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            _applyLedUi(data.led);
+        } else {
+            // 롤백
+            document.getElementById('ledToggle').checked = !on;
+        }
+    } catch (e) {
+        console.error('[QUVI] LED 토글 실패:', e);
+        document.getElementById('ledToggle').checked = !on;
+    }
+}
+
+// LED UI 상태 반영 (WebSocket 업데이트에서도 호출)
+function _applyLedUi(on) {
+    const indicator = document.getElementById('ledIndicator');
+    const stateText = document.getElementById('ledStateText');
+    const toggle    = document.getElementById('ledToggle');
+    if (!indicator) return;
+    if (on) {
+        indicator.classList.add('on');
+        stateText.textContent = 'ON';
+    } else {
+        indicator.classList.remove('on');
+        stateText.textContent = 'OFF';
+    }
+    if (toggle) toggle.checked = !!on;
+}
+
+// WebSocket status_update 시 수동 제어 패널 UI 갱신
+// (기존 onStatusUpdate 훅에 병합 — 기존 JS 파일의 소켓 이벤트 핸들러에서 호출되도록)
+function updateManualControlPanel(status) {
+    // 레일 현재 표시
+    const railDisp = document.getElementById('railCurrentDisp');
+    if (railDisp && status.rail_position !== undefined) {
+        railDisp.textContent = `현재: ${parseFloat(status.rail_position).toFixed(2)} mm`;
+    }
+    // 턴테이블 현재 표시
+    const turnDisp = document.getElementById('turnCurrentDisp');
+    if (turnDisp && status.turntable_angle !== undefined) {
+        turnDisp.textContent = `현재: ${status.turntable_angle}°`;
+    }
+    // LED 상태
+    if (status.led_state !== undefined) {
+        _applyLedUi(status.led_state);
     }
 }

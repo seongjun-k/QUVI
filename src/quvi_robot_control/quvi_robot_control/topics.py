@@ -27,7 +27,8 @@ TOPIC_MOTOR_RAIL_CMD = '/motor/rail'
 TOPIC_MOTOR_TURNTABLE_CMD = '/motor/turntable_cmd'
 TOPIC_MOTOR_RAIL_DONE = '/motor/rail_done'
 TOPIC_MOTOR_TURNTABLE_DONE = '/motor/turntable_done'
-TOPIC_MOTOR_STATUS = '/motor/status'
+TOPIC_MOTOR_STATUS      = '/motor/status'
+TOPIC_MOTOR_LED         = '/motor/turntable_led'       # Bool — LED ON/OFF → ESP32 (펌웨어 구독 중)
 
 # Orchestrator <-> Vision/Inspection
 TOPIC_DETECTION_TRIGGER = '/detection/trigger'

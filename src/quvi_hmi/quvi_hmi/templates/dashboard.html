@@ -506,6 +506,92 @@
                     </div>
                 </div>
 
+                <!-- 수동 제어 패널 카드 -->
+                <div class="card status-card" style="margin-top:16px;" id="manual-control-panel">
+                    <div class="card-header">
+                        <span class="card-title">🕹️ 수동 제어 패널</span>
+                        <span style="font-size:11px;color:var(--text-muted);">IDLE / FINISHED 상태에서만 동작</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="manual-control-grid">
+
+                            <!-- 레일 이동 -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                    리니어 레일
+                                </div>
+                                <div class="manual-ctrl-hint" id="railCurrentDisp">현재: — mm</div>
+                                <div class="manual-ctrl-row">
+                                    <input type="number" id="railMmInput" class="manual-input"
+                                        min="0" max="420" step="0.5" placeholder="0 ~ 420 mm"
+                                        oninput="clampInput(this, 0, 420)">
+                                    <span class="manual-input-unit">mm</span>
+                                    <button class="btn manual-exec-btn" id="railExecBtn" onclick="execRailMove()">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        이동
+                                    </button>
+                                </div>
+                                <div class="manual-preset-row">
+                                    <button class="preset-chip" onclick="setRailPreset(0)">홈(0)</button>
+                                    <button class="preset-chip" onclick="setRailPreset(12.5)">INSPECT</button>
+                                    <button class="preset-chip" onclick="setRailPreset(25)">PASS</button>
+                                    <button class="preset-chip" onclick="setRailPreset(125)">FAIL</button>
+                                    <button class="preset-chip" onclick="setRailPreset(381.25)">BED</button>
+                                </div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- 턴테이블 회전 -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                                    턴테이블
+                                </div>
+                                <div class="manual-ctrl-hint" id="turnCurrentDisp">현재: 0°</div>
+                                <div class="manual-ctrl-row">
+                                    <input type="number" id="turnAngleInput" class="manual-input"
+                                        min="0" max="360" step="1" placeholder="0 ~ 360°"
+                                        oninput="clampInput(this, 0, 360)">
+                                    <span class="manual-input-unit">°</span>
+                                    <button class="btn manual-exec-btn" id="turnExecBtn" onclick="execTurnMove()">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        회전
+                                    </button>
+                                </div>
+                                <div class="manual-preset-row">
+                                    <button class="preset-chip" onclick="setTurnPreset(0)">0°</button>
+                                    <button class="preset-chip" onclick="setTurnPreset(90)">90°</button>
+                                    <button class="preset-chip" onclick="setTurnPreset(180)">180°</button>
+                                    <button class="preset-chip" onclick="setTurnPreset(270)">270°</button>
+                                </div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- LED 토글 -->
+                            <div class="manual-control-section manual-led-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                                    턴테이블 LED
+                                </div>
+                                <div class="led-toggle-container">
+                                    <div class="led-state-indicator" id="ledIndicator">
+                                        <div class="led-glow" id="ledGlow"></div>
+                                        <span id="ledStateText">OFF</span>
+                                    </div>
+                                    <label class="switch led-switch">
+                                        <input type="checkbox" id="ledToggle" onchange="toggleLed(this.checked)">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 하단 FSM 순서도 카드 -->
                 <div class="card status-card" style="margin-top:16px;">
                     <div class="card-header">

@@ -93,6 +93,7 @@ class HmiNode(Node):
             'rail_position': 0.0,   # mm 단위 float (마지막 명령 목표값)
             'turntable_angle': 0,
             'rail_station_map': RAIL_STATION_MAP,
+            'led_state': False,          # LED(턴테이블 링 조명) 현재 상태
         }
         self._latest_detections = []
         self._inspection_history = []  # 최근 100건
@@ -151,7 +152,9 @@ class HmiNode(Node):
         self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
         self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
         # Rail 명령 퍼블리셔: Float32(mm)
-        self._rail_pub = self.create_publisher(Float32, '/motor/rail', 10)
+        self._rail_pub      = self.create_publisher(Float32, '/motor/rail', 10)
+        self._led_pub       = self.create_publisher(Bool,   '/motor/turntable_led', 10)
+        self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -255,6 +258,25 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['rail_position'] = float(mm)  # 명령 목표값으로 갱신
         self.get_logger().info(f'Rail 명령: {mm:.2f} mm')
+
+    def send_turntable_command(self, angle: int):
+        """턴테이블 목표 각도 발행 (Int32, 0~360°)."""
+        angle = max(0, min(360, int(angle)))
+        msg = Int32()
+        msg.data = angle
+        self._turntable_pub.publish(msg)
+        with self._lock:
+            self._system_status['turntable_angle'] = angle
+        self.get_logger().info(f'턴테이블 명령: {angle}°')
+
+    def send_led_command(self, on: bool):
+        """LED(턴테이블 링 조명) ON/OFF 발행."""
+        msg = Bool()
+        msg.data = bool(on)
+        self._led_pub.publish(msg)
+        with self._lock:
+            self._system_status['led_state'] = bool(on)
+        self.get_logger().info(f'LED 명령: {"ON" if on else "OFF"}')
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
@@ -450,6 +472,40 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             return jsonify({'error': f'범위 초과: 0~420mm (요청: {mm}mm)'}), 400
         hmi_node.send_rail_command(mm)
         return jsonify({'ok': True, 'mm': mm})
+
+    @app.route('/api/turntable/move', methods=['POST'])
+    def api_turntable_move():
+        """JSON body: {"angle": <int>} — 턴테이블 목표 각도 발행."""
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        try:
+            angle = int(data['angle'])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({'error': 'body에 {"angle": <int>} 필요'}), 400
+        if not (0 <= angle <= 360):
+            return jsonify({'error': f'범위 초과: 0~360° (요청: {angle}°)'}), 400
+        hmi_node.send_turntable_command(angle)
+        return jsonify({'ok': True, 'angle': angle})
+
+    @app.route('/api/led/toggle', methods=['POST'])
+    def api_led_toggle():
+        """LED 현재 상태를 반전하여 발행."""
+        with hmi_node._lock:
+            current = hmi_node._system_status.get('led_state', False)
+        new_state = not current
+        hmi_node.send_led_command(new_state)
+        return jsonify({'ok': True, 'led': new_state})
+
+    @app.route('/api/led/<action>', methods=['POST'])
+    def api_led_action(action):
+        """LED 명시적 ON/OFF."""
+        if action == 'on':
+            hmi_node.send_led_command(True)
+            return jsonify({'ok': True, 'led': True})
+        elif action == 'off':
+            hmi_node.send_led_command(False)
+            return jsonify({'ok': True, 'led': False})
+        return jsonify({'error': f'Invalid action: {action}'}), 400
 
     # ─── MJPEG 스트리밍 ───
     def _mjpeg_generator(cam_key: str):
