@@ -74,7 +74,7 @@ def generate_launch_description():
         description='micro-ROS agent 시리얼 포트')
 
     micro_ros_baud_arg = DeclareLaunchArgument(
-        'micro_ros_baud', default_value='921600',
+        'micro_ros_baud', default_value='115200',
         description='micro-ROS agent 보 레이트')
 
     # ─── Vision Pipeline 포함 ───
@@ -150,7 +150,7 @@ def generate_launch_description():
 
     micro_ros_agent = ExecuteProcess(
         cmd=[
-            '/uros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent',
+            '/usr/local/bin/run_micro_ros_agent.sh',
             'serial', '--dev',
             LaunchConfiguration('micro_ros_port'),
             '-b',

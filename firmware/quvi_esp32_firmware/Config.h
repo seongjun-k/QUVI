@@ -12,9 +12,9 @@
 
 #ifdef USE_MICRO_ROS
   // micro-ROS agent 와 반드시 일치해야 하는 전송 보드레이트.
-  // 호스트: ros2 run micro_ros_agent micro_ros_agent serial --dev <port> -b 921600
-  // full_system.launch.py micro_ros_baud 기본값 921600 과 일치시킨다.
-  #define MICRO_ROS_BAUDRATE 921600
+  // 호스트: ros2 run micro_ros_agent micro_ros_agent serial --dev <port> -b 115200
+  // full_system.launch.py micro_ros_baud 기본값과 일치시킨다.
+  #define MICRO_ROS_BAUDRATE 115200
 #else
   // 표준 시리얼(CLI) 모드 전용 — Arduino Serial Monitor 수동 테스트용.
   #define SERIAL_BAUDRATE 115200
