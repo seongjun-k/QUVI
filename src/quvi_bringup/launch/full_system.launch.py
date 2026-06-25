@@ -150,7 +150,7 @@ def generate_launch_description():
 
     micro_ros_agent = ExecuteProcess(
         cmd=[
-            'ros2', 'run', 'micro_ros_agent', 'micro_ros_agent',
+            '/uros_ws/install/micro_ros_agent/lib/micro_ros_agent/micro_ros_agent',
             'serial', '--dev',
             LaunchConfiguration('micro_ros_port'),
             '-b',
