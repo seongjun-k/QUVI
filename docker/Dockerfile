@@ -98,7 +98,8 @@ RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc && \
 
 # ─── 엔트리포인트 ───
 COPY ros_entrypoint.sh /ros_entrypoint.sh
-RUN chmod +x /ros_entrypoint.sh
+COPY run_micro_ros_agent.sh /usr/local/bin/run_micro_ros_agent.sh
+RUN chmod +x /ros_entrypoint.sh /usr/local/bin/run_micro_ros_agent.sh
 
 ENTRYPOINT ["/ros_entrypoint.sh"]
 CMD ["bash"]

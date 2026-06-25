@@ -125,7 +125,7 @@ When micro-ROS mode is active, the board acts as a native ROS 2 publisher/subscr
 3. **Publish movements manually from host:**
    ```bash
    # Move Linear Rail to INSPECT position
-   ros2 topic pub /motor/rail std_msgs/msg/Int32 "{data: 1000}" --once
+   ros2 topic pub /motor/rail std_msgs/msg/Float32 "{data: 12.5}" --once
 
    # Rotate Turntable to 270 degrees
    ros2 topic pub /motor/turntable_cmd std_msgs/msg/Int32 "{data: 270}" --once
