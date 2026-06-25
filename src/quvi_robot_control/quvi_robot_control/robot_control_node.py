@@ -992,7 +992,10 @@ class RobotControlNode(Node):
         """
         teach_pendant.py 로 기록한 P1~P6 웨이포인트를 순서대로 실행.
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
-        순서: P1 → P2 → P3 → P4(그리퍼 열기) → P5 → P6(그리퍼 열기)
+
+        순서:
+          P1 → P2 → P3 → P4(놓기) → P5(위로 올리기/판정 대기)
+          → P4(다시 집기) → P3(들어올리기) → P5(회전) → P6(최종 놓기)
         """
         for key, pose, label in [
             ('P1', POSE_P1, 'P1: 집기 전 대기'),
@@ -1000,36 +1003,54 @@ class RobotControlNode(Node):
             ('P3', POSE_P3, 'P3: 턴테이블 위'),
         ]:
             if pose is None:
-                self.get_logger().error(
-                    f'{key} 웨이포인트 미설정 — teach_pendant.py 로 먼저 기록하세요.')
+                self.get_logger().error(f'{key} 웨이포인트 미설정')
                 return False
             if not self._execute_pose(pose, label):
                 return False
 
-        # P4: 위치 도달 후 그리퍼 열기
+        # P4: 내려가서 그리퍼 열기 (턴테이블에 올려놓기)
         if POSE_P4 is None:
             self.get_logger().error('P4 웨이포인트 미설정')
             return False
-        if not self._execute_pose(POSE_P4, 'P4: 턴테이블 내려놓기 위치'):
+        if not self._execute_pose(POSE_P4, 'P4: 턴테이블 내려놓기'):
             return False
         self._write_raw_position({'gripper': GRIPPER_OPEN})
-        self.get_logger().info('P4: 그리퍼 열기')
+        self.get_logger().info('P4: 그리퍼 열기 (놓기)')
+        time.sleep(0.5)
 
-        # P5: 복귀
+        # P5: 위로 올라가서 판정 대기
         if POSE_P5 is None:
             self.get_logger().error('P5 웨이포인트 미설정')
             return False
-        if not self._execute_pose(POSE_P5, 'P5: 180도 복귀'):
+        if not self._execute_pose(POSE_P5, 'P5: 위로 올라가기 (판정 대기)'):
+            return False
+        # 판정은 오케스트레이터가 release 트리거 전에 이미 완료한 상태
+        self.get_logger().info('판정 완료 — P4로 복귀하여 집기')
+
+        # P4: 다시 내려가서 그리퍼 닫기 (다시 집기)
+        if not self._execute_pose(POSE_P4, 'P4: 다시 내려가기 (집기)'):
+            return False
+        self._write_raw_position({'gripper': GRIPPER_CLOSE})
+        self.get_logger().info('P4: 그리퍼 닫기 (집기)')
+        time.sleep(0.5)
+
+        # P3: 들어올리기
+        if not self._execute_pose(POSE_P3, 'P3: 들어올리기'):
             return False
 
-        # P6: 레일이 이미 pass/fail 위치로 이동된 상태에서 최종 내려놓기
+        # P5: 반대쪽으로 회전
+        if not self._execute_pose(POSE_P5, 'P5: 회전'):
+            return False
+
+        # P6: 최종 내려놓기 (레일은 이미 pass/fail 위치)
         if POSE_P6 is None:
             self.get_logger().error('P6 웨이포인트 미설정')
             return False
-        if not self._execute_pose(POSE_P6, 'P6: 최종 내려놓기 위치'):
+        if not self._execute_pose(POSE_P6, 'P6: 최종 내려놓기'):
             return False
         self._write_raw_position({'gripper': GRIPPER_OPEN})
-        self.get_logger().info('P6: 그리퍼 열기')
+        self.get_logger().info('P6: 그리퍼 열기 (최종 놓기)')
+        time.sleep(0.5)
 
         return True
 
