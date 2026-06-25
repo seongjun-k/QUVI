@@ -388,9 +388,8 @@ class RobotControlNode(Node):
         self._joint_state_pub = self.create_publisher(
             JointState, '/robot/joint_states', 10)
 
-        # /motor/rail: Float32(mm) — ESP32 펌웨어와 타입 일치
         self._rail_pub = self.create_publisher(
-            Float32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
+            Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
 
         self._status_pub = self.create_publisher(
             String, topics.TOPIC_ROBOT_STATUS, 10)
@@ -677,7 +676,7 @@ class RobotControlNode(Node):
     def _execute_rail_move(self, position: RailPosition) -> bool:
         """
         레일을 지정 위치로 이동.
-        /motor/rail 토픽으로 mm 값(Float32) 발행 → ESP32-S3가 TB6600 구동.
+        /motor/rail 토픽으로 steps(Int32) 발행 → ESP32-S3가 TB6600 구동.
         """
         self._set_state(RobotState.MOVING_RAIL)
         target_mm = float(self._rail_mm[position])
@@ -688,9 +687,8 @@ class RobotControlNode(Node):
         if self._use_real_hardware:
             self._esp32_rail_done = False
 
-        # Float32(mm) 직접 발행 — steps 변환 없음
-        msg = Float32()
-        msg.data = target_mm
+        msg = Int32()
+        msg.data = int(target_mm * 80)
         self._rail_pub.publish(msg)
 
         if self._use_real_hardware:

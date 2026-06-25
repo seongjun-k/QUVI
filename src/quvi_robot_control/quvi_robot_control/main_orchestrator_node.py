@@ -167,7 +167,7 @@ class MainOrchestratorNode(Node):
         # STARTUP 시퀀스 전용 구동부 퍼블리셔
         # _turntable_pub 과 동일 토픽이므로 _turntable_pub 을 재사용한다.
         self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
-        self._startup_rail_pub = self.create_publisher(Float32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
+        self._startup_rail_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
 
     def _setup_subscribers(self):
         # 레일/턴테이블 done 구독 (시작 초기화 시)
@@ -339,8 +339,8 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_RAIL_HOME_TRIGGER:
             self._startup_rail_done = False
             self._state_timer_counter = 0
-            rail_msg = Float32()
-            rail_msg.data = 0.0  # 0mm 홈
+            rail_msg = Int32()
+            rail_msg.data = 0  # 0mm 홈 = 0 steps
             self._startup_rail_pub.publish(rail_msg)
             self.get_logger().info('[STARTUP] 레일 0mm 홈 이동 명령 발행')
             self._state = FsmState.STARTUP_RAIL_HOME_WAIT
@@ -358,8 +358,8 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_INSPECT_TRIGGER:
             self._startup_rail_done = False
             self._state_timer_counter = 0
-            rail_msg = Float32()
-            rail_msg.data = 12.5  # INSPECT(A)
+            rail_msg = Int32()
+            rail_msg.data = int(12.5 * 80)  # INSPECT(A) = 1000 steps
             self._startup_rail_pub.publish(rail_msg)
             self.get_logger().info('[STARTUP] 레일 12.5mm INSPECT 이동 명령 발행')
             self._state = FsmState.STARTUP_INSPECT_WAIT
