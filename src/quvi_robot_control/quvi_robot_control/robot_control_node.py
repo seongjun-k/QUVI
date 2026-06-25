@@ -21,7 +21,7 @@ QUVI ROBOT_CONTROL_NODE
   2. OMX Dynamixel 관절 제어 (lerobot 공식 API)
      - 홈 복귀, 자세 이동, 그리퍼 제어
   3. 리더-팔로워 텔레오퍼레이션 (lerobot OmxLeader → OmxFollower)
-  4. 레일 이동 명령 → ESP32-S3 (/motor/rail)
+  4. 레일 이동 명령 → ESP32-S3 (/motor/rail Float32 mm)
   5. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable)
 
 ROS 2 인터페이스 (Subscriber):
@@ -34,7 +34,7 @@ ROS 2 인터페이스 (Subscriber):
 
 ROS 2 인터페이스 (Publisher):
   /robot/joint_states         sensor_msgs/JointState        현재 관절 각도 (30 Hz)
-  /motor/rail                 std_msgs/Int32                레일 목표 스텝 (→ ESP32)
+  /motor/rail                 std_msgs/Float32              레일 목표 위치 mm (→ ESP32)
   /motor/turntable            std_msgs/Int32                턴테이블 목표 각도 (→ ESP32)
   /robot/status               std_msgs/String               상태 문자열
   /robot/act_done             std_msgs/Bool                 ACT 파지 완료 신호
@@ -63,7 +63,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, JointState
-from std_msgs.msg import Bool, Int32, String
+from std_msgs.msg import Bool, Float32, Int32, String
 from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
@@ -240,8 +240,8 @@ class RobotControlNode(Node):
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
         self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
-        self.declare_parameter('rail_mm_pass',    25.0)   # 2000 steps
-        self.declare_parameter('rail_mm_fail',    125.0)  # 10000 steps
+        self.declare_parameter('rail_mm_pass',    25.0)
+        self.declare_parameter('rail_mm_fail',    125.0)
         # 카메라
         self.declare_parameter('handcam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('use_compressed', True)
@@ -274,17 +274,7 @@ class RobotControlNode(Node):
     # lerobot OmxFollower 초기화
     # ─────────────────────────────────────────────
     def _init_follower(self):
-        """lerobot 공식 OmxFollower를 통해 팔로워 로봇팔 초기화.
-
-        OmxFollower가 내부적으로 처리하는 것들:
-          - DynamixelMotorsBus 생성 (GroupSyncRead/Write 포함)
-          - 모터 ping 및 모델 검증
-          - 캘리브레이션 로드/적용 (homing offset, drive mode, range limit)
-          - Operating Mode 설정 (shoulder_pan=EXTENDED_POSITION, gripper=CURRENT_POSITION 등)
-          - PID 게인, Profile Velocity/Acceleration 설정
-          - Position Limit, Current Limit 설정
-          - 토크 활성화
-        """
+        """lerobot 공식 OmxFollower를 통해 팔로워 로봇팔 초기화."""
         try:
             follower_config = OmxFollowerConfig(
                 port=self._dxl_port_name,
@@ -398,9 +388,9 @@ class RobotControlNode(Node):
         self._joint_state_pub = self.create_publisher(
             JointState, '/robot/joint_states', 10)
 
+        # /motor/rail: Float32(mm) — ESP32 펌웨어와 타입 일치
         self._rail_pub = self.create_publisher(
-            Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
-
+            Float32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
 
         self._status_pub = self.create_publisher(
             String, topics.TOPIC_ROBOT_STATUS, 10)
@@ -483,13 +473,6 @@ class RobotControlNode(Node):
         return True
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
-        """파지 명령 수신 → ACT 파지 실행 (별도 스레드).
-
-        주의: ACT(visuomotor)는 핸드캠 이미지+관절상태로 end-to-end 추론하므로
-        목표 좌표(target_x/y)를 직접 사용하지 않는다. 좌표는 베드 위 어떤
-        출력물을 대상으로 하는지에 대한 참고/로깅 용도이며, 향후 좌표 기반
-        프리포지셔닝(레일/베이스 이동)을 붙일 때 사용할 수 있다.
-        """
         self.get_logger().info(
             f'파지 목표 수신(참고): idx={msg.object_index} '
             f'x={msg.target_x:.1f} y={msg.target_y:.1f} '
@@ -497,7 +480,7 @@ class RobotControlNode(Node):
         self._try_start_command(RobotState.ACT_GRASPING, self._execute_act_grasp)
 
     def _rail_cmd_callback(self, msg: Int32):
-        """레일 이동 명령 수신 → 레일 이동 실행 (별도 스레드)."""
+        """레일 이동 명령 수신 (Int32 위치 코드) → 레일 이동 실행 (별도 스레드)."""
         pos_code = msg.data
         try:
             pos = RailPosition(pos_code)
@@ -507,67 +490,57 @@ class RobotControlNode(Node):
         self._try_start_command(RobotState.MOVING_RAIL, self._execute_rail_move, pos)
 
     def _rotate_cmd_callback(self, msg: Bool):
-        """베이스 회전 명령 수신. true → 뒤 방향 / false → 앞 방향"""
         pan_val = 0 if msg.data else 2048
         pose = {'shoulder_pan': pan_val}
         self._try_start_command(RobotState.ROTATING_BASE, self._execute_pose, pose, f'베이스 회전(pan={pan_val})')
 
     def _release_cmd_callback(self, msg: Bool):
-        """투하 명령 수신."""
         if not msg.data:
             return
         self._try_start_command(RobotState.RELEASING, self._execute_release)
 
     def _home_cmd_callback(self, msg: Bool):
-        """홈 복귀 명령 수신."""
         if not msg.data:
             return
         self._try_start_command(RobotState.HOMING, self._execute_home)
 
     def _place_chamber_cmd_callback(self, msg: Bool):
-        """검사장(턴테이블) 안착 명령 수신."""
         if not msg.data:
             return
         self._try_start_command(RobotState.RELEASING, self._execute_place_in_chamber)
 
     def _pick_chamber_cmd_callback(self, msg: Bool):
-        """검사장에서 재파지 명령 수신."""
         if not msg.data:
             return
         self._try_start_command(RobotState.ACT_GRASPING, self._execute_pick_from_chamber)
 
     def _estop_cmd_callback(self, msg: Bool):
-        """비상 정지 수신."""
         if msg.data:
             self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 천이')
             self._safe_estop_cleanup()
 
     def _reset_cmd_callback(self, msg: Bool):
-        """시스템 리셋 및 모터 연결 복구 명령 수신."""
         if msg.data:
             self.get_logger().info('로봇 리셋 및 Dynamixel 포트 재연결 시도...')
             t = threading.Thread(target=self._execute_reset, daemon=True)
             t.start()
 
     # ─────────────────────────────────────────────
-    # 서비스 핸들러 (동기 — Main Orchestrator가 완료 대기)
+    # 서비스 핸들러
     # ─────────────────────────────────────────────
     def _act_grasp_service(self, request, response):
-        """ACT 파지 서비스 (완료까지 블로킹)."""
         success = self._execute_act_grasp()
         response.success = success
         response.message = 'ACT 파지 완료' if success else 'ACT 파지 실패'
         return response
 
     def _go_home_service(self, request, response):
-        """홈 복귀 서비스."""
         success = self._execute_home()
         response.success = success
         response.message = '홈 복귀 완료' if success else '홈 복귀 실패'
         return response
 
     def _open_gripper_service(self, request, response):
-        """그리퍼 열기 서비스 (lerobot bus 사용)."""
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         time.sleep(0.5)
         response.success = True
@@ -575,7 +548,6 @@ class RobotControlNode(Node):
         return response
 
     def _close_gripper_service(self, request, response):
-        """그리퍼 닫기 서비스 (lerobot bus 사용)."""
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
         time.sleep(0.5)
         response.success = True
@@ -586,15 +558,6 @@ class RobotControlNode(Node):
     # 실행 함수 — ACT 파지
     # ─────────────────────────────────────────────
     def _execute_act_grasp(self) -> bool:
-        """
-        ACT 모방학습 파지 실행.
-
-        흐름:
-          1. 핸드캠 이미지 + 관절 상태 → obs 딕셔너리 구성
-          2. ACTPolicy.select_action(obs) → 액션 청크 (chunk_size × 6)
-          3. 액션 청크를 30 Hz로 OmxFollower에 전송
-          4. 완료 신호 발행
-        """
         self._set_state(RobotState.ACT_GRASPING)
         self._publish_status('ACT 파지 시작')
         self.get_logger().info('ACT 파지 시작')
@@ -608,7 +571,6 @@ class RobotControlNode(Node):
             import torch
             start = time.time()
 
-            # ── obs 구성 ──
             with self._handcam_lock:
                 frame = self._latest_handcam
 
@@ -620,12 +582,10 @@ class RobotControlNode(Node):
             import cv2
             frame_rgb = cv2.cvtColor(
                 cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2RGB)
-            # (H, W, C) → (1, C, H, W), float32 [0,1]
             img_tensor = torch.from_numpy(
                 frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
             img_tensor = img_tensor.to(self._act_device_obj)
 
-            # 관절 상태: lerobot bus에서 raw 위치 읽기 → 라디안 변환 (0~4095 = 0~2π)
             raw_positions = self._read_raw_positions()
             if raw_positions is None:
                 self.get_logger().error('관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
@@ -641,26 +601,21 @@ class RobotControlNode(Node):
                 joint_rad, dtype=torch.float32).unsqueeze(0)
             state_tensor = state_tensor.to(self._act_device_obj)
 
-            # TODO: 학습 데이터셋의 video_keys 설정에 따라 이미지 키 이름을 맞춰야 합니다.
-            # 예: 'observation.images.handcam' 또는 'observation.images.top', 'observation.images.wrist' 등
             obs = {
                 'observation.images.handcam': img_tensor,
                 'observation.state': state_tensor,
             }
 
-            # ── ACT 추론 ──
             with torch.no_grad():
                 action_chunk = self._act_policy.select_action(obs)
-                # action_chunk: Tensor shape (1, chunk_size, 6) or (chunk_size, 6)
                 if action_chunk.ndim == 3:
-                    action_chunk = action_chunk.squeeze(0)  # (chunk_size, 6)
+                    action_chunk = action_chunk.squeeze(0)
                 action_chunk = action_chunk.cpu().numpy()
 
             self.get_logger().info(
                 f'ACT 추론 완료 | 청크 크기={len(action_chunk)} | '
                 f'추론 시간={(time.time()-start)*1000:.1f}ms')
 
-            # ── 액션 청크 실행 ──
             if self._get_state() == RobotState.ERROR:
                 self.get_logger().error('ESTOP 감지 — ACT 청크 실행을 중단합니다.')
                 self._safe_estop_cleanup()
@@ -670,24 +625,20 @@ class RobotControlNode(Node):
             for i, action in enumerate(action_chunk):
                 step_start = time.time()
 
-                # 매 스텝마다 ESTOP 상태 검증
                 if self._get_state() == RobotState.ERROR:
                     self.get_logger().error(f'ESTOP 감지 — ACT 실행 중단 (스텝 {i}/{len(action_chunk)})')
                     self._safe_estop_cleanup()
                     return False
 
                 if self._use_real_hardware and self._dxl_ready:
-                    # lerobot 공식 API를 통한 캘리브레이션/변환 적용 및 모터 전송
                     action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
                     action_dict = self._clip_shoulder_lift(action_dict, is_raw=False)
                     with self._dxl_io_lock:
                         self._follower.send_action(action_dict)
                 else:
-                    # 시뮬레이션 모드 또는 하드웨어가 없는 경우
                     goal_dict = {}
                     for j, name in enumerate(JOINT_NAMES):
                         val = float(action[j])
-                        # LeRobot의 M100_100 범위 [-100, 100]를 0~4095로 변환 모사
                         if -100 <= val <= 100:
                             raw = int(((val + 100.0) / 200.0) * 4095.0)
                         else:
@@ -695,7 +646,6 @@ class RobotControlNode(Node):
                         goal_dict[name] = raw
                     self._write_raw_position(goal_dict)
 
-                # 30 Hz 타이밍 유지
                 elapsed = time.time() - step_start
                 remaining = dt - elapsed
                 if remaining > 0:
@@ -704,7 +654,6 @@ class RobotControlNode(Node):
             total_time = time.time() - start
             self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s')
 
-            # ── 완료 신호 발행 ──
             done_msg = Bool()
             done_msg.data = True
             self._act_done_pub.publish(done_msg)
@@ -716,7 +665,6 @@ class RobotControlNode(Node):
 
         except Exception as e:
             self.get_logger().error(f'ACT 파지 중 오류: {e}')
-            # Recovery: reset port_handler is_using flag on failure
             if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                 self._follower.bus.port_handler.is_using = False
             self._set_state(RobotState.ERROR)
@@ -729,24 +677,23 @@ class RobotControlNode(Node):
     def _execute_rail_move(self, position: RailPosition) -> bool:
         """
         레일을 지정 위치로 이동.
-        /motor/rail 토픽으로 스텝 수 발행 → ESP32-S3가 TB6600 구동.
+        /motor/rail 토픽으로 mm 값(Float32) 발행 → ESP32-S3가 TB6600 구동.
         """
         self._set_state(RobotState.MOVING_RAIL)
         target_mm = float(self._rail_mm[position])
-        target_steps = int(target_mm * 80.0)
         pos_name = position.name
-        self._publish_status(f'레일 이동: {pos_name} ({target_mm:.1f}mm -> {target_steps}스텝)')
-        self.get_logger().info(f'레일 이동 명령: {pos_name} = {target_mm:.1f}mm -> {target_steps}스텝')
+        self._publish_status(f'레일 이동: {pos_name} ({target_mm:.2f}mm)')
+        self.get_logger().info(f'레일 이동 명령: {pos_name} = {target_mm:.2f}mm')
 
         if self._use_real_hardware:
             self._esp32_rail_done = False
 
-        msg = Int32()
-        msg.data = target_steps
+        # Float32(mm) 직접 발행 — steps 변환 없음
+        msg = Float32()
+        msg.data = target_mm
         self._rail_pub.publish(msg)
 
         if self._use_real_hardware:
-            # ESP32로부터 완료 신호 대기 (타임아웃 포함)
             deadline = time.time() + self._rail_timeout
             success = False
             while time.time() < deadline:
@@ -762,7 +709,6 @@ class RobotControlNode(Node):
                 self._publish_status('ERROR: 레일 이동 타임아웃')
                 return False
         else:
-            # 시뮬레이션 모드에서는 즉시 완료 처리 (대기 시간 모사)
             time.sleep(1.0)
 
         done_msg = Bool()
@@ -777,16 +723,15 @@ class RobotControlNode(Node):
     # 실행 함수 — 자세 이동
     # ─────────────────────────────────────────────
     def _execute_pose(self, target_pose: dict, label: str = '') -> bool:
-        """목표 자세(raw Dynamixel 위치값 dict)로 이동."""
         self._set_state(RobotState.ROTATING_BASE)
         self._publish_status(f'자세 변경: {label}')
         self.get_logger().info(f'자세 변경: {label} → {target_pose}')
 
         if target_pose == POSE_BACK and POSE_BACK == POSE_FRONT:
-            self.get_logger().warn('경고: POSE_BACK과 POSE_FRONT의 모터 제어값이 동일합니다. 실제 회전을 위해 캘리브레이션이 필요합니다.')
+            self.get_logger().warn('경고: POSE_BACK과 POSE_FRONT의 모터 제어값이 동일합니다.')
 
         success = self._write_raw_position(target_pose)
-        time.sleep(1.5)  # 자세 안정화 대기
+        time.sleep(1.5)
 
         self._set_state(RobotState.IDLE)
         self._publish_status(f'자세 변경 완료: {label}')
@@ -801,7 +746,6 @@ class RobotControlNode(Node):
     # 실행 함수 — 투하
     # ─────────────────────────────────────────────
     def _execute_release(self) -> bool:
-        """분류함 위에서 그리퍼를 열어 출력물 투하."""
         self._set_state(RobotState.RELEASING)
         self._publish_status('출력물 투하')
         self.get_logger().info('출력물 투하: 그리퍼 열기 (OmxFollower gripper)')
@@ -821,7 +765,6 @@ class RobotControlNode(Node):
     # 실행 함수 — 홈 복귀
     # ─────────────────────────────────────────────
     def _execute_home(self) -> bool:
-        """전체 관절을 홈 자세로 복귀."""
         self._set_state(RobotState.HOMING)
         self._publish_status('홈 복귀')
         self.get_logger().info('홈 복귀 시작')
@@ -829,7 +772,6 @@ class RobotControlNode(Node):
         success = self._write_raw_position(POSE_HOME)
         time.sleep(2.0)
 
-        # 홈 복귀 완료 신호 발행
         done_msg = Bool()
         done_msg.data = True
         self._home_done_pub.publish(done_msg)
@@ -839,32 +781,25 @@ class RobotControlNode(Node):
         return success
 
     def _execute_place_in_chamber(self) -> bool:
-        """베드 위 출력물을 쥔 채로 180도 우회전하여 검사장에 배치하고 홈 복귀."""
         self._set_state(RobotState.RELEASING)
         self._publish_status('검사장 안착 시퀀스 시작')
         self.get_logger().info('검사장 안착 시퀀스 시작')
 
-        # 1. 안전 높이로 팔 들기 (그리퍼 보존)
         self._write_raw_position(POSE_LIFT_ARM)
         time.sleep(1.5)
 
-        # 2. 베이스 180도 우회전 (shoulder_pan = 0, 그리퍼 보존)
         self._write_raw_position({'shoulder_pan': 0})
         time.sleep(1.5)
 
-        # 3. 검사장 위치로 내리기 (그리퍼 보존)
         self._write_raw_position(POSE_PLACE_CHAMBER)
         time.sleep(1.5)
 
-        # 4. 그리퍼 열기
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         time.sleep(1.0)
 
-        # 5. 홈 자세 복귀 (베이스 앞 방향 2048 복귀, 그리퍼 열림 유지)
         success = self._write_raw_position(POSE_HOME)
         time.sleep(2.0)
 
-        # 완료 토픽 발행
         done_msg = Bool()
         done_msg.data = True
         self._place_chamber_done_pub.publish(done_msg)
@@ -874,28 +809,22 @@ class RobotControlNode(Node):
         return success
 
     def _execute_pick_from_chamber(self) -> bool:
-        """검사장에서 출력물을 집고(Grasp) 베이스를 왼쪽으로 180도 좌회전시킴."""
         self._set_state(RobotState.ACT_GRASPING)
         self._publish_status('검사장 재파지 시퀀스 시작')
         self.get_logger().info('검사장 재파지 시퀀스 시작')
 
-        # 1. 검사장 파지 자세 진입 (그리퍼 열린 채로 하강)
         self._write_raw_position(POSE_CHAMBER_PRE_PICK)
         time.sleep(1.5)
 
-        # 2. 그리퍼 닫기
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
         time.sleep(1.0)
 
-        # 3. 안전 높이로 팔 들기 (그리퍼 보존)
         self._write_raw_position(POSE_LIFT_ARM)
         time.sleep(1.5)
 
-        # 4. 베이스 180도 좌회전 (앞 방향 2048 복귀, 그리퍼 보존)
         success = self._write_raw_position({'shoulder_pan': 2048})
         time.sleep(1.5)
 
-        # 완료 토픽 발행
         done_msg = Bool()
         done_msg.data = True
         self._pick_chamber_done_pub.publish(done_msg)
@@ -905,7 +834,6 @@ class RobotControlNode(Node):
         return success
 
     def _clip_shoulder_lift(self, positions: dict, is_raw: bool) -> dict:
-        """모터 12 (shoulder_lift)의 한계를 항상 90도 이상으로 보장."""
         positions = dict(positions)
         if 'shoulder_lift' in positions:
             limit = 1024 if is_raw else -100.0
@@ -917,7 +845,6 @@ class RobotControlNode(Node):
                 )
                 positions['shoulder_lift'] = limit
         
-        # 만약 key 가 'shoulder_lift.pos' 형태인 경우 (send_action 의 action_dict 등)
         if 'shoulder_lift.pos' in positions:
             limit = 1024 if is_raw else -100.0
             if positions['shoulder_lift.pos'] < limit:
@@ -934,12 +861,6 @@ class RobotControlNode(Node):
     # lerobot bus 기반 모터 I/O
     # ─────────────────────────────────────────────
     def _write_raw_position(self, positions: dict) -> bool:
-        """lerobot bus를 통해 raw 위치값 전송 (normalize=False).
-
-        Args:
-            positions: {'shoulder_pan': 2048, 'gripper': 2300, ...} 형태의 dict.
-                       전체 6관절 또는 일부 관절만 지정 가능.
-        """
         positions = self._clip_shoulder_lift(positions, is_raw=True)
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
@@ -952,21 +873,14 @@ class RobotControlNode(Node):
             return True
         except Exception as e:
             self.get_logger().error(f'lerobot sync_write 오류: {e}')
-            # Recovery: reset port_handler is_using flag on failure
             if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                 self._follower.bus.port_handler.is_using = False
             return False
 
     def _read_raw_positions(self) -> Optional[dict]:
-        """lerobot bus를 통해 현재 raw 위치값 읽기 (normalize=False).
-
-        Returns:
-            {'shoulder_pan': 2048, ...} 형태의 dict. 실패 시 None.
-        """
         if not self._use_real_hardware or not self._dxl_ready:
             return {name: 2048 for name in JOINT_NAMES}
 
-        # 30Hz 타이머와 제어 루프 간 경합 방지를 위해 non-blocking lock 획득
         acquired = self._dxl_io_lock.acquire(blocking=False)
         if not acquired:
             return None
@@ -976,7 +890,6 @@ class RobotControlNode(Node):
                 'Present_Position', normalize=False)
         except Exception as e:
             self.get_logger().error(f'lerobot sync_read 오류: {e}')
-            # Recovery: reset port_handler is_using flag on failure
             if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                 self._follower.bus.port_handler.is_using = False
             return None
@@ -987,7 +900,6 @@ class RobotControlNode(Node):
     # 관절 상태 발행 (30 Hz 타이머)
     # ─────────────────────────────────────────────
     def _publish_joint_states(self):
-        """현재 관절 위치를 JointState 토픽으로 발행."""
         raw_positions = self._read_raw_positions()
         if raw_positions is None:
             return
@@ -996,7 +908,6 @@ class RobotControlNode(Node):
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'base_link'
         msg.name = JOINT_NAMES
-        # raw Dynamixel 위치값 → 라디안 변환 (0~4095 = 0~2π)
         msg.position = [
             (raw_positions[name] / 4095.0) * 2 * math.pi
             for name in JOINT_NAMES
@@ -1020,7 +931,6 @@ class RobotControlNode(Node):
         self._status_pub.publish(status_msg)
 
     def _safe_estop_cleanup(self):
-        """ESTOP 발생 시 안전하게 Dynamixel 토크를 해제하고 상태를 정리한다."""
         try:
             if self._dxl_ready and self._follower:
                 if hasattr(self._follower, 'bus'):
@@ -1035,9 +945,7 @@ class RobotControlNode(Node):
         self._publish_status('ERROR: ESTOP ACTIVE — 토크 해제됨')
 
     def _execute_reset(self) -> bool:
-        """리셋 명령 수신 시 시리얼 연결 재설정 및 상태 초기화."""
         with self._dxl_io_lock:
-            # 1. 기존 팔로워 해제
             if self._follower:
                 try:
                     self._follower.disconnect()
@@ -1046,11 +954,9 @@ class RobotControlNode(Node):
                 self._follower = None
             self._dxl_ready = False
             
-            # 2. 재연결 시도
             if self._use_real_hardware:
                 self._init_follower()
                 
-            # 3. 상태 정리 및 완료 통보
             if not self._use_real_hardware or self._dxl_ready:
                 self._set_state(RobotState.IDLE)
                 self._publish_status('ACT_READY')
@@ -1065,8 +971,6 @@ class RobotControlNode(Node):
     # 종료 처리
     # ─────────────────────────────────────────────
     def destroy_node(self):
-        """노드 종료 시 lerobot을 통해 안전하게 연결 해제."""
-        # 텔레옵이 돌고 있다면 정지
         if self._teleop_running:
             self._stop_teleop()
 
@@ -1082,10 +986,9 @@ class RobotControlNode(Node):
         super().destroy_node()
 
     # ─────────────────────────────────────────────
-    # 텔레오퍼레이션 제어 (lerobot OmxLeader 사용)
+    # 텔레오퍼레이션 제어
     # ─────────────────────────────────────────────
     def _teleop_cmd_callback(self, msg: Bool):
-        """텔레오퍼레이션 ON/OFF 명령 수신."""
         if msg.data:
             t = threading.Thread(target=self._start_teleop, daemon=True)
             t.start()
@@ -1094,7 +997,6 @@ class RobotControlNode(Node):
             t.start()
 
     def _start_teleop(self) -> bool:
-        """lerobot OmxLeader를 사용한 리더-팔로워 텔레오퍼레이션 시작."""
         if self._get_state() == RobotState.TELEOPING:
             return True
         if self._get_state() != RobotState.IDLE:
@@ -1119,8 +1021,7 @@ class RobotControlNode(Node):
                     self._leader.connect()
                     connected = True
                     self.get_logger().info(
-                        f'OmxLeader 연결 완료 (시도 {attempt}/{max_retries}) | 포트={self._leader_port_name} | '
-                        f'모터: {list(self._leader.bus.motors.keys())}')
+                        f'OmxLeader 연결 완료 (시도 {attempt}/{max_retries}) | 포트={self._leader_port_name}')
                     break
                 except Exception as e:
                     self.get_logger().warn(f'OmxLeader 연결 실패 (시도 {attempt}/{max_retries}): {e}')
@@ -1135,20 +1036,16 @@ class RobotControlNode(Node):
 
         self._teleop_running = True
 
-        # 1. 텔레옵 루프 기동 전 리더 현재 위치로 팔로워 부드럽게 정렬 (Smooth Alignment)
         if self._use_real_hardware and self._leader and self._follower:
             try:
                 self.get_logger().info('텔레옵 시작 전 리더-팔로워 위치 정렬 중...')
                 with self._dxl_io_lock:
                     target_action = self._leader.get_action()
                 
-                # 팔로워 현재 관절 각도(정규화) 가져오기
                 with self._dxl_io_lock:
                     current_norm_positions = self._follower.bus.sync_read("Present_Position")
                 
                 if current_norm_positions and target_action:
-                    # 다회전(DEGREES) 조인트인 'shoulder_pan'과 'wrist_roll'에 대해
-                    # 리더와 팔로워 사이의 각도 차이를 최소화하는 최단거리 오프셋 계산 (선 꼬임 및 급격한 1회전 현상 방지)
                     self._teleop_offsets = {}
                     for joint in ['shoulder_pan', 'wrist_roll']:
                         leader_key = f"{joint}.pos"
@@ -1158,19 +1055,13 @@ class RobotControlNode(Node):
                             diff = leader_val - follower_val
                             wrapped_diff = (diff + 180.0) % 360.0 - 180.0
                             self._teleop_offsets[joint] = leader_val - (follower_val + wrapped_diff)
-                            self.get_logger().info(
-                                f"[Teleop Offset] {joint} 보정 오프셋 적용: "
-                                f"Leader={leader_val:.2f}, Follower={follower_val:.2f} -> Offset={self._teleop_offsets[joint]:.2f}"
-                            )
 
-                    # 오프셋 보정 적용
                     corrected_target_action = dict(target_action)
                     for joint, offset in self._teleop_offsets.items():
                         leader_key = f"{joint}.pos"
                         if leader_key in corrected_target_action:
                             corrected_target_action[leader_key] -= offset
 
-                    # 1.5초 동안 30단계로 부드럽게 보간 이동
                     steps = 30
                     dt = 1.5 / steps
                     target_goals = {key.removesuffix(".pos"): val for key, val in corrected_target_action.items() if key.endswith(".pos")}
@@ -1203,7 +1094,6 @@ class RobotControlNode(Node):
         return True
 
     def _stop_teleop(self) -> bool:
-        """리더-팔로워 텔레오퍼레이션 종료."""
         if not self._teleop_running:
             return True
 
@@ -1225,12 +1115,6 @@ class RobotControlNode(Node):
         return True
 
     def _teleop_loop(self):
-        """lerobot OmxLeader → OmxFollower 텔레오퍼레이션 루프 (50Hz).
-
-        공식 API 사용:
-          - leader.get_action()  → 리더 관절 위치 (정규화된 값)
-          - follower.send_action(action) → 팔로워에 전송 (정규화 → raw 변환 자동)
-        """
         dt = 1.0 / 50.0
         sim_angle = 0.0
 
@@ -1239,11 +1123,9 @@ class RobotControlNode(Node):
 
             if self._use_real_hardware and self._leader and self._follower:
                 try:
-                    # 락 경합 최소화를 위해 리더 읽기와 팔로워 쓰기 락을 각각 분할하여 획득
                     with self._dxl_io_lock:
                         action = self._leader.get_action()
                     
-                    # 실시간 텔레옵 시에도 오프셋을 적용하여 다회전 누적 틱에 따른 오버플로우/회전방지
                     if hasattr(self, '_teleop_offsets') and self._teleop_offsets:
                         action = dict(action)
                         for joint, offset in self._teleop_offsets.items():
@@ -1256,13 +1138,11 @@ class RobotControlNode(Node):
                         self._follower.send_action(action)
                 except Exception as e:
                     self.get_logger().warn(f'텔레옵 루프 오류: {e}')
-                    # Recovery: reset port_handler is_using flag on failure
                     if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                         self._follower.bus.port_handler.is_using = False
                     if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
                         self._leader.bus.port_handler.is_using = False
             else:
-                # 시뮬레이션 모드: 부드러운 사인파 형태의 모의 각도 전송
                 sim_angle += 0.05
                 sim_pose = {
                     'shoulder_pan': 2048 + int(500 * math.sin(sim_angle)),
@@ -1274,7 +1154,6 @@ class RobotControlNode(Node):
                 }
                 self._write_raw_position(sim_pose)
 
-            # 제어 주기 타이밍 대기
             elapsed = time.time() - start_time
             sleep_time = dt - elapsed
             if sleep_time > 0:
@@ -1285,8 +1164,6 @@ class RobotControlNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = RobotControlNode()
-    # 블로킹 서비스(ACT 파지/홈 복귀)와 30Hz 타이머, 텔레옵 명령이
-    # 서로를 막지 않도록 MultiThreadedExecutor 사용.
     executor = MultiThreadedExecutor()
     executor.add_node(node)
     try:

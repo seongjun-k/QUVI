@@ -30,7 +30,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image, JointState
-from std_msgs.msg import Bool, String, Int32
+from std_msgs.msg import Bool, Float32, String, Int32
 
 from quvi_msgs.msg import InspectionResult, ObjectArray, SystemStatus
 
@@ -39,13 +39,14 @@ from flask import Flask, Response, jsonify, render_template, send_from_directory
 from flask_socketio import SocketIO
 
 
-# 레일 스테이션 맵 (index → {name, steps})
-# 캘리브레이션 후 steps 값을 여기서만 수정하면 UI에 자동 반영된다.
+# 레일 스테이션 맵 (index → {name, mm})
+# ESP32 펌웨어가 Float32(mm) 수신으로 변경됨.
+# 캘리브레이션 후 mm 값을 여기서만 수정하면 UI에 자동 반영된다.
 RAIL_STATION_MAP = [
-    {'name': 'INSPECT (A)', 'steps': 1000},
-    {'name': 'PASS (B)',    'steps': 2000},
-    {'name': 'FAIL (C)',    'steps': 10000},
-    {'name': 'BED (D)',      'steps': 30500},
+    {'name': 'INSPECT (A)', 'mm': 12.5},
+    {'name': 'PASS (B)',    'mm': 25.0},
+    {'name': 'FAIL (C)',    'mm': 125.0},
+    {'name': 'BED (D)',     'mm': 381.25},
 ]
 
 
@@ -89,7 +90,7 @@ class HmiNode(Node):
             'teleop_active': False,
             'error_message': '',
             'joint_positions': [0.0] * 6,
-            'rail_position': 0,
+            'rail_position': 0.0,   # mm 단위 float
             'turntable_angle': 0,
             'rail_station_map': RAIL_STATION_MAP,
         }
@@ -117,8 +118,9 @@ class HmiNode(Node):
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
         self.create_subscription(
             JointState, '/robot/joint_states', self._joint_states_cb, 10)
+        # /motor/rail: Float32(mm) — ESP32 펌웨어와 타입 일치
         self.create_subscription(
-            Int32, '/robot/rail_command', self._rail_command_cb, 10)
+            Float32, '/motor/rail', self._rail_position_cb, 10)
         self.create_subscription(
             Int32, '/motor/turntable_cmd', self._turntable_cb, 10)
 
@@ -147,6 +149,8 @@ class HmiNode(Node):
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
         self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
         self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
+        # Rail 명령 퍼블리셔: Float32(mm)
+        self._rail_pub = self.create_publisher(Float32, '/motor/rail', 10)
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -173,12 +177,12 @@ class HmiNode(Node):
 
     def _joint_states_cb(self, msg: JointState):
         with self._lock:
-            # ROS 2 JointState positions are floats
             self._system_status['joint_positions'] = list(msg.position)
 
-    def _rail_command_cb(self, msg: Int32):
+    def _rail_position_cb(self, msg: Float32):
+        """Float32(mm) 수신 — ESP32 펌웨어와 타입 일치."""
         with self._lock:
-            self._system_status['rail_position'] = msg.data
+            self._system_status['rail_position'] = float(msg.data)
 
     def _turntable_cb(self, msg: Int32):
         with self._lock:
@@ -241,6 +245,13 @@ class HmiNode(Node):
         msg.data = command
         self._cmd_pub.publish(msg)
         self.get_logger().info(f'HMI 명령: {command}')
+
+    def send_rail_command(self, mm: float):
+        """레일 목표 위치 발행 (mm 단위 Float32)."""
+        msg = Float32()
+        msg.data = float(mm)
+        self._rail_pub.publish(msg)
+        self.get_logger().info(f'Rail 명령: {mm:.2f} mm')
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
@@ -421,6 +432,21 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                          'STOP 후 다시 시도하세요.',
             }), 409
         return jsonify({'ok': True})
+
+    # ─── Rail 이동 API ───
+    @app.route('/api/rail/move', methods=['POST'])
+    def api_rail_move():
+        """JSON body: {"mm": <float>} — Rail 목표 위치 발행."""
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        try:
+            mm = float(data['mm'])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({'error': 'body에 {"mm": <float>} 필요'}), 400
+        if not (0.0 <= mm <= 420.0):
+            return jsonify({'error': f'범위 초과: 0~420mm (요청: {mm}mm)'}), 400
+        hmi_node.send_rail_command(mm)
+        return jsonify({'ok': True, 'mm': mm})
 
     # ─── MJPEG 스트리밍 ───
     def _mjpeg_generator(cam_key: str):
