@@ -116,7 +116,7 @@ void setup() {
 
     // Initialize LED Relay Pin
     pinMode(TURN_LED_RELAY_PIN, OUTPUT);
-    digitalWrite(TURN_LED_RELAY_PIN, HIGH); // Default to OFF (Active LOW relay)
+    digitalWrite(TURN_LED_RELAY_PIN, LOW); // Default to OFF
 
     // Max Speed & Acceleration Profiles
     railMotor.setMaxSpeed(RAIL_MAX_SPEED);
@@ -185,7 +185,7 @@ void vMotorTask(void *pvParameters) {
         if (isEmergencyStopped) {
             railMotor.disable();
             turnMotor.disable();
-            digitalWrite(TURN_LED_RELAY_PIN, HIGH); // E-STOP safety action (Active LOW relay)
+            digitalWrite(TURN_LED_RELAY_PIN, LOW); // E-STOP safety action
             if (lastAppliedColor != COLOR_RED) {
                 setLedColor(COLOR_RED);
                 lastAppliedColor = COLOR_RED;
@@ -349,7 +349,7 @@ void turn_subscription_callback(const void * msin) {
 void turn_led_subscription_callback(const void * msin) {
     const std_msgs__msg__Bool * msg = (const std_msgs__msg__Bool *)msin;
     if (isEmergencyStopped) return;
-    digitalWrite(TURN_LED_RELAY_PIN, msg->data ? LOW : HIGH); // Active LOW relay
+    digitalWrite(TURN_LED_RELAY_PIN, msg->data ? HIGH : LOW);
 }
 
 void estop_subscription_callback(const void * msin) {
@@ -583,10 +583,10 @@ void vCommTask(void *pvParameters) {
                         else if (cmd == 'L') {
                             int state = inputBuffer.substring(2).toInt();
                             if (state == 1) {
-                                digitalWrite(TURN_LED_RELAY_PIN, LOW); // Active LOW relay
+                                digitalWrite(TURN_LED_RELAY_PIN, HIGH);
                                 Serial0.println("[LED] Turntable LED Relay ON");
                             } else {
-                                digitalWrite(TURN_LED_RELAY_PIN, HIGH); // Active LOW relay
+                                digitalWrite(TURN_LED_RELAY_PIN, LOW);
                                 Serial0.println("[LED] Turntable LED Relay OFF");
                             }
                         }
@@ -612,7 +612,7 @@ void IRAM_ATTR handleEmergencyStop() {
     // Hard-disable the motor signals inside the ISR instantly
     if (RAIL_ENA_PIN >= 0) digitalWrite(RAIL_ENA_PIN, HIGH); // Disable TB6600
     if (TURN_ENA_PIN >= 0) digitalWrite(TURN_ENA_PIN, HIGH); // Disable TB6600
-    digitalWrite(TURN_LED_RELAY_PIN, HIGH); // Turn off LED relay for safety (Active LOW relay)
+    digitalWrite(TURN_LED_RELAY_PIN, LOW); // Turn off LED relay for safety
 }
 
 // Set WS2812B Color
