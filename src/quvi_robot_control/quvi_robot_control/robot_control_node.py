@@ -154,12 +154,12 @@ POSE_CHAMBER_PRE_PICK = {
 # ── 티칭 웨이포인트 (teach_pendant.py 로 기록 후 여기에 붙여넣기) ──────────────
 # scripts/teach_pendant.py 실행 → 원하는 자세로 이동 → 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
-POSE_P1 = None  # 집기 전 대기 자세
-POSE_P2 = None  # 180도 회전 후 자세
-POSE_P3 = None  # 턴테이블 위 자세
-POSE_P4 = None  # 턴테이블 내려놓기 자세
-POSE_P5 = None  # 180도 복귀 후 자세
-POSE_P6 = None  # 최종 내려놓기 자세
+POSE_P1 = {'shoulder_pan': 2047, 'shoulder_lift': 1059, 'elbow_flex': 2977, 'wrist_flex': 3005, 'wrist_roll': 1994, 'gripper': 2152}  # 집기 전 대기
+POSE_P2 = {'shoulder_pan':   28, 'shoulder_lift': 1025, 'elbow_flex': 2791, 'wrist_flex': 3055, 'wrist_roll': 1989, 'gripper': 2152}  # 180도 회전 후
+POSE_P3 = {'shoulder_pan':   52, 'shoulder_lift': 1848, 'elbow_flex': 2495, 'wrist_flex': 2834, 'wrist_roll': 1993, 'gripper': 2152}  # 턴테이블 위
+POSE_P4 = {'shoulder_pan':   20, 'shoulder_lift': 1900, 'elbow_flex': 2494, 'wrist_flex': 2833, 'wrist_roll': 1994, 'gripper': 2152}  # 턴테이블 내려놓기
+POSE_P5 = {'shoulder_pan': 2068, 'shoulder_lift':  868, 'elbow_flex': 2901, 'wrist_flex': 3036, 'wrist_roll': 1997, 'gripper': 2152}  # 180도 복귀 후
+POSE_P6 = {'shoulder_pan': 2016, 'shoulder_lift': 1287, 'elbow_flex': 3025, 'wrist_flex': 2753, 'wrist_roll': 2006, 'gripper': 2152}  # 최종 내려놓기
 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
