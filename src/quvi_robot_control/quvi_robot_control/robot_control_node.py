@@ -151,6 +151,16 @@ POSE_CHAMBER_PRE_PICK = {
     'shoulder_pan': 0, 'shoulder_lift': 1400, 'elbow_flex': 900, 'wrist_flex': 1800, 'gripper': GRIPPER_OPEN,
 }
 
+# ── 티칭 웨이포인트 (teach_pendant.py 로 기록 후 여기에 붙여넣기) ──────────────
+# scripts/teach_pendant.py 실행 → 원하는 자세로 이동 → 1~6 키 → 's' 로 출력
+# 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
+POSE_P1 = None  # 집기 전 대기 자세
+POSE_P2 = None  # 180도 회전 후 자세
+POSE_P3 = None  # 턴테이블 위 자세
+POSE_P4 = None  # 턴테이블 내려놓기 자세
+POSE_P5 = None  # 180도 복귀 후 자세
+POSE_P6 = None  # 최종 내려놓기 자세
+
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
 
@@ -975,6 +985,43 @@ class RobotControlNode(Node):
                 self._set_state(RobotState.ERROR)
                 self._publish_status('ERROR: RESET FAILED')
                 return False
+
+    # ─────────────────────────────────────────────
+    # P1~P6 티칭 시퀀스 실행
+    # ─────────────────────────────────────────────
+    def _execute_taught_sequence(self, rail_result: str) -> bool:
+        """
+        teach_pendant.py 로 기록한 P1~P6 웨이포인트를 순서대로 실행.
+        rail_result: 'pass' | 'fail'  — P6 전 레일 이동 목적지 결정에 사용.
+        """
+        poses = [
+            ('P1', POSE_P1, 'P1: 집기 전 대기'),
+            ('P2', POSE_P2, 'P2: 180도 회전'),
+            ('P3', POSE_P3, 'P3: 턴테이블 위'),
+            ('P4', POSE_P4, 'P4: 턴테이블 내려놓기'),
+            ('P5', POSE_P5, 'P5: 180도 복귀'),
+        ]
+
+        for key, pose, label in poses:
+            if pose is None:
+                self.get_logger().error(
+                    f'{key} 웨이포인트 미설정 — teach_pendant.py 로 먼저 기록하세요.')
+                return False
+            if not self._execute_pose(pose, label):
+                return False
+
+        # P5 완료 후 레일 이동 (불량/패스)
+        rail_pos = RailPosition.FAIL if rail_result == 'fail' else RailPosition.PASS
+        if not self._execute_rail_move(rail_pos):
+            return False
+
+        if POSE_P6 is None:
+            self.get_logger().error('P6 웨이포인트 미설정')
+            return False
+        if not self._execute_pose(POSE_P6, 'P6: 최종 내려놓기'):
+            return False
+
+        return True
 
     # ─────────────────────────────────────────────
     # 종료 처리
