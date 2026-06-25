@@ -90,7 +90,7 @@ class HmiNode(Node):
             'teleop_active': False,
             'error_message': '',
             'joint_positions': [0.0] * 6,
-            'rail_position': 0.0,   # mm 단위 float
+            'rail_position': 0.0,   # mm 단위 float (마지막 명령 목표값)
             'turntable_angle': 0,
             'rail_station_map': RAIL_STATION_MAP,
         }
@@ -118,9 +118,10 @@ class HmiNode(Node):
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
         self.create_subscription(
             JointState, '/robot/joint_states', self._joint_states_cb, 10)
-        # /motor/rail: Float32(mm) — ESP32 펌웨어와 타입 일치
-        self.create_subscription(
-            Float32, '/motor/rail', self._rail_position_cb, 10)
+        # NOTE: /motor/rail 은 명령 토픽(HMI→ESP32)이므로 구독하지 않음.
+        # 구독하면 자신이 발행한 명령을 즉시 수신하여 실제 위치처럼 표시되는
+        # 루프백 문제가 발생한다. rail_position 은 send_rail_command() 에서
+        # 직접 갱신하여 "마지막 명령 목표값"으로 표시한다.
         self.create_subscription(
             Int32, '/motor/turntable_cmd', self._turntable_cb, 10)
 
@@ -178,11 +179,6 @@ class HmiNode(Node):
     def _joint_states_cb(self, msg: JointState):
         with self._lock:
             self._system_status['joint_positions'] = list(msg.position)
-
-    def _rail_position_cb(self, msg: Float32):
-        """Float32(mm) 수신 — ESP32 펌웨어와 타입 일치."""
-        with self._lock:
-            self._system_status['rail_position'] = float(msg.data)
 
     def _turntable_cb(self, msg: Int32):
         with self._lock:
@@ -247,10 +243,17 @@ class HmiNode(Node):
         self.get_logger().info(f'HMI 명령: {command}')
 
     def send_rail_command(self, mm: float):
-        """레일 목표 위치 발행 (mm 단위 Float32)."""
+        """레일 목표 위치 발행 (mm 단위 Float32).
+
+        발행 후 rail_position 을 명령값으로 직접 갱신한다.
+        /motor/rail 은 명령 전용 토픽이므로 구독하지 않고, 여기서 상태를 업데이트한다.
+        실제 위치 피드백이 필요하면 ESP32 펌웨어에 /motor/rail_position 토픽 추가 필요.
+        """
         msg = Float32()
         msg.data = float(mm)
         self._rail_pub.publish(msg)
+        with self._lock:
+            self._system_status['rail_position'] = float(mm)  # 명령 목표값으로 갱신
         self.get_logger().info(f'Rail 명령: {mm:.2f} mm')
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).

@@ -834,6 +834,17 @@ class RobotControlNode(Node):
         return success
 
     def _clip_shoulder_lift(self, positions: dict, is_raw: bool) -> dict:
+        """shoulder_lift 값이 한계치 미만으로 낮아지지 않도록 클리핑한다.
+
+        is_raw=True  : Dynamixel raw 위치값(0~4095) 기준.
+                       limit=1024 ≈ 90도 (4095 * 90/360 ≈ 1024).
+        is_raw=False : lerobot OmxFollower 정규화 범위(-100~100) 기준.
+                       limit=-100.0 = 정규화 최솟값(실질적 통과).
+
+        ⚠️ 주의: ACT 출력이 lerobot 정규화 범위(-100~100)가 아닌 라디안이라면
+                  is_raw=False 클리핑은 무의미(limit=-100.0은 원래 최솟값).
+                  ACT 모델 출력 단위를 반드시 확인하고 사용할 것.
+        """
         positions = dict(positions)
         if 'shoulder_lift' in positions:
             limit = 1024 if is_raw else -100.0
