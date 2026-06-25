@@ -42,7 +42,13 @@ Adafruit_NeoPixel statusLed(1, ONBOARD_LED_PIN, NEO_GRB + NEO_KHZ800);
 // STATE & SAFETY VARIABLES
 // =============================================================================
 volatile bool isEmergencyStopped = false;
-volatile bool isHomingCompleted = false;
+volatile bool isHomingCompleted  = false;
+
+// [fix] vCommTask → vMotorTask 위임용 플래그
+// vMotorTask(Core 0)가 단독으로 homing을 실행해 update() 루프와의
+// 레이스 컨디션을 원천 제거한다.
+volatile bool homingRequested = false;
+volatile bool isHoming        = false;  // homing 진행 중 LED 블링크 간섭 방지
 
 // Color presets for status visualization
 const uint32_t COLOR_OFF    = statusLed.Color(0, 0, 0);
@@ -188,12 +194,25 @@ void vMotorTask(void *pvParameters) {
             continue;
         }
 
+        // [fix] homing 요청을 vMotorTask(Core 0) 단독으로 처리
+        // vCommTask에서 직접 호출하면 update() 루프와 같은 모터 객체에
+        // 동시 접근하는 레이스 컨디션이 발생하므로, 플래그로 위임한다.
+        if (homingRequested) {
+            homingRequested = false;
+            performHomingCalibration();
+            lastAppliedColor = 0xFFFFFFFF; // LED 강제 재적용
+            continue;
+        }
+
         // Handle step calculations for both motors in parallel
         bool railMoving = railMotor.update();
         bool turnMoving = turnMotor.update();
 
         // Dynamic Status visual feedback
-        if (!isHomingCompleted) {
+        if (isHoming) {
+            // homing 진행 중: LED는 performHomingCalibration() 내부에서 제어
+            // vMotorTask의 블링크 코드가 간섭하지 않도록 건너뜀
+        } else if (!isHomingCompleted) {
             // Blinking yellow if not calibrated
             static unsigned long lastBlink = 0;
             static bool blinkState = false;
@@ -247,6 +266,7 @@ void performHomingCalibration() {
     if (isEmergencyStopped) return;
 
     isHomingCompleted = false;
+    isHoming = true;
     setLedColor(COLOR_YELLOW);
 
     #ifndef USE_MICRO_ROS
@@ -268,10 +288,11 @@ void performHomingCalibration() {
     railMotor.enable();
     turnMotor.enable();
 
+    isHoming = false;
     isHomingCompleted = true;
     setLedColor(COLOR_BLUE);
 
-    // [fix] homing 완료 후 rail_done 신호 발행 — orchestrator STARTUP_RAIL_HOME_WAIT 해제용
+    // homing 완료 후 rail_done 신호 발행 — orchestrator STARTUP_RAIL_HOME_WAIT 해제용
     #ifdef USE_MICRO_ROS
         rail_done_pending = true;
     #endif
@@ -435,9 +456,10 @@ void vCommTask(void *pvParameters) {
         RCCHECK(rclc_executor_add_subscription(&executor, &turn_led_sub, &turn_led_msg, &turn_led_subscription_callback, ON_NEW_DATA));
         RCCHECK(rclc_executor_add_subscription(&executor, &estop_sub, &estop_msg, &estop_subscription_callback, ON_NEW_DATA));
 
-        // Trigger Auto Homing Calibration upon connection
-        // performHomingCalibration() 내부에서 rail_done_pending = true 설정됨
-        performHomingCalibration();
+        // [fix] micro-ROS 에이전트 연결 완료 후 homing을 vMotorTask(Core 0)에 위임
+        // 기존: performHomingCalibration() 직접 호출 → vMotorTask update()와 레이스 컨디션 발생
+        // 수정: homingRequested 플래그 세트 → vMotorTask가 Core 0에서 단독 실행
+        homingRequested = true;
 
         // micro-ROS Loop Executor
         for (;;) {
@@ -488,8 +510,8 @@ void vCommTask(void *pvParameters) {
         Serial0.println("  L <0 or 1>   - Turntable LED Ring Relay (0:OFF, 1:ON)");
         Serial0.println("=================================================");
 
-        // Automatically trigger homing calibration on boot in serial mode
-        performHomingCalibration();
+        // [fix] Serial 모드도 homingRequested 플래그로 vMotorTask에 위임
+        homingRequested = true;
 
         String inputBuffer = "";
 
@@ -513,7 +535,7 @@ void vCommTask(void *pvParameters) {
                         cmd = toupper(cmd);
 
                         if (cmd == 'H') {
-                            performHomingCalibration();
+                            homingRequested = true;
                         }
                         else if (cmd == 'R') {
                             long steps = inputBuffer.substring(2).toInt();

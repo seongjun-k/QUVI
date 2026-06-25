@@ -30,7 +30,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image, JointState
-from std_msgs.msg import Bool, Float32, String, Int32
+from std_msgs.msg import Bool, String, Int32
 
 from quvi_msgs.msg import InspectionResult, ObjectArray, SystemStatus
 
@@ -40,7 +40,6 @@ from flask_socketio import SocketIO
 
 
 # 레일 스테이션 맵 (index → {name, mm})
-# ESP32 펌웨어가 Float32(mm) 수신으로 변경됨.
 # 캘리브레이션 후 mm 값을 여기서만 수정하면 UI에 자동 반영된다.
 RAIL_STATION_MAP = [
     {'name': 'INSPECT (A)', 'mm': 12.5},
@@ -48,6 +47,10 @@ RAIL_STATION_MAP = [
     {'name': 'FAIL (C)',    'mm': 125.0},
     {'name': 'BED (D)',     'mm': 381.25},
 ]
+
+# Config.h 기준 변환 상수: STEPPER_STEPS_PER_REV(200) × RAIL_MICROSTEPPING(16) / RAIL_MM_PER_REV(40mm)
+RAIL_STEPS_PER_MM = 80.0
+RAIL_MAX_STEPS    = 33600  # RAIL_MAX_LIMIT (420mm × 80 steps/mm)
 
 
 class HmiNode(Node):
@@ -154,8 +157,10 @@ class HmiNode(Node):
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
         self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
         self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
-        # Rail 명령 퍼블리셔: Float32(mm)
-        self._rail_pub      = self.create_publisher(Float32, '/motor/rail', 10)
+        # [fix] /motor/rail 퍼블리셔 타입: Float32 → Int32
+        # ESP32 rail_subscription_callback이 std_msgs/Int32로 수신하므로 타입을 일치시킴.
+        # send_rail_command()에서 mm → steps 변환 후 발행한다.
+        self._rail_pub      = self.create_publisher(Int32,  '/motor/rail', 10)
         self._led_pub       = self.create_publisher(Bool,   '/motor/turntable_led', 10)
         self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
 
@@ -245,18 +250,21 @@ class HmiNode(Node):
         self.get_logger().info(f'HMI 명령: {command}')
 
     def send_rail_command(self, mm: float):
-        """레일 목표 위치 발행 (mm 단위 Float32).
+        """레일 목표 위치 발행 (Int32, steps 단위).
 
-        발행 후 rail_position 을 명령값으로 직접 갱신한다.
-        /motor/rail 은 명령 전용 토픽이므로 구독하지 않고, 여기서 상태를 업데이트한다.
-        실제 위치 피드백이 필요하면 ESP32 펌웨어에 /motor/rail_position 토픽 추가 필요.
+        [fix] 기존 Float32(mm) 발행을 Int32(steps) 발행으로 변경.
+        ESP32 rail_subscription_callback은 std_msgs/Int32를 수신하므로
+        타입 불일치로 콜백이 호출되지 않던 버그를 수정한다.
+        mm → steps 변환: RAIL_STEPS_PER_MM(80.0) 곱셈 후 RAIL_MAX_LIMIT 클램핑.
         """
-        msg = Float32()
-        msg.data = float(mm)
+        steps = int(round(mm * RAIL_STEPS_PER_MM))
+        steps = max(0, min(RAIL_MAX_STEPS, steps))
+        msg = Int32()
+        msg.data = steps
         self._rail_pub.publish(msg)
         with self._lock:
-            self._system_status['rail_position'] = float(mm)  # 명령 목표값으로 갱신
-        self.get_logger().info(f'Rail 명령: {mm:.2f} mm')
+            self._system_status['rail_position'] = float(mm)  # UI 표시는 mm 유지
+        self.get_logger().info(f'Rail 명령: {mm:.2f} mm → {steps} steps')
 
     def send_turntable_command(self, angle: int):
         """턴테이블 목표 각도 발행 (Int32, 0~360°).
