@@ -42,7 +42,7 @@
 #define TURN_LIMIT_PIN        -1  // Turntable Limit Switch disabled (using relative control)
 
 // Accessories
-#define TURN_LED_RELAY_PIN    18  // Turntable LED Ring Relay Control Pin (Active LOW)
+#define TURN_LED_RELAY_PIN    17  // Turntable LED Ring Relay Control Pin (Active LOW)
 
 
 // =============================================================================
