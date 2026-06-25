@@ -60,7 +60,7 @@
 
 // 2. Turntable Configuration
 #define TURN_MICROSTEPPING    16    // Configured on TB6600 DIP switches (e.g. 16 means 3200 steps/rev)
-#define TURN_GEAR_RATIO       3.0   // 3:1 mechanical reduction ratio
+#define TURN_GEAR_RATIO       1.0   // 1:1 (no gear reduction)
 
 // Derived steps per full revolution of the turntable table:
 // (200 steps/rev * 16 microsteps * 3.0 ratio = 9600 steps per 360 degrees)
