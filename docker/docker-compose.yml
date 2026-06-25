@@ -7,6 +7,7 @@ services:
     image: quvi:latest
 
     privileged: true
+    ipc: host
     network_mode: host
 
     runtime: nvidia
@@ -25,7 +26,7 @@ services:
       - DISPLAY=${DISPLAY}
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=all
-      - ROS_DOMAIN_ID=42
+      - ROS_DOMAIN_ID=0
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
       - PIP_ROOT_USER_ACTION=ignore
 
