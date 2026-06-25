@@ -755,19 +755,18 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _execute_release(self) -> bool:
         self._set_state(RobotState.RELEASING)
-        self._publish_status('출력물 투하')
-        self.get_logger().info('출력물 투하: 그리퍼 열기 (OmxFollower gripper)')
+        self._publish_status('웨이포인트 시퀀스 시작 (P1~P6)')
+        self.get_logger().info('웨이포인트 시퀀스 시작')
 
-        self._write_raw_position({'gripper': GRIPPER_OPEN})
-        time.sleep(0.8)
+        success = self._execute_taught_sequence()
 
         done_msg = Bool()
-        done_msg.data = True
+        done_msg.data = success
         self._release_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
-        self._publish_status('투하 완료')
-        return True
+        self._publish_status('웨이포인트 시퀀스 완료' if success else '웨이포인트 시퀀스 실패')
+        return success
 
     # ─────────────────────────────────────────────
     # 실행 함수 — 홈 복귀
@@ -989,12 +988,12 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # P1~P6 티칭 시퀀스 실행
     # ─────────────────────────────────────────────
-    def _execute_taught_sequence(self, rail_result: str) -> bool:
+    def _execute_taught_sequence(self) -> bool:
         """
         teach_pendant.py 로 기록한 P1~P6 웨이포인트를 순서대로 실행.
-        rail_result: 'pass' | 'fail'  — P6 전 레일 이동 목적지 결정에 사용.
+        레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
+        순서: P1 → P2 → P3 → P4(그리퍼 열기) → P5 → P6(그리퍼 열기)
         """
-        # P1 ~ P3: 이동만
         for key, pose, label in [
             ('P1', POSE_P1, 'P1: 집기 전 대기'),
             ('P2', POSE_P2, 'P2: 180도 회전'),
@@ -1023,12 +1022,7 @@ class RobotControlNode(Node):
         if not self._execute_pose(POSE_P5, 'P5: 180도 복귀'):
             return False
 
-        # P5 완료 후 레일 이동 (불량/패스)
-        rail_pos = RailPosition.FAIL if rail_result == 'fail' else RailPosition.PASS
-        if not self._execute_rail_move(rail_pos):
-            return False
-
-        # P6: 위치 도달 후 그리퍼 열기
+        # P6: 레일이 이미 pass/fail 위치로 이동된 상태에서 최종 내려놓기
         if POSE_P6 is None:
             self.get_logger().error('P6 웨이포인트 미설정')
             return False
