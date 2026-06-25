@@ -67,11 +67,33 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     "setuptools<80"
 
+# ─── micro-ROS agent 빌드 ───
+# micro_ros_agent는 apt 패키지가 없으므로 소스에서 직접 빌드
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libasio-dev \
+    libtinyxml2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /uros_ws/src && \
+    cd /uros_ws/src && \
+    git clone -b jazzy https://github.com/micro-ROS/micro-ROS-Agent.git micro_ros_agent && \
+    git clone -b jazzy https://github.com/micro-ROS/micro_ros_msgs.git && \
+    cd /uros_ws && \
+    bash -c "source /opt/ros/jazzy/setup.bash && \
+    apt-get update && \
+    rosdep init 2>/dev/null || true && \
+    rosdep update && \
+    rosdep install --from-paths src --ignore-src -y && \
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release && \
+    rm -rf build log src" && \
+    rm -rf /var/lib/apt/lists/*
+
 # ─── 워크스페이스 설정 ───
 WORKDIR /workspace
 
 # ROS 2 환경 자동 source
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> /root/.bashrc && \
+    echo "if [ -f /uros_ws/install/setup.bash ]; then source /uros_ws/install/setup.bash; fi" >> /root/.bashrc && \
     echo "if [ -f /workspace/install/setup.bash ]; then source /workspace/install/setup.bash; fi" >> /root/.bashrc
 
 # ─── 엔트리포인트 ───

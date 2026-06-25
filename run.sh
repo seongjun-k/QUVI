@@ -59,9 +59,9 @@ fi
 
 echo "🚀 [QUVI] 컨테이너(${TARGET_CONTAINER}) 내부에서 메인 프로그램 실행 중..."
 if [ -t 0 ]; then
-    docker exec -it "${TARGET_CONTAINER}" bash -c "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
+    docker exec -it "${TARGET_CONTAINER}" bash -c "source /opt/ros/jazzy/setup.bash && [ -f /uros_ws/install/setup.bash ] && source /uros_ws/install/setup.bash; source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
 else
-    docker exec -i "${TARGET_CONTAINER}" bash -c "source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
+    docker exec -i "${TARGET_CONTAINER}" bash -c "source /opt/ros/jazzy/setup.bash && [ -f /uros_ws/install/setup.bash ] && source /uros_ws/install/setup.bash; source /workspace/install/setup.bash && ros2 launch quvi_bringup full_system.launch.py"
 fi
 
 if [ $? -ne 0 ]; then
