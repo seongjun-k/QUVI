@@ -106,11 +106,30 @@ def print_positions(positions: dict):
         print(f"  {name:<15}: {val:4d}  {bar}")
 
 
+POSE_LABELS = {
+    '1': 'P1: 베드 위 대기',
+    '2': 'P2: 180도 회전',
+    '3': 'P3: 턴테이블 진입점  ← 스텝 3·5·7 공용',
+    '4': 'P4: 턴테이블 놓기 지점  ← 스텝 4(놓기)·6(집기) 공용',
+    '5': 'P5: 180도 반대 회전',
+    '6': 'P6: 분류장 위치',
+}
+
+
 def main():
-    print("=" * 55)
+    print("=" * 60)
     print("  QUVI Teach Pendant")
-    print("  1~6: 포인트 저장  |  p: 출력  |  s: 코드 출력  |  q: 종료")
-    print("=" * 55)
+    print("=" * 60)
+    print("  키  │ 저장할 포즈")
+    print("  ────┼─────────────────────────────────────────")
+    for k, desc in POSE_LABELS.items():
+        print(f"   {k}  │ {desc}")
+    print("  ────┼─────────────────────────────────────────")
+    print("   p  │ 저장된 포인트 출력")
+    print("   s  │ 코드 출력 (붙여넣기용)")
+    print("   c  │ 현재 관절 값 확인")
+    print("   q  │ 종료")
+    print("=" * 60)
 
     port, pkt = open_bus()
     set_torque(port, pkt, False)
@@ -128,9 +147,10 @@ def main():
             if key in "123456":
                 idx = int(key)
                 label = f"P{idx}"
+                desc = POSE_LABELS[key]
                 pos = read_positions(port, pkt)
                 waypoints[label] = pos
-                print(f"\n[저장] {label}:")
+                print(f"\n[저장] {label} ({desc}):")
                 print_positions(pos)
                 print(f"  → {fmt_pose(label, pos)}")
                 print("\n키를 누르세요...")
