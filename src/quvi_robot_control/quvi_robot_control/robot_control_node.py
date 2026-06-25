@@ -994,15 +994,12 @@ class RobotControlNode(Node):
         teach_pendant.py 로 기록한 P1~P6 웨이포인트를 순서대로 실행.
         rail_result: 'pass' | 'fail'  — P6 전 레일 이동 목적지 결정에 사용.
         """
-        poses = [
+        # P1 ~ P3: 이동만
+        for key, pose, label in [
             ('P1', POSE_P1, 'P1: 집기 전 대기'),
             ('P2', POSE_P2, 'P2: 180도 회전'),
             ('P3', POSE_P3, 'P3: 턴테이블 위'),
-            ('P4', POSE_P4, 'P4: 턴테이블 내려놓기'),
-            ('P5', POSE_P5, 'P5: 180도 복귀'),
-        ]
-
-        for key, pose, label in poses:
+        ]:
             if pose is None:
                 self.get_logger().error(
                     f'{key} 웨이포인트 미설정 — teach_pendant.py 로 먼저 기록하세요.')
@@ -1010,16 +1007,35 @@ class RobotControlNode(Node):
             if not self._execute_pose(pose, label):
                 return False
 
+        # P4: 위치 도달 후 그리퍼 열기
+        if POSE_P4 is None:
+            self.get_logger().error('P4 웨이포인트 미설정')
+            return False
+        if not self._execute_pose(POSE_P4, 'P4: 턴테이블 내려놓기 위치'):
+            return False
+        self._write_raw_position({'gripper': GRIPPER_OPEN})
+        self.get_logger().info('P4: 그리퍼 열기')
+
+        # P5: 복귀
+        if POSE_P5 is None:
+            self.get_logger().error('P5 웨이포인트 미설정')
+            return False
+        if not self._execute_pose(POSE_P5, 'P5: 180도 복귀'):
+            return False
+
         # P5 완료 후 레일 이동 (불량/패스)
         rail_pos = RailPosition.FAIL if rail_result == 'fail' else RailPosition.PASS
         if not self._execute_rail_move(rail_pos):
             return False
 
+        # P6: 위치 도달 후 그리퍼 열기
         if POSE_P6 is None:
             self.get_logger().error('P6 웨이포인트 미설정')
             return False
-        if not self._execute_pose(POSE_P6, 'P6: 최종 내려놓기'):
+        if not self._execute_pose(POSE_P6, 'P6: 최종 내려놓기 위치'):
             return False
+        self._write_raw_position({'gripper': GRIPPER_OPEN})
+        self.get_logger().info('P6: 그리퍼 열기')
 
         return True
 
