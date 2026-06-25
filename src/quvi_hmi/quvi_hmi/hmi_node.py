@@ -123,8 +123,11 @@ class HmiNode(Node):
         # 구독하면 자신이 발행한 명령을 즉시 수신하여 실제 위치처럼 표시되는
         # 루프백 문제가 발생한다. rail_position 은 send_rail_command() 에서
         # 직접 갱신하여 "마지막 명령 목표값"으로 표시한다.
-        self.create_subscription(
-            Int32, '/motor/turntable_cmd', self._turntable_cb, 10)
+        #
+        # NOTE: /motor/turntable_cmd 도 명령 토픽(HMI→ESP32)이므로 구독하지 않음.
+        # 구독하면 send_turntable_command()가 발행한 명령을 _turntable_cb가
+        # 수신해 덮어쓰는 루프백이 발생한다. turntable_angle 은
+        # send_turntable_command() 에서 직접 갱신한다.
 
         # 카메라 스트림
         cam1_topic = self.get_parameter('camera1_topic').value
@@ -182,10 +185,6 @@ class HmiNode(Node):
     def _joint_states_cb(self, msg: JointState):
         with self._lock:
             self._system_status['joint_positions'] = list(msg.position)
-
-    def _turntable_cb(self, msg: Int32):
-        with self._lock:
-            self._system_status['turntable_angle'] = msg.data
 
     def _detection_cb(self, msg: ObjectArray):
         with self._lock:
@@ -260,7 +259,11 @@ class HmiNode(Node):
         self.get_logger().info(f'Rail 명령: {mm:.2f} mm')
 
     def send_turntable_command(self, angle: int):
-        """턴테이블 목표 각도 발행 (Int32, 0~360°)."""
+        """턴테이블 목표 각도 발행 (Int32, 0~360°).
+
+        /motor/turntable_cmd 는 명령 전용 토픽이므로 구독하지 않고,
+        여기서 turntable_angle 을 직접 갱신한다 (루프백 방지).
+        """
         angle = max(0, min(360, int(angle)))
         msg = Int32()
         msg.data = angle
@@ -463,6 +466,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     def api_rail_move():
         """JSON body: {"mm": <float>} — Rail 목표 위치 발행."""
         from flask import request
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 수동 레일 이동을 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
         data = request.get_json(silent=True) or {}
         try:
             mm = float(data['mm'])
@@ -477,6 +486,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     def api_turntable_move():
         """JSON body: {"angle": <int>} — 턴테이블 목표 각도 발행."""
         from flask import request
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 수동 턴테이블 이동을 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
         data = request.get_json(silent=True) or {}
         try:
             angle = int(data['angle'])
@@ -490,6 +505,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/led/toggle', methods=['POST'])
     def api_led_toggle():
         """LED 현재 상태를 반전하여 발행."""
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 수동 LED 제어를 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
         with hmi_node._lock:
             current = hmi_node._system_status.get('led_state', False)
         new_state = not current
@@ -499,6 +520,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/led/<action>', methods=['POST'])
     def api_led_action(action):
         """LED 명시적 ON/OFF."""
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 수동 LED 제어를 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
         if action == 'on':
             hmi_node.send_led_command(True)
             return jsonify({'ok': True, 'led': True})

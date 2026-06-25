@@ -161,17 +161,18 @@ class MainOrchestratorNode(Node):
         self._robot_release_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RELEASE_CMD, 10)
         self._robot_home_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_HOME_CMD, 10)
         self._robot_reset_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RESET_CMD, 10)
-        self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
         self._robot_place_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_CMD, 10)
         self._robot_pick_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_CMD, 10)
 
+        # STARTUP 시퀀스 전용 구동부 퍼블리셔
+        # _turntable_pub 과 동일 토픽이므로 _turntable_pub 을 재사용한다.
+        self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
+        self._startup_rail_pub = self.create_publisher(Float32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
+
     def _setup_subscribers(self):
-        # 레일 명령 퍼블리셔 (타입 일치: Float32 mm 직접 발행)
-        self._startup_rail_pub = self.create_publisher(Float32, '/motor/rail', 10)
-        # 턴테이블 명령 퍼블리셔 (개조 FSM 시작 전 초기화용)
-        self._startup_turntable_pub = self.create_publisher(Int32, '/motor/turntable_cmd', 10)
-        # 레일 done 구독 (시작 초기화 시)
-        self.create_subscription(Bool, '/motor/rail_done', self._startup_rail_done_cb, 10)
+        # 레일/턴테이블 done 구독 (시작 초기화 시)
+        self.create_subscription(Bool, '/motor/rail_done', self._startup_rail_home_done_cb, 10)
+        self.create_subscription(Bool, '/motor/rail_done', self._startup_inspect_done_cb, 10)
         self.create_subscription(Bool, '/motor/turntable_done', self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
 
@@ -206,7 +207,7 @@ class MainOrchestratorNode(Node):
         if command == "START":
             if self._state == FsmState.IDLE:
                 if self._use_act and not self._act_ready:
-                    self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 안 차단합니다.')
+                    self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 차단합니다. ERROR 상태로 전환.')
                     self._error_msg = "ACT NOT READY"
                     self._state = FsmState.ERROR
                     return
@@ -305,11 +306,14 @@ class MainOrchestratorNode(Node):
         if "ACT_READY" in msg.data.upper():
             self._act_ready = True
 
-    def _startup_rail_done_cb(self, msg: Bool):
-        """START 초기화 시퀀스에서 레일 done 수신."""
-        if msg.data and self._state in (
-            FsmState.STARTUP_RAIL_HOME_WAIT, FsmState.STARTUP_INSPECT_WAIT
-        ):
+    def _startup_rail_home_done_cb(self, msg: Bool):
+        """STARTUP_RAIL_HOME_WAIT 상태에서만 레일 done 을 수락한다."""
+        if msg.data and self._state == FsmState.STARTUP_RAIL_HOME_WAIT:
+            self._startup_rail_done = True
+
+    def _startup_inspect_done_cb(self, msg: Bool):
+        """STARTUP_INSPECT_WAIT 상태에서만 레일 done 을 수락한다."""
+        if msg.data and self._state == FsmState.STARTUP_INSPECT_WAIT:
             self._startup_rail_done = True
 
     def _startup_turntable_done_cb(self, msg: Bool):
@@ -375,7 +379,7 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter = 0
             turn_msg = Int32()
             turn_msg.data = 0  # 0°
-            self._startup_turntable_pub.publish(turn_msg)
+            self._turntable_pub.publish(turn_msg)
             self.get_logger().info('[STARTUP] 턴테이블 0° 초기화 명령 발행')
             self._state = FsmState.STARTUP_TURNTABLE_WAIT
 
@@ -385,8 +389,9 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('[STARTUP] 터테이블 0° 완료. 자율 구동 시퀀스 진입')
                 self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER
             elif self._state_timer_counter > int(10.0 * self._loop_rate):  # 10초 타임아웃
-                self.get_logger().warn('[STARTUP] 턴테이블 done 타임아웃 (무시하고 진행)')
-                self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER  # 타임아웃이라도 진행
+                self.get_logger().error('[STARTUP] 턴테이블 done 타임아웃. ERROR 상태로 전환.')
+                self._error_msg = 'STARTUP_TURNTABLE_TIMEOUT'
+                self._state = FsmState.ERROR
 
         elif self._state == FsmState.START_RAIL_MOVE_BED_TRIGGER:
             self._robot_rail_done = False
