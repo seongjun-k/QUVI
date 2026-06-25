@@ -730,8 +730,6 @@ async function execTurnMove() {
 
 // LED 토글
 async function toggleLed(on) {
-    const indicator = document.getElementById('ledIndicator');
-    const stateText = document.getElementById('ledStateText');
     try {
         const action = on ? 'on' : 'off';
         const res  = await fetch(`/api/led/${action}`, { method: 'POST' });
@@ -756,10 +754,12 @@ function _applyLedUi(on) {
     if (!indicator) return;
     if (on) {
         indicator.classList.add('on');
-        stateText.textContent = 'ON';
+        // [fix] ledStateText null 체크
+        if (stateText) stateText.textContent = 'ON';
     } else {
         indicator.classList.remove('on');
-        stateText.textContent = 'OFF';
+        // [fix] ledStateText null 체크
+        if (stateText) stateText.textContent = 'OFF';
     }
     if (toggle) toggle.checked = !!on;
 }

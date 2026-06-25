@@ -271,6 +271,11 @@ void performHomingCalibration() {
     isHomingCompleted = true;
     setLedColor(COLOR_BLUE);
 
+    // [fix] homing 완료 후 rail_done 신호 발행 — orchestrator STARTUP_RAIL_HOME_WAIT 해제용
+    #ifdef USE_MICRO_ROS
+        rail_done_pending = true;
+    #endif
+
     #ifndef USE_MICRO_ROS
         Serial0.println("[SUCCESS] Homing complete. Position set to absolute 0.");
         Serial0.print("[STATUS] Current Rail Steps: ");
@@ -431,6 +436,7 @@ void vCommTask(void *pvParameters) {
         RCCHECK(rclc_executor_add_subscription(&executor, &estop_sub, &estop_msg, &estop_subscription_callback, ON_NEW_DATA));
 
         // Trigger Auto Homing Calibration upon connection
+        // performHomingCalibration() 내부에서 rail_done_pending = true 설정됨
         performHomingCalibration();
 
         // micro-ROS Loop Executor
