@@ -30,7 +30,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image, JointState
-from std_msgs.msg import Bool, String, Int32
+from std_msgs.msg import Bool, Float32, String, Int32
 
 from quvi_msgs.msg import InspectionResult, ObjectArray, SystemStatus
 
@@ -39,13 +39,14 @@ from flask import Flask, Response, jsonify, render_template, send_from_directory
 from flask_socketio import SocketIO
 
 
-# 레일 스테이션 맵 (index → {name, steps})
-# 캘리브레이션 후 steps 값을 여기서만 수정하면 UI에 자동 반영된다.
+# 레일 스테이션 맵 (index → {name, mm})
+# ESP32 펌웨어가 Float32(mm) 수신으로 변경됨.
+# 캘리브레이션 후 mm 값을 여기서만 수정하면 UI에 자동 반영된다.
 RAIL_STATION_MAP = [
-    {'name': 'BED (D)',      'steps': 0},
-    {'name': 'INSPECT (A)', 'steps': 1000},
-    {'name': 'PASS (B)',    'steps': 1700},
-    {'name': 'FAIL (C)',    'steps': 2400},
+    {'name': 'INSPECT (A)', 'mm': 12.5},
+    {'name': 'PASS (B)',    'mm': 25.0},
+    {'name': 'FAIL (C)',    'mm': 125.0},
+    {'name': 'BED (D)',     'mm': 381.25},
 ]
 
 
@@ -89,13 +90,19 @@ class HmiNode(Node):
             'teleop_active': False,
             'error_message': '',
             'joint_positions': [0.0] * 6,
-            'rail_position': 0,
+            'rail_position': 0.0,   # mm 단위 float
             'turntable_angle': 0,
             'rail_station_map': RAIL_STATION_MAP,
         }
         self._latest_detections = []
         self._inspection_history = []  # 최근 100건
         self._camera_frames = {
+            'camera1': None,
+            'camera2': None,
+            'yolo_debug': None,
+            'inspect_debug': None,
+        }
+        self._jpeg_cache = {
             'camera1': None,
             'camera2': None,
             'yolo_debug': None,
@@ -111,10 +118,11 @@ class HmiNode(Node):
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
         self.create_subscription(
             JointState, '/robot/joint_states', self._joint_states_cb, 10)
+        # /motor/rail: Float32(mm) — ESP32 펌웨어와 타입 일치
         self.create_subscription(
-            Int32, '/robot/rail_command', self._rail_command_cb, 10)
+            Float32, '/motor/rail', self._rail_command_cb, 10)
         self.create_subscription(
-            Int32, '/motor/turntable', self._turntable_cb, 10)
+            Int32, '/motor/turntable_cmd', self._turntable_cb, 10)
 
         # 카메라 스트림
         cam1_topic = self.get_parameter('camera1_topic').value
@@ -141,6 +149,8 @@ class HmiNode(Node):
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
         self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
         self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
+        # Rail 명령 퍼블리셔: Float32(mm)
+        self._rail_pub = self.create_publisher(Float32, '/motor/rail', 10)
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -149,7 +159,10 @@ class HmiNode(Node):
     def _status_cb(self, msg: SystemStatus):
         with self._lock:
             if self._system_status.get('teleop_active', False):
-                self._system_status['current_state'] = 'TELEOPING'
+                if msg.current_state == 'ERROR':
+                    self._system_status['current_state'] = 'ERROR'
+                else:
+                    self._system_status['current_state'] = 'TELEOPING'
             else:
                 self._system_status['current_state'] = msg.current_state
             self._system_status['total_objects'] = msg.total_objects
@@ -166,9 +179,10 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['joint_positions'] = list(msg.position)
 
-    def _rail_command_cb(self, msg: Int32):
+    def _rail_command_cb(self, msg: Float32):
+        """Float32(mm) 수신 — ESP32 펌웨어와 타입 일치."""
         with self._lock:
-            self._system_status['rail_position'] = msg.data
+            self._system_status['rail_position'] = float(msg.data)
 
     def _turntable_cb(self, msg: Int32):
         with self._lock:
@@ -203,19 +217,27 @@ class HmiNode(Node):
             self._inspection_history.append(record)
             if len(self._inspection_history) > 100:
                 self._inspection_history.pop(0)
+            # pass/fail 카운트는 오케스트레이터의 /hmi/status 가 단일 source of truth.
+            # 여기서 증가시키면 _status_cb 와 이중 집계되므로 history 누적만 한다.
 
     def _cam_cb(self, msg: CompressedImage, key: str):
         np_arr = np.frombuffer(msg.data, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if frame is not None:
+            _, jpeg = cv2.imencode('.jpg', frame,
+                                   [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
             with self._lock:
                 self._camera_frames[key] = frame
+                self._jpeg_cache[key] = jpeg.tobytes()
 
     def _cam_raw_cb(self, msg: Image, key: str):
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         if frame is not None:
+            _, jpeg = cv2.imencode('.jpg', frame,
+                                   [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
             with self._lock:
                 self._camera_frames[key] = frame
+                self._jpeg_cache[key] = jpeg.tobytes()
 
     # ─── 제어 명령 발행 ───
     def send_command(self, command: str):
@@ -224,14 +246,24 @@ class HmiNode(Node):
         self._cmd_pub.publish(msg)
         self.get_logger().info(f'HMI 명령: {command}')
 
+    def send_rail_command(self, mm: float):
+        """레일 목표 위치 발행 (mm 단위 Float32)."""
+        msg = Float32()
+        msg.data = float(mm)
+        self._rail_pub.publish(msg)
+        self.get_logger().info(f'Rail 명령: {mm:.2f} mm')
+
+    # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
 
     def _manual_trigger_allowed(self) -> bool:
+        """오케스트레이터 FSM 이 수동 트리거를 받아도 안전한 상태인지 확인."""
         with self._lock:
             state = self._system_status.get('current_state', 'IDLE')
         return state in self._MANUAL_TRIGGER_SAFE_STATES
 
     def trigger_detection(self, enable: bool) -> bool:
+        """수동 감지 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
         if enable and not self._manual_trigger_allowed():
             self.get_logger().warn('수동 감지 트리거 거부: FSM 이 자율 시퀀스 진행 중')
             return False
@@ -241,6 +273,7 @@ class HmiNode(Node):
         return True
 
     def trigger_inspection(self, enable: bool) -> bool:
+        """수동 검사 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
         if enable and not self._manual_trigger_allowed():
             self.get_logger().warn('수동 검사 트리거 거부: FSM 이 자율 시퀀스 진행 중')
             return False
@@ -264,12 +297,7 @@ class HmiNode(Node):
 
     def get_camera_jpeg(self, key: str) -> bytes | None:
         with self._lock:
-            frame = self._camera_frames.get(key)
-        if frame is None:
-            return None
-        _, jpeg = cv2.imencode('.jpg', frame,
-                               [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
-        return jpeg.tobytes()
+            return self._jpeg_cache.get(key)
 
 
 # ═══════════════════════════════════════════════
@@ -279,12 +307,14 @@ class HmiNode(Node):
 def create_flask_app(hmi_node: HmiNode) -> tuple:
     """Flask 앱 + SocketIO 생성."""
     from ament_index_python.packages import get_package_share_directory
-
+    
+    # ROS 2 share 디렉토리에서 리소스 경로 탐색 (setup.py가 리소스를 배치하는 정확한 위치)
     try:
         pkg_share_dir = get_package_share_directory('quvi_hmi')
         template_dir = os.path.join(pkg_share_dir, 'templates')
         static_dir = os.path.join(pkg_share_dir, 'static')
     except Exception:
+        # 폴백: 로컬 소스 코드 파일 기준 경로
         pkg_dir = os.path.dirname(os.path.abspath(__file__))
         template_dir = os.path.join(pkg_dir, 'templates')
         static_dir = os.path.join(pkg_dir, 'static')
@@ -293,6 +323,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 template_folder=template_dir,
                 static_folder=static_dir)
 
+    # SECRET_KEY: 환경변수 우선, 없으면 랜덤 생성(운영 시 QUVI_HMI_SECRET_KEY 지정 권장).
     secret_key = os.environ.get('QUVI_HMI_SECRET_KEY')
     if not secret_key:
         secret_key = os.urandom(24).hex()
@@ -301,13 +332,15 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             '운영/세션 유지가 필요하면 환경변수를 지정하세요.')
     app.config['SECRET_KEY'] = secret_key
 
+    # CORS 허용 오리진: 기본은 로컬 LAN 시연용으로 동일 출처('*' 아님).
+    # 외부 접근이 필요하면 QUVI_HMI_CORS_ORIGINS(쉼표 구분)로 명시.
     cors_env = os.environ.get('QUVI_HMI_CORS_ORIGINS', '').strip()
     if cors_env == '*':
         cors_origins = '*'
     elif cors_env:
         cors_origins = [o.strip() for o in cors_env.split(',') if o.strip()]
     else:
-        cors_origins = []
+        cors_origins = []  # 동일 출처만 허용 (가장 안전한 기본값)
 
     socketio = SocketIO(app, cors_allowed_origins=cors_origins,
                         async_mode='threading')
@@ -352,12 +385,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         valid = ['start', 'stop', 'estop', 'reset']
         if cmd not in valid:
             return jsonify({'error': f'Unknown command: {cmd}'}), 400
-
+        
         if cmd == 'estop':
             msg = Bool()
             msg.data = True
             hmi_node._estop_pub.publish(msg)
-
+            
         hmi_node.send_command(cmd.upper())
         return jsonify({'ok': True, 'command': cmd})
 
@@ -369,7 +402,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node._teleop_pub.publish(msg)
             with hmi_node._lock:
                 hmi_node._system_status['teleop_active'] = True
-                hmi_node._system_status['current_state'] = 'TELEOPING'
             return jsonify({'ok': True, 'teleop': 'on'})
         elif action == 'off':
             msg = Bool()
@@ -377,7 +409,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node._teleop_pub.publish(msg)
             with hmi_node._lock:
                 hmi_node._system_status['teleop_active'] = False
-                hmi_node._system_status['current_state'] = 'IDLE'
             return jsonify({'ok': True, 'teleop': 'off'})
         else:
             return jsonify({'error': f'Invalid teleop action: {action}'}), 400
@@ -401,6 +432,21 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                          'STOP 후 다시 시도하세요.',
             }), 409
         return jsonify({'ok': True})
+
+    # ─── Rail 이동 API ───
+    @app.route('/api/rail/move', methods=['POST'])
+    def api_rail_move():
+        """JSON body: {"mm": <float>} — Rail 목표 위치 발행."""
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        try:
+            mm = float(data['mm'])
+        except (KeyError, TypeError, ValueError):
+            return jsonify({'error': 'body에 {"mm": <float>} 필요'}), 400
+        if not (0.0 <= mm <= 420.0):
+            return jsonify({'error': f'범위 초과: 0~420mm (요청: {mm}mm)'}), 400
+        hmi_node.send_rail_command(mm)
+        return jsonify({'ok': True, 'mm': mm})
 
     # ─── MJPEG 스트리밍 ───
     def _mjpeg_generator(cam_key: str):
@@ -478,6 +524,8 @@ def main(args=None):
     hmi_node.get_logger().info(
         f'Web HMI 시작: http://{hmi_node._host}:{hmi_node._port}')
 
+    # 시연용 Werkzeug 개발 서버 허용 여부. 운영 WSGI(eventlet/gevent) 사용 시
+    # QUVI_HMI_ALLOW_DEV_SERVER=0 으로 끄고 적절한 서버로 구동할 수 있다.
     allow_dev_server = os.environ.get(
         'QUVI_HMI_ALLOW_DEV_SERVER', '1').lower() in ('1', 'true', 'yes')
     if allow_dev_server:
