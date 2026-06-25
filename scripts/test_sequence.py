@@ -48,22 +48,22 @@ ADDR_PROFILE_VELOCITY = 112
 ADDR_GOAL_POSITION    = 116
 LEN_GOAL_POSITION     = 4
 
-SPEED_NORMAL  = 50   # 약 20% 속도
-SPEED_GRIPPER = 100
+SPEED_NORMAL  = 15   # 매우 느린 속도
+SPEED_GRIPPER = 60
 
 GRIPPER_OPEN  = 2300
 GRIPPER_CLOSE = 1800
 
 # ── 티칭 웨이포인트 (teach_pendant.py로 기록) ─────────────────────────────────
-POSE_P1 = {'shoulder_pan': 2047, 'shoulder_lift': 1059, 'elbow_flex': 2977, 'wrist_flex': 3005, 'wrist_roll': 1994, 'gripper': 2152}  # 베드 위 대기
-POSE_P2 = {'shoulder_pan':   28, 'shoulder_lift': 1025, 'elbow_flex': 2791, 'wrist_flex': 3055, 'wrist_roll': 1989, 'gripper': 2152}  # 180도 회전
-POSE_P3 = {'shoulder_pan':   52, 'shoulder_lift': 1848, 'elbow_flex': 2495, 'wrist_flex': 2834, 'wrist_roll': 1993, 'gripper': 2152}  # 턴테이블 진입점
-POSE_P4 = {'shoulder_pan':   20, 'shoulder_lift': 1900, 'elbow_flex': 2494, 'wrist_flex': 2833, 'wrist_roll': 1994, 'gripper': 2152}  # 턴테이블 놓기/집기 지점
-POSE_P5 = {'shoulder_pan': 2068, 'shoulder_lift':  868, 'elbow_flex': 2901, 'wrist_flex': 3036, 'wrist_roll': 1997, 'gripper': 2152}  # 180도 반대 회전
-POSE_P6 = {'shoulder_pan': 2016, 'shoulder_lift': 1287, 'elbow_flex': 3025, 'wrist_flex': 2753, 'wrist_roll': 2006, 'gripper': 2152}  # 분류장 위치
+POSE_P1 = {'shoulder_pan': 2054, 'shoulder_lift': 1258, 'elbow_flex': 2800, 'wrist_flex': 2981, 'wrist_roll': 2035, 'gripper': 2150}  # 베드 위 대기
+POSE_P2 = {'shoulder_pan':   12, 'shoulder_lift': 1843, 'elbow_flex': 2165, 'wrist_flex': 3123, 'wrist_roll': 2095, 'gripper': 2150}  # 180도 회전
+POSE_P3 = {'shoulder_pan':   16, 'shoulder_lift': 1736, 'elbow_flex': 2413, 'wrist_flex': 3018, 'wrist_roll': 2087, 'gripper': 2150}  # 턴테이블 진입점
+POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1841, 'elbow_flex': 2522, 'wrist_flex': 2759, 'wrist_roll': 2085, 'gripper': 2150}  # 턴테이블 놓기/집기 지점
+POSE_P5 = {'shoulder_pan': 2047, 'shoulder_lift': 1854, 'elbow_flex': 2460, 'wrist_flex': 2909, 'wrist_roll': 2050, 'gripper': 2150}  # 180도 반대 회전
+POSE_P6 = {'shoulder_pan': 2039, 'shoulder_lift': 1076, 'elbow_flex': 2884, 'wrist_flex': 3094, 'wrist_roll': 1993, 'gripper': 2150}  # 분류장 위치
 
-POSE_DELAY    = 4.0
-GRIPPER_DELAY = 1.0
+POSE_DELAY    = 8.0
+GRIPPER_DELAY = 1.5
 INSPECT_WAIT  = 3.0   # 판정 대기 (추후 실제 신호로 교체)
 
 STEP_MODE = '--step' in sys.argv
