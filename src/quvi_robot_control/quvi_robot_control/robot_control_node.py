@@ -320,6 +320,10 @@ class RobotControlNode(Node):
     def _load_act_policy(self):
         """LeRobot ACTPolicy 로드."""
         try:
+            import sys
+            for _lerobot_src in ['/workspace/lerobot/src', '/physical_ai_tools/lerobot/src']:
+                if _lerobot_src not in sys.path:
+                    sys.path.insert(0, _lerobot_src)
             import torch
             from lerobot.policies.act.modeling_act import ACTPolicy
         except ImportError as e:
@@ -582,6 +586,9 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _execute_act_grasp(self) -> bool:
         self._set_state(RobotState.ACT_GRASPING)
+        self.get_logger().info('ACT 파지 시작까지 10초 대기...')
+        self._publish_status('ACT 파지 대기 중 (10초)')
+        time.sleep(10.0)
         self._publish_status('ACT 파지 시작')
         self.get_logger().info('ACT 파지 시작')
 
@@ -592,90 +599,99 @@ class RobotControlNode(Node):
 
         try:
             import torch
-            start = time.time()
-
-            with self._sidecam_lock:
-                frame = self._latest_sidecam
-
-            if frame is None:
-                self.get_logger().error('사이드캠 이미지 없음 — 파지 불가')
-                self._set_state(RobotState.IDLE)
-                return False
-
             import cv2
-            frame_rgb = cv2.cvtColor(
-                cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2RGB)
-            img_tensor = torch.from_numpy(
-                frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
-            img_tensor = img_tensor.to(self._act_device_obj)
-
-            raw_positions = self._read_raw_positions()
-            if raw_positions is None:
-                self.get_logger().error('관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
-                self._set_state(RobotState.ERROR)
-                self._publish_status('ERROR: Dynamixel 통신 오류')
-                return False
-
-            joint_rad = [
-                (raw_positions[name] / 4095.0) * 2 * math.pi
-                for name in JOINT_NAMES
-            ]
-            state_tensor = torch.tensor(
-                joint_rad, dtype=torch.float32).unsqueeze(0)
-            state_tensor = state_tensor.to(self._act_device_obj)
-
-            obs = {
-                'observation.images.sidecam': img_tensor,
-                'observation.state': state_tensor,
-            }
-
-            with torch.no_grad():
-                action_chunk = self._act_policy.select_action(obs)
-                if action_chunk.ndim == 3:
-                    action_chunk = action_chunk.squeeze(0)
-                action_chunk = action_chunk.cpu().numpy()
-
-            self.get_logger().info(
-                f'ACT 추론 완료 | 청크 크기={len(action_chunk)} | '
-                f'추론 시간={(time.time()-start)*1000:.1f}ms')
-
-            if self._get_state() == RobotState.ERROR:
-                self.get_logger().error('ESTOP 감지 — ACT 청크 실행을 중단합니다.')
-                self._safe_estop_cleanup()
-                return False
-
+            ACT_GRASP_DURATION = 10.0
             dt = 1.0 / ACT_CONTROL_HZ
-            for i, action in enumerate(action_chunk):
-                step_start = time.time()
+            start = time.time()
+            chunk_count = 0
 
+            while (time.time() - start) < ACT_GRASP_DURATION:
                 if self._get_state() == RobotState.ERROR:
-                    self.get_logger().error(f'ESTOP 감지 — ACT 실행 중단 (스텝 {i}/{len(action_chunk)})')
+                    self.get_logger().error('ESTOP 감지 — ACT 청크 실행을 중단합니다.')
                     self._safe_estop_cleanup()
                     return False
 
-                if self._use_real_hardware and self._dxl_ready:
-                    action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
-                    action_dict = self._clip_shoulder_lift(action_dict, is_raw=False)
-                    with self._dxl_io_lock:
-                        self._follower.send_action(action_dict)
-                else:
-                    goal_dict = {}
-                    for j, name in enumerate(JOINT_NAMES):
-                        val = float(action[j])
-                        if -100 <= val <= 100:
-                            raw = int(((val + 100.0) / 200.0) * 4095.0)
-                        else:
-                            raw = int(np.clip((val / (2 * math.pi)) * 4095, 0, 4095))
-                        goal_dict[name] = raw
-                    self._write_raw_position(goal_dict)
+                with self._sidecam_lock:
+                    frame = self._latest_sidecam
 
-                elapsed = time.time() - step_start
-                remaining = dt - elapsed
-                if remaining > 0:
-                    time.sleep(remaining)
+                if frame is None:
+                    self.get_logger().error('사이드캠 이미지 없음 — 파지 불가')
+                    self._set_state(RobotState.IDLE)
+                    return False
+
+                frame_rgb = cv2.cvtColor(
+                    cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2RGB)
+                img_tensor = torch.from_numpy(
+                    frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
+                img_tensor = img_tensor.to(self._act_device_obj)
+
+                acquired = self._dxl_io_lock.acquire(blocking=False)
+                if not acquired:
+                    continue
+                try:
+                    norm_positions = self._follower.bus.sync_read('Present_Position', normalize=True)
+                except Exception as e:
+                    self.get_logger().error(f'관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
+                    self._set_state(RobotState.ERROR)
+                    self._publish_status('ERROR: Dynamixel 통신 오류')
+                    return False
+                finally:
+                    self._dxl_io_lock.release()
+
+                joint_vals = [norm_positions[name] for name in JOINT_NAMES]
+                state_tensor = torch.tensor(
+                    joint_vals, dtype=torch.float32).unsqueeze(0)
+                state_tensor = state_tensor.to(self._act_device_obj)
+
+                obs = {
+                    'observation.images.camera1': img_tensor,
+                    'observation.state': state_tensor,
+                }
+
+                infer_start = time.time()
+                with torch.no_grad():
+                    action_chunk = self._act_policy.select_action(obs)
+                    if action_chunk.ndim == 3:
+                        action_chunk = action_chunk.squeeze(0)
+                    action_chunk = action_chunk.cpu().numpy()
+                chunk_count += 1
+                self.get_logger().info(
+                    f'ACT 청크#{chunk_count} 추론 완료 | 크기={len(action_chunk)} | '
+                    f'추론시간={(time.time()-infer_start)*1000:.1f}ms | '
+                    f'경과={time.time()-start:.1f}/{ACT_GRASP_DURATION:.0f}s')
+
+                for i, action in enumerate(action_chunk):
+                    if (time.time() - start) >= ACT_GRASP_DURATION:
+                        break
+                    if self._get_state() == RobotState.ERROR:
+                        self.get_logger().error(f'ESTOP 감지 — ACT 실행 중단 (청크#{chunk_count} 스텝 {i})')
+                        self._safe_estop_cleanup()
+                        return False
+
+                    step_start = time.time()
+                    if self._use_real_hardware and self._dxl_ready:
+                        action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
+                        action_dict = self._clip_shoulder_lift(action_dict, is_raw=False)
+                        with self._dxl_io_lock:
+                            self._follower.send_action(action_dict)
+                    else:
+                        goal_dict = {}
+                        for j, name in enumerate(JOINT_NAMES):
+                            val = float(action[j])
+                            if -100 <= val <= 100:
+                                raw = int(((val + 100.0) / 200.0) * 4095.0)
+                            else:
+                                raw = int(np.clip((val / (2 * math.pi)) * 4095, 0, 4095))
+                            goal_dict[name] = raw
+                        self._write_raw_position(goal_dict)
+
+                    elapsed = time.time() - step_start
+                    remaining = dt - elapsed
+                    if remaining > 0:
+                        time.sleep(remaining)
 
             total_time = time.time() - start
-            self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s')
+            self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s | 청크 수={chunk_count}')
 
             done_msg = Bool()
             done_msg.data = True
