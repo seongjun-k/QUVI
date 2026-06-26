@@ -6,12 +6,12 @@
 # 반드시 일치해야 한다 (프로젝트 표준: 921600).
 #
 # 사용법:
-#   scripts/run_microros_agent.sh                 # 기본 /dev/ttyUSB0, 921600
-#   scripts/run_microros_agent.sh /dev/ttyACM0    # 포트 지정
-#   QUVI_MICROROS_BAUD=115200 scripts/run_microros_agent.sh /dev/ttyACM0
+#   scripts/run_microros_agent.sh                   # 기본 /dev/ttyESP32, 921600
+#   scripts/run_microros_agent.sh /dev/ttyESP32     # 포트 지정
+#   QUVI_MICROROS_BAUD=115200 scripts/run_microros_agent.sh /dev/ttyESP32
 set -euo pipefail
 
-DEV="${1:-${QUVI_MICROROS_DEV:-/dev/ttyUSB0}}"
+DEV="${1:-${QUVI_MICROROS_DEV:-/dev/ttyESP32}}"
 BAUD="${QUVI_MICROROS_BAUD:-921600}"
 
 if [ ! -e "$DEV" ]; then

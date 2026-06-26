@@ -39,7 +39,7 @@ def main():
 
     # 2. Open Physical Serial Port with correct DTR/RTS logic
     try:
-        ser_phy = serial.Serial('/dev/ttyUSB0', 115200, timeout=0.01)
+        ser_phy = serial.Serial('/dev/ttyESP32', 115200, timeout=0.01)
         ser_phy.dtr = False
         ser_phy.rts = False
         time.sleep(0.5)  # Discharge caps
@@ -55,7 +55,7 @@ def main():
         ser_phy.rts = False
         ser_phy.dtr = False
         time.sleep(0.5)  # Let boot strap state settle
-        print("Physical serial port /dev/ttyUSB0 opened successfully inside container.")
+        print("Physical serial port /dev/ttyESP32 opened successfully inside container.")
     except Exception as e:
         print("Failed to open physical serial port inside container:", e)
         os.close(master_fd)
