@@ -89,20 +89,22 @@ def generate_launch_description():
         description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
     # ─── 카메라 1: 사이드캠 (Zone 1 - 베드 위 출력물 촬영) ───
+    # ─── 카메라 1: 사이드캠 (Zone 1 - 픽업 영역) ───
+    # fixed_cam_device → camera1 토픽 (사이드캠 위치 교체)
     camera1_node = Node(
         package='usb_cam',
         executable='usb_cam_node_exe',
         name='camera1',
         namespace='camera1',
         parameters=[{
-            'video_device': LaunchConfiguration('sidecam_device'),
+            'video_device': LaunchConfiguration('fixed_cam_device'),
             'image_width': 1920,
             'image_height': 1080,
-            'pixel_format': 'raw_mjpeg',
+            'pixel_format': 'yuyv',
             'framerate': 30.0,
             'camera_name': 'sidecam',
-            'autoexposure': ParameterValue(LaunchConfiguration('sidecam_autoexposure'), value_type=bool),
-            'exposure': ParameterValue(LaunchConfiguration('sidecam_exposure'), value_type=int),
+            'autoexposure': ParameterValue(LaunchConfiguration('fixed_cam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('fixed_cam_exposure'), value_type=int),
         }],
         remappings=[
             ('image_raw', 'image_raw'),
@@ -110,21 +112,22 @@ def generate_launch_description():
         ],
     )
 
-    # ─── 카메라 2: 고정 카메라 (Zone 2 - 검사 챔버) ───
+    # ─── 카메라 2: 검사캠 (Zone 2 - 검사 챔버) ───
+    # sidecam_device → camera2 토픽 (검사캠 위치 교체)
     camera2_node = Node(
         package='usb_cam',
         executable='usb_cam_node_exe',
         name='camera2',
         namespace='camera2',
         parameters=[{
-            'video_device': LaunchConfiguration('fixed_cam_device'),
+            'video_device': LaunchConfiguration('sidecam_device'),
             'image_width': 1920,
             'image_height': 1080,
-            'pixel_format': 'mjpeg2rgb',
+            'pixel_format': 'raw_mjpeg',
             'framerate': 30.0,
             'camera_name': 'inspection_cam',
-            'autoexposure': ParameterValue(LaunchConfiguration('fixed_cam_autoexposure'), value_type=bool),
-            'exposure': ParameterValue(LaunchConfiguration('fixed_cam_exposure'), value_type=int),
+            'autoexposure': ParameterValue(LaunchConfiguration('sidecam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('sidecam_exposure'), value_type=int),
         }],
         remappings=[
             ('image_raw', 'image_raw'),
