@@ -151,6 +151,9 @@ class MainOrchestratorNode(Node):
         # 하위 노드 트리거 발행
         self._inspect_trigger_pub = self.create_publisher(Bool, topics.TOPIC_INSPECTION_TRIGGER, 10)
 
+        # LED 제어 (검사 중 ON, 검사 완료 후 OFF)
+        self._led_pub = self.create_publisher(Bool, topics.TOPIC_MOTOR_LED, 10)
+
         # 로봇 및 구동부 명령 발행
         self._robot_grasp_pub = self.create_publisher(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD, 10)
         self._robot_rail_pub = self.create_publisher(Int32, topics.TOPIC_ROBOT_RAIL_CMD, 10)
@@ -452,6 +455,10 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.INSPECTING_TRIGGER:
             self._inspect_done = False
+            # LED ON — 검사 시작
+            led_on = Bool()
+            led_on.data = True
+            self._led_pub.publish(led_on)
             # 챔버 품질 검사 노드 활성화
             inspect_trigger = Bool()
             inspect_trigger.data = True
@@ -501,8 +508,15 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.INSPECTING_WAIT_RESULT:
             self._state_timer_counter += 1
             if self._inspect_done:
+                # LED OFF — 검사 완료
+                led_off = Bool()
+                led_off.data = False
+                self._led_pub.publish(led_off)
                 self._state = FsmState.PICKING_CHAMBER_TRIGGER
             elif self._state_timer_counter > int(self._inspect_timeout * self._loop_rate):
+                led_off = Bool()
+                led_off.data = False
+                self._led_pub.publish(led_off)
                 self.get_logger().error('품질 검사 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'INSPECT_TIMEOUT'
                 self._state = FsmState.ERROR

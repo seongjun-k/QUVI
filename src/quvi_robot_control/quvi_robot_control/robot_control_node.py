@@ -154,12 +154,21 @@ POSE_CHAMBER_PRE_PICK = {
 # ── 티칭 웨이포인트 (teach_pendant.py 로 기록 후 여기에 붙여넣기) ──────────────
 # scripts/teach_pendant.py 실행 → 원하는 자세로 이동 → 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
-POSE_P1 = {'shoulder_pan': 2047, 'shoulder_lift': 1059, 'elbow_flex': 2977, 'wrist_flex': 3005, 'wrist_roll': 1994, 'gripper': 2152}  # 집기 전 대기
-POSE_P2 = {'shoulder_pan':   28, 'shoulder_lift': 1025, 'elbow_flex': 2791, 'wrist_flex': 3055, 'wrist_roll': 1989, 'gripper': 2152}  # 180도 회전 후
-POSE_P3 = {'shoulder_pan':   52, 'shoulder_lift': 1848, 'elbow_flex': 2495, 'wrist_flex': 2834, 'wrist_roll': 1993, 'gripper': 2152}  # 턴테이블 위
-POSE_P4 = {'shoulder_pan':   20, 'shoulder_lift': 1900, 'elbow_flex': 2494, 'wrist_flex': 2833, 'wrist_roll': 1994, 'gripper': 2152}  # 턴테이블 내려놓기
-POSE_P5 = {'shoulder_pan': 2068, 'shoulder_lift':  868, 'elbow_flex': 2901, 'wrist_flex': 3036, 'wrist_roll': 1997, 'gripper': 2152}  # 180도 복귀 후
-POSE_P6 = {'shoulder_pan': 2016, 'shoulder_lift': 1287, 'elbow_flex': 3025, 'wrist_flex': 2753, 'wrist_roll': 2006, 'gripper': 2152}  # 최종 내려놓기
+POSE_P1 = {'shoulder_pan': 2054, 'shoulder_lift': 1258, 'elbow_flex': 2800, 'wrist_flex': 2981, 'wrist_roll': 2035, 'gripper': 2150}  # 베드 위 대기
+POSE_P2 = {'shoulder_pan':   12, 'shoulder_lift': 1843, 'elbow_flex': 2165, 'wrist_flex': 3123, 'wrist_roll': 2095, 'gripper': 2150}  # 180도 회전
+POSE_P3 = {'shoulder_pan':   16, 'shoulder_lift': 1736, 'elbow_flex': 2413, 'wrist_flex': 3018, 'wrist_roll': 2087, 'gripper': 2150}  # 턴테이블 진입점
+POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1841, 'elbow_flex': 2522, 'wrist_flex': 2759, 'wrist_roll': 2085, 'gripper': 2150}  # 턴테이블 놓기 지점
+POSE_P5 = {'shoulder_pan': 2047, 'shoulder_lift': 1854, 'elbow_flex': 2460, 'wrist_flex': 2909, 'wrist_roll': 2050, 'gripper': 2150}  # 180도 반대 회전 (경유)
+POSE_P6 = {'shoulder_pan': 2039, 'shoulder_lift': 1076, 'elbow_flex': 2884, 'wrist_flex': 3094, 'wrist_roll': 1993, 'gripper': 2150}  # 분류장 위치
+
+# ── 저속 이동 프로파일 (scripts/test_sequence.py 기준) ──────────────────────
+# Profile_Velocity 단위: 0.229 RPM  |  Profile_Acceleration 단위: 214.577 rev/min²
+PROFILE_VELOCITY      = 8    # 팔 관절 ~1.8 RPM
+PROFILE_ACCEL         = 3    # 팔 관절 가속도
+PROFILE_VELOCITY_GRIP = 20   # 그리퍼 ~4.6 RPM
+PROFILE_ACCEL_GRIP    = 5    # 그리퍼 가속도
+MOVE_WAIT             = 15.0  # 관절 이동 대기 초
+GRIPPER_WAIT_SLOW     = 3.0   # 그리퍼 열기/닫기 대기 초
 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
@@ -876,6 +885,21 @@ class RobotControlNode(Node):
         return positions
 
     # ─────────────────────────────────────────────
+    # 저속 프로파일 적용 (시퀀스 전용)
+    # ─────────────────────────────────────────────
+    def _apply_motor_profile(self, joint_names: list, velocity: int, accel: int):
+        if not self._use_real_hardware or not self._dxl_ready or not self._follower:
+            return
+        try:
+            with self._dxl_io_lock:
+                vel_dict   = {n: velocity for n in joint_names}
+                accel_dict = {n: accel    for n in joint_names}
+                self._follower.bus.sync_write('Profile_Acceleration', accel_dict, normalize=False)
+                self._follower.bus.sync_write('Profile_Velocity',     vel_dict,   normalize=False)
+        except Exception as e:
+            self.get_logger().warn(f'프로파일 설정 실패 (계속 진행): {e}')
+
+    # ─────────────────────────────────────────────
     # lerobot bus 기반 모터 I/O
     # ─────────────────────────────────────────────
     def _write_raw_position(self, positions: dict) -> bool:
@@ -986,71 +1010,65 @@ class RobotControlNode(Node):
                 return False
 
     # ─────────────────────────────────────────────
-    # P1~P6 티칭 시퀀스 실행
+    # P1~P6 티칭 시퀀스 실행 (저속 프로파일)
     # ─────────────────────────────────────────────
     def _execute_taught_sequence(self) -> bool:
         """
-        teach_pendant.py 로 기록한 P1~P6 웨이포인트를 순서대로 실행.
+        P1~P6 웨이포인트 저속 실행 (PROFILE_VELOCITY=8, ~1.8 RPM).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
-        순서:
-          P1 → P2 → P3 → P4(놓기) → P5(위로 올리기/판정 대기)
-          → P4(다시 집기) → P3(들어올리기) → P5(회전) → P6(최종 놓기)
+        순서 (test_sequence.py 기반):
+          P1 → P2 → P3 → P4(놓기) → P3(후퇴) → P4(재집기)
+          → P3(올리기) → P5(반대 회전) → P1(경유) → P6(최종 놓기)
         """
-        for key, pose, label in [
-            ('P1', POSE_P1, 'P1: 집기 전 대기'),
-            ('P2', POSE_P2, 'P2: 180도 회전'),
-            ('P3', POSE_P3, 'P3: 턴테이블 위'),
-        ]:
-            if pose is None:
-                self.get_logger().error(f'{key} 웨이포인트 미설정')
+        arm_joints = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll']
+
+        def move_arm(pose: dict, label: str) -> bool:
+            self.get_logger().info(f'이동: {label}')
+            arm_only = {k: v for k, v in pose.items() if k != 'gripper'}
+            self._apply_motor_profile(arm_joints, PROFILE_VELOCITY, PROFILE_ACCEL)
+            success = self._write_raw_position(arm_only)
+            time.sleep(MOVE_WAIT)
+            return success
+
+        def grip_open():
+            self.get_logger().info('그리퍼 열기')
+            self._apply_motor_profile(['gripper'], PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
+            self._write_raw_position({'gripper': GRIPPER_OPEN})
+            time.sleep(GRIPPER_WAIT_SLOW)
+
+        def grip_close():
+            self.get_logger().info('그리퍼 닫기')
+            self._apply_motor_profile(['gripper'], PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
+            self._write_raw_position({'gripper': GRIPPER_CLOSE})
+            time.sleep(GRIPPER_WAIT_SLOW)
+
+        # P1 → P2 → P3 → P4 → 놓기
+        for pose, label in [(POSE_P1, 'P1: 베드 위 대기'),
+                            (POSE_P2, 'P2: 180도 회전'),
+                            (POSE_P3, 'P3: 턴테이블 진입점'),
+                            (POSE_P4, 'P4: 턴테이블 놓기 지점')]:
+            if not move_arm(pose, label):
                 return False
-            if not self._execute_pose(pose, label):
-                return False
+        grip_open()
 
-        # P4: 내려가서 그리퍼 열기 (턴테이블에 올려놓기)
-        if POSE_P4 is None:
-            self.get_logger().error('P4 웨이포인트 미설정')
+        # P3으로 후퇴 후 P4로 재진입 (집기 준비 — 검사는 오케스트레이터가 이미 완료)
+        if not move_arm(POSE_P3, 'P3: 후퇴'):
             return False
-        if not self._execute_pose(POSE_P4, 'P4: 턴테이블 내려놓기'):
+        if not move_arm(POSE_P4, 'P4: 재집기 지점'):
             return False
-        self._write_raw_position({'gripper': GRIPPER_OPEN})
-        self.get_logger().info('P4: 그리퍼 열기 (놓기)')
-        time.sleep(0.5)
+        grip_close()
 
-        # P5: 위로 올라가서 판정 대기
-        if POSE_P5 is None:
-            self.get_logger().error('P5 웨이포인트 미설정')
+        # P3 올리기 → P5 반대 회전 → P1 경유 → P6 최종 놓기
+        if not move_arm(POSE_P3, 'P3: 들어올리기'):
             return False
-        if not self._execute_pose(POSE_P5, 'P5: 위로 올라가기 (판정 대기)'):
+        if not move_arm(POSE_P5, 'P5: 180도 반대 회전'):
             return False
-        # 판정은 오케스트레이터가 release 트리거 전에 이미 완료한 상태
-        self.get_logger().info('판정 완료 — P4로 복귀하여 집기')
-
-        # P4: 다시 내려가서 그리퍼 닫기 (다시 집기)
-        if not self._execute_pose(POSE_P4, 'P4: 다시 내려가기 (집기)'):
+        if not move_arm(POSE_P1, 'P1: 경유'):
             return False
-        self._write_raw_position({'gripper': GRIPPER_CLOSE})
-        self.get_logger().info('P4: 그리퍼 닫기 (집기)')
-        time.sleep(0.5)
-
-        # P3: 들어올리기
-        if not self._execute_pose(POSE_P3, 'P3: 들어올리기'):
+        if not move_arm(POSE_P6, 'P6: 분류장 위치'):
             return False
-
-        # P5: 반대쪽으로 회전
-        if not self._execute_pose(POSE_P5, 'P5: 회전'):
-            return False
-
-        # P6: 최종 내려놓기 (레일은 이미 pass/fail 위치)
-        if POSE_P6 is None:
-            self.get_logger().error('P6 웨이포인트 미설정')
-            return False
-        if not self._execute_pose(POSE_P6, 'P6: 최종 내려놓기'):
-            return False
-        self._write_raw_position({'gripper': GRIPPER_OPEN})
-        self.get_logger().info('P6: 그리퍼 열기 (최종 놓기)')
-        time.sleep(0.5)
+        grip_open()
 
         return True
 
