@@ -412,7 +412,7 @@ class MainOrchestratorNode(Node):
             
             goal = GraspGoal()
             goal.header.stamp = self.get_clock().now().to_msg()
-            goal.header.frame_id = "camera_handcam"
+            goal.header.frame_id = "camera_sidecam"
             goal.target_x = 0.0
             goal.target_y = 0.0
             goal.target_z = float(self._target_z)

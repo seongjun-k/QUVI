@@ -17,7 +17,7 @@ QUVI ROBOT_CONTROL_NODE
 
 주요 기능:
   1. ACT 모방학습 파지 (LeRobot ACTPolicy)
-     - /camera/handcam 이미지 + 관절 상태 → ACT 추론 → 관절 목표값 전송
+     - /camera/sidecam 이미지 + 관절 상태 → ACT 추론 → 관절 목표값 전송
   2. OMX Dynamixel 관절 제어 (lerobot 공식 API)
      - 홈 복귀, 자세 이동, 그리퍼 제어
   3. 리더-팔로워 텔레오퍼레이션 (lerobot OmxLeader → OmxFollower)
@@ -25,7 +25,7 @@ QUVI ROBOT_CONTROL_NODE
   5. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable)
 
 ROS 2 인터페이스 (Subscriber):
-  /camera/handcam/compressed  sensor_msgs/CompressedImage   핸드캠 이미지
+  /camera/sidecam/compressed  sensor_msgs/CompressedImage   사이드캠 이미지
   /robot/grasp_command        quvi_msgs/GraspGoal           파지 트리거 + 목표 좌표
   /robot/rail_command         std_msgs/Int32                레일 목표 위치 코드 (0=D,1=A,2=B,3=C)
   /robot/rotate_command       std_msgs/Bool                 베이스 180° 회전 (true=뒤, false=앞)
@@ -195,8 +195,8 @@ class RobotControlNode(Node):
         self._state: RobotState = RobotState.IDLE
         self._state_lock = threading.Lock()
 
-        self._latest_handcam: Optional[np.ndarray] = None
-        self._handcam_lock = threading.Lock()
+        self._latest_sidecam: Optional[np.ndarray] = None
+        self._sidecam_lock = threading.Lock()
         self._bridge = CvBridge()
 
         self._esp32_rail_done = False
@@ -262,7 +262,7 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_mm_pass',    25.0)
         self.declare_parameter('rail_mm_fail',    125.0)
         # 카메라
-        self.declare_parameter('handcam_topic', '/camera1/image_raw/compressed')
+        self.declare_parameter('sidecam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('use_compressed', True)
         # 동작 타임아웃 (초)
         self.declare_parameter('rail_move_timeout_sec', 30.0)
@@ -283,7 +283,7 @@ class RobotControlNode(Node):
             RailPosition.PASS:    self.get_parameter('rail_mm_pass').value,
             RailPosition.FAIL:    self.get_parameter('rail_mm_fail').value,
         }
-        self._handcam_topic  = self.get_parameter('handcam_topic').value
+        self._sidecam_topic  = self.get_parameter('sidecam_topic').value
         self._use_compressed = self.get_parameter('use_compressed').value
         self._rail_timeout   = self.get_parameter('rail_move_timeout_sec').value
         self._grasp_timeout  = self.get_parameter('grasp_timeout_sec').value
@@ -347,14 +347,14 @@ class RobotControlNode(Node):
     def _setup_ros_interfaces(self):
         # ── Subscribers ──
         if self._use_compressed:
-            self._handcam_sub = self.create_subscription(
-                CompressedImage, self._handcam_topic,
-                self._handcam_callback, 10)
+            self._sidecam_sub = self.create_subscription(
+                CompressedImage, self._sidecam_topic,
+                self._sidecam_callback, 10)
         else:
             from sensor_msgs.msg import Image
-            self._handcam_sub = self.create_subscription(
-                Image, self._handcam_topic,
-                self._handcam_callback_raw, 10)
+            self._sidecam_sub = self.create_subscription(
+                Image, self._sidecam_topic,
+                self._sidecam_callback_raw, 10)
 
         self._grasp_cmd_sub = self.create_subscription(
             GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
@@ -457,19 +457,19 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # 카메라 콜백
     # ─────────────────────────────────────────────
-    def _handcam_callback(self, msg: CompressedImage):
+    def _sidecam_callback(self, msg: CompressedImage):
         import cv2
         np_arr = np.frombuffer(msg.data, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if frame is not None:
-            with self._handcam_lock:
-                self._latest_handcam = frame
+            with self._sidecam_lock:
+                self._latest_sidecam = frame
 
-    def _handcam_callback_raw(self, msg):
+    def _sidecam_callback_raw(self, msg):
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
         if frame is not None:
-            with self._handcam_lock:
-                self._latest_handcam = frame
+            with self._sidecam_lock:
+                self._latest_sidecam = frame
 
     def _esp32_rail_done_callback(self, msg: Bool):
         if msg.data:
@@ -589,11 +589,11 @@ class RobotControlNode(Node):
             import torch
             start = time.time()
 
-            with self._handcam_lock:
-                frame = self._latest_handcam
+            with self._sidecam_lock:
+                frame = self._latest_sidecam
 
             if frame is None:
-                self.get_logger().error('핸드캠 이미지 없음 — 파지 불가')
+                self.get_logger().error('사이드캠 이미지 없음 — 파지 불가')
                 self._set_state(RobotState.IDLE)
                 return False
 
@@ -620,7 +620,7 @@ class RobotControlNode(Node):
             state_tensor = state_tensor.to(self._act_device_obj)
 
             obs = {
-                'observation.images.handcam': img_tensor,
+                'observation.images.sidecam': img_tensor,
                 'observation.state': state_tensor,
             }
 

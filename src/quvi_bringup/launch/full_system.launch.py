@@ -25,9 +25,9 @@ def generate_launch_description():
         'hmi_port', default_value='5000',
         description='HMI Web UI 포트')
 
-    handcam_arg = DeclareLaunchArgument(
-        'handcam_device', default_value='/dev/handcam',
-        description='핸드캠 장치 경로')
+    sidecam_arg = DeclareLaunchArgument(
+        'sidecam_device', default_value='/dev/sidecam',
+        description='사이드캠 장치 경로')
 
     fixed_cam_arg = DeclareLaunchArgument(
         'fixed_cam_device', default_value='/dev/fixed_cam',
@@ -49,13 +49,13 @@ def generate_launch_description():
         'leader_dxl_port', default_value='/dev/ttyLeader',
         description='리더 암 Dynamixel 포트 (텔레오퍼레이션)')
 
-    handcam_autoexposure_arg = DeclareLaunchArgument(
-        'handcam_autoexposure', default_value='false',
-        description='핸드캠 자동 노출 활성화 여부 (true/false)')
+    sidecam_autoexposure_arg = DeclareLaunchArgument(
+        'sidecam_autoexposure', default_value='false',
+        description='사이드캠 자동 노출 활성화 여부 (true/false)')
 
-    handcam_exposure_arg = DeclareLaunchArgument(
-        'handcam_exposure', default_value='150',
-        description='핸드캠 수동 노출값 (autoexposure가 false일 때 적용)')
+    sidecam_exposure_arg = DeclareLaunchArgument(
+        'sidecam_exposure', default_value='150',
+        description='사이드캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
     fixed_cam_autoexposure_arg = DeclareLaunchArgument(
         'fixed_cam_autoexposure', default_value='false',
@@ -79,10 +79,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(bringup_dir, 'launch', 'vision_pipeline.launch.py')),
         launch_arguments={
-            'handcam_device': LaunchConfiguration('handcam_device'),
+            'sidecam_device': LaunchConfiguration('sidecam_device'),
             'fixed_cam_device': LaunchConfiguration('fixed_cam_device'),
-            'handcam_autoexposure': LaunchConfiguration('handcam_autoexposure'),
-            'handcam_exposure': LaunchConfiguration('handcam_exposure'),
+            'sidecam_autoexposure': LaunchConfiguration('sidecam_autoexposure'),
+            'sidecam_exposure': LaunchConfiguration('sidecam_exposure'),
             'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),
             'fixed_cam_exposure': LaunchConfiguration('fixed_cam_exposure'),
         }.items(),
@@ -118,7 +118,7 @@ def generate_launch_description():
             'leader_dxl_port': LaunchConfiguration('leader_dxl_port'),
             'dxl_baudrate': 1000000,
             'act_device': 'cpu',
-            'handcam_topic': '/camera1/image_raw/compressed',
+            'sidecam_topic': '/camera1/image_raw/compressed',
             'use_compressed': True,
         }],
         output='screen',
@@ -155,14 +155,14 @@ def generate_launch_description():
 
     return LaunchDescription([
         hmi_port_arg,
-        handcam_arg,
+        sidecam_arg,
         fixed_cam_arg,
         use_real_hardware_arg,
         use_act_arg,
         follower_port_arg,
         leader_port_arg,
-        handcam_autoexposure_arg,
-        handcam_exposure_arg,
+        sidecam_autoexposure_arg,
+        sidecam_exposure_arg,
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
         micro_ros_port_arg,

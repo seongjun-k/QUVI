@@ -8,7 +8,7 @@ INSPECT_NODE + 카메라 노드를 한 번에 실행.
 
   # 카메라 장치 변경:
   ros2 launch quvi_bringup vision_pipeline.launch.py \
-    handcam_device:=/dev/video0 \
+    sidecam_device:=/dev/video0 \
     fixed_cam_device:=/dev/video2
 """
 
@@ -36,9 +36,9 @@ def generate_launch_description():
     default_data_dir = _default_data_dir()
 
     # ─── Launch Arguments ───
-    handcam_device_arg = DeclareLaunchArgument(
-        'handcam_device', default_value='/dev/handcam',
-        description='핸드캠(Zone 1) USB 장치 경로')
+    sidecam_device_arg = DeclareLaunchArgument(
+        'sidecam_device', default_value='/dev/sidecam',
+        description='사이드캠(Zone 1) USB 장치 경로')
 
     fixed_cam_device_arg = DeclareLaunchArgument(
         'fixed_cam_device', default_value='/dev/fixed_cam',
@@ -58,9 +58,9 @@ def generate_launch_description():
         default_value=[LaunchConfiguration('data_dir'), '/inspection_logs'],
         description='검사 로그 저장 디렉토리')
 
-    handcam_topic_arg = DeclareLaunchArgument(
-        'handcam_topic', default_value='/camera1/image_raw/compressed',
-        description='로봇이 구독할 핸드캠 압축 이미지 토픽')
+    sidecam_topic_arg = DeclareLaunchArgument(
+        'sidecam_topic', default_value='/camera1/image_raw/compressed',
+        description='로봇이 구독할 사이드캠 압축 이미지 토픽')
 
     inspect_topic_arg = DeclareLaunchArgument(
         'inspect_topic', default_value='/camera2/image_raw/compressed',
@@ -72,13 +72,13 @@ def generate_launch_description():
             get_package_share_directory('quvi_inspect'), 'config', 'inspect_params.yaml'),
         description='검사 파라미터 YAML 경로')
 
-    handcam_autoexposure_arg = DeclareLaunchArgument(
-        'handcam_autoexposure', default_value='false',
-        description='핸드캠 자동 노출 활성화 여부 (true/false)')
+    sidecam_autoexposure_arg = DeclareLaunchArgument(
+        'sidecam_autoexposure', default_value='false',
+        description='사이드캠 자동 노출 활성화 여부 (true/false)')
 
-    handcam_exposure_arg = DeclareLaunchArgument(
-        'handcam_exposure', default_value='150',
-        description='핸드캠 수동 노출값 (autoexposure가 false일 때 적용)')
+    sidecam_exposure_arg = DeclareLaunchArgument(
+        'sidecam_exposure', default_value='150',
+        description='사이드캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
     fixed_cam_autoexposure_arg = DeclareLaunchArgument(
         'fixed_cam_autoexposure', default_value='false',
@@ -88,21 +88,21 @@ def generate_launch_description():
         'fixed_cam_exposure', default_value='150',
         description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
-    # ─── 카메라 1: 핸드캠 (Zone 1 - 베드 위 출력물 촬영) ───
+    # ─── 카메라 1: 사이드캠 (Zone 1 - 베드 위 출력물 촬영) ───
     camera1_node = Node(
         package='usb_cam',
         executable='usb_cam_node_exe',
         name='camera1',
         namespace='camera1',
         parameters=[{
-            'video_device': LaunchConfiguration('handcam_device'),
+            'video_device': LaunchConfiguration('sidecam_device'),
             'image_width': 1920,
             'image_height': 1080,
             'pixel_format': 'raw_mjpeg',
             'framerate': 30.0,
-            'camera_name': 'handcam',
-            'autoexposure': ParameterValue(LaunchConfiguration('handcam_autoexposure'), value_type=bool),
-            'exposure': ParameterValue(LaunchConfiguration('handcam_exposure'), value_type=int),
+            'camera_name': 'sidecam',
+            'autoexposure': ParameterValue(LaunchConfiguration('sidecam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('sidecam_exposure'), value_type=int),
         }],
         remappings=[
             ('image_raw', 'image_raw'),
@@ -150,16 +150,16 @@ def generate_launch_description():
 
     return LaunchDescription([
         # Arguments
-        handcam_device_arg,
+        sidecam_device_arg,
         fixed_cam_device_arg,
         data_dir_arg,
         reference_dir_arg,
         inspection_log_dir_arg,
-        handcam_topic_arg,
+        sidecam_topic_arg,
         inspect_topic_arg,
         inspect_config_arg,
-        handcam_autoexposure_arg,
-        handcam_exposure_arg,
+        sidecam_autoexposure_arg,
+        sidecam_exposure_arg,
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
 
