@@ -253,7 +253,7 @@ class RobotControlNode(Node):
         # ACT
         self.declare_parameter('use_act', True)
         self.declare_parameter('act_model_path',
-            'outputs/train/quvi_act/checkpoints/last/pretrained_model')
+            '/root/ros2_ws/src/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000')
         self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
