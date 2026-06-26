@@ -780,3 +780,51 @@ function updateManualControlPanel(status) {
         _applyLedUi(status.led_state);
     }
 }
+
+// ─── 기준 이미지 캡쳐 ───
+async function startRefCapture() {
+    const delay = parseFloat(document.getElementById('refCaptureDelay')?.value || 1.5);
+    const statusEl = document.getElementById('refCaptureStatus');
+    const startBtn = document.getElementById('refCaptureStartBtn');
+    const stopBtn  = document.getElementById('refCaptureStopBtn');
+
+    if (statusEl) statusEl.textContent = '캡쳐 진행 중... (0° → 90° → 180° → 270°)';
+    if (statusEl) statusEl.style.color = 'var(--accent-green)';
+    if (startBtn) startBtn.disabled = true;
+
+    try {
+        const res  = await fetch('/api/capture/reference/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ angles: [0, 90, 180, 270], delay_sec: delay }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            // delay × 4각도 후 완료로 표시
+            const totalMs = delay * 4 * 1000 + 1000;
+            setTimeout(() => {
+                if (statusEl) { statusEl.textContent = '캡쳐 완료 ✓'; statusEl.style.color = 'var(--accent-green)'; }
+                if (startBtn) startBtn.disabled = false;
+            }, totalMs);
+        } else {
+            if (statusEl) { statusEl.textContent = '오류: ' + (data.error || '알 수 없음'); statusEl.style.color = 'var(--accent-red)'; }
+            if (startBtn) startBtn.disabled = false;
+        }
+    } catch (e) {
+        console.error('[QUVI] 기준 캡쳐 시작 실패:', e);
+        if (statusEl) { statusEl.textContent = '네트워크 오류'; statusEl.style.color = 'var(--accent-red)'; }
+        if (startBtn) startBtn.disabled = false;
+    }
+}
+
+async function stopRefCapture() {
+    const statusEl = document.getElementById('refCaptureStatus');
+    const startBtn = document.getElementById('refCaptureStartBtn');
+    try {
+        await fetch('/api/capture/reference/stop', { method: 'POST' });
+        if (statusEl) { statusEl.textContent = '캡쳐 중단됨'; statusEl.style.color = 'var(--text-muted)'; }
+        if (startBtn) startBtn.disabled = false;
+    } catch (e) {
+        console.error('[QUVI] 기준 캡쳐 중단 실패:', e);
+    }
+}

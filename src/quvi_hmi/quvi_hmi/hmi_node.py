@@ -155,6 +155,7 @@ class HmiNode(Node):
         self._rail_pub      = self.create_publisher(Int32,  '/motor/rail', 10)
         self._led_pub       = self.create_publisher(Bool,   '/motor/turntable_led', 10)
         self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
+        self._ref_capture_pub = self.create_publisher(Bool, '/inspection/capture_reference', 10)
 
         # ─── 시퀀스 제어 ───
         self._seq_thread = None
@@ -292,6 +293,17 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['led_state'] = bool(on)
         self.get_logger().info(f'LED 명령: {"ON" if on else "OFF"}')
+
+    def send_capture_reference_command(self, start: bool):
+        """기준 이미지 캡쳐 트리거 발행 (/inspection/capture_reference).
+
+        start=True  : 캡쳐 모드 시작 — inspect_node가 턴테이블 done 신호마다 기준 이미지를 저장한다.
+        start=False : 캡쳐 모드 중단.
+        """
+        msg = Bool()
+        msg.data = bool(start)
+        self._ref_capture_pub.publish(msg)
+        self.get_logger().info(f'기준 이미지 캡쳐 명령: {"START" if start else "STOP"}')
 
     # ─── 자율 시퀀스 ───
 
@@ -722,6 +734,42 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node.send_led_command(False)
             return jsonify({'ok': True, 'led': False})
         return jsonify({'error': f'Invalid action: {action}'}), 400
+
+    # ─── 기준 이미지 캡쳐 API ───
+    @app.route('/api/capture/reference/start', methods=['POST'])
+    def api_capture_reference_start():
+        """기준 이미지 캡쳐를 시작한다.
+
+        정상품을 턴테이블에 올려둠 상태에서 호출한다.
+        1. /inspection/capture_reference = True 발행
+        2. 턴테이블을 0° → 90° → 180° → 270° 순서로 순환
+           (inspect_node가 /motor/turntable_done 수신 시 자동 캡쳐)
+        """
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        angles = data.get('angles', [0, 90, 180, 270])
+        delay  = float(data.get('delay_sec', 1.5))  # 턴테이블 회전 안정화 대기
+
+        def _run_capture_sequence():
+            import time as _time
+            hmi_node.send_capture_reference_command(True)
+            _time.sleep(0.3)
+            for angle in angles:
+                hmi_node.send_turntable_command(angle)
+                _time.sleep(delay)
+                # turntable_done은 ESP32가 발행; 여기서는 시간 기반 done 시뮬레이션
+                # 실제 환경에서는 /motor/turntable_done이 inspect_node로 직접 전달됨
+            hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
+
+        t = threading.Thread(target=_run_capture_sequence, daemon=True)
+        t.start()
+        return jsonify({'ok': True, 'angles': angles, 'delay_sec': delay})
+
+    @app.route('/api/capture/reference/stop', methods=['POST'])
+    def api_capture_reference_stop():
+        """기준 이미지 캡쳐를 중단한다."""
+        hmi_node.send_capture_reference_command(False)
+        return jsonify({'ok': True})
 
     # ─── MJPEG 스트리밍 ───
     def _mjpeg_generator(cam_key: str):
