@@ -59,7 +59,8 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     flask>=3.0.0 \
     flask-socketio>=5.3.0 \
     PyYAML>=6.0.0 \
-    trimesh>=4.0.0
+    trimesh>=4.0.0 \
+    dynamixel-sdk>=4.0.0
 
 # 3단계: colcon-core와의 호환성을 위해 setuptools 버전을 <80으로 명시적 강제 다운그레이드
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
