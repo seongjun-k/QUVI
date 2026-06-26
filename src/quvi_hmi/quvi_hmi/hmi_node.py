@@ -434,6 +434,9 @@ class HmiNode(Node):
         try:
             ok = True
 
+            # 0. 레일을 먼저 HOME(베드=검사 위치)으로 이동 — 직전 사이클이 PASS/FAIL에 멈춰 있을 수 있음
+            ok = rail_move(RAIL_HOME, '시작 전 베드 복귀')
+
             # 1. 베드(=검사 위치)에서 출력물 접근 및 내려놓기
             ok = ok and move_to(port, pkt, POSE_P1, 'P1 베드 위 대기')
             ok = ok and move_to(port, pkt, POSE_P2, 'P2 180도 회전')
