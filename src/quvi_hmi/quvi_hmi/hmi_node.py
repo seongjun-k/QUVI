@@ -359,9 +359,10 @@ class HmiNode(Node):
         POSE_P6 = {'shoulder_pan':2039,'shoulder_lift':1076,'elbow_flex':2884,'wrist_flex':3094,'wrist_roll':1993,'gripper':2150}
 
         # ── 레일 위치 (RAIL_STATION_MAP 기준) ──
-        RAIL_HOME = 12.5    # INSPECT (A) = 베드 = 검사 위치 = 복귀 홈
-        RAIL_PASS = 25.0    # PASS (B)
-        RAIL_FAIL = 125.0   # FAIL (C)
+        RAIL_HOME    = 12.5     # INSPECT (A) — 검사 위치
+        RAIL_PASS    = 25.0     # PASS (B)
+        RAIL_FAIL    = 125.0    # FAIL (C)
+        RAIL_BED     = 381.25   # BED (D) — 빌드 베드 = 턴테이블 = 시작/복귀 위치
 
         # ── 내부 헬퍼 ──
         def open_bus():
@@ -434,8 +435,8 @@ class HmiNode(Node):
         try:
             ok = True
 
-            # 0. 레일을 먼저 HOME(베드=검사 위치)으로 이동 — 직전 사이클이 PASS/FAIL에 멈춰 있을 수 있음
-            ok = rail_move(RAIL_HOME, '시작 전 베드 복귀')
+            # 0. 레일을 BED(381.25mm)로 이동 — 직전 사이클이 PASS/FAIL에 멈춰 있을 수 있음
+            ok = rail_move(RAIL_BED, '베드/턴테이블 이동')
 
             # 1. 베드(=검사 위치)에서 출력물 접근 및 내려놓기
             ok = ok and move_to(port, pkt, POSE_P1, 'P1 베드 위 대기')
@@ -476,8 +477,8 @@ class HmiNode(Node):
             if ok:
                 gripper_open(port, pkt)
 
-            # 5. 레일 홈 복귀 (베드=검사 위치)
-            rail_move(RAIL_HOME, '홈/베드 복귀')
+            # 5. 레일 BED 복귀 (다음 사이클 준비)
+            rail_move(RAIL_BED, 'BED 복귀')
             self.get_logger().info('[시퀀스] 완료')
 
         except Exception as e:
