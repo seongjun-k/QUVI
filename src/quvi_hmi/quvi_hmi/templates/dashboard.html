@@ -91,10 +91,6 @@
                     리셋
                 </button>
                 <div class="control-divider"></div>
-                <button class="btn" onclick="triggerDetection()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg>
-                    수동 탐지
-                </button>
                 <button class="btn" onclick="triggerInspection()">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
                     수동 검사
@@ -136,7 +132,7 @@
                     </div>
                     <div class="camera-feed">
                         <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
-                        <div class="camera-label">📷 고정캠 — Zone 2 (Inspection)</div>
+                        <div class="camera-label">📷 검사캠 — Zone 2 (Inspection)</div>
                         <div class="camera-status" id="cam2Status"></div>
                     </div>
                     <div class="camera-feed">
@@ -599,11 +595,6 @@
                             <div class="fsm-node" id="fsm_IDLE">
                                 <div class="fsm-node-circle">IDLE</div>
                                 <div class="fsm-node-label">대기 중</div>
-                            </div>
-                            <div class="fsm-arrow">➔</div>
-                            <div class="fsm-node" id="fsm_DETECTING">
-                                <div class="fsm-node-circle">DETECT</div>
-                                <div class="fsm-node-label">출력물 탐지</div>
                             </div>
                             <div class="fsm-arrow">➔</div>
                             <div class="fsm-node" id="fsm_GRASPING">

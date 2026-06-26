@@ -11,7 +11,7 @@ Flask + WebSocket 기반 Web HMI 대시보드.
   - 검사 로그 이미지 뷰어
 
 토픽:
-  구독: /hmi/status, /detection/objects, /inspection/result,
+  구독: /hmi/status, /inspection/result,
         /camera1/..., /camera2/..., /inspect/debug_image
   발행: /hmi/command (시작/정지/비상정지)
 """

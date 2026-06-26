@@ -199,7 +199,7 @@ function updateStatusTab(status) {
     if (status.current_state) {
         const state = status.current_state;
         const fsmNodes = [
-            'INIT', 'IDLE', 'DETECTING', 'GRASPING', 'INSPECTING',
+            'INIT', 'IDLE', 'GRASPING', 'INSPECTING',
             'SORTING', 'RELEASING', 'HOMING', 'TELEOPING', 'FINISHED',
             'ERROR', 'ESTOP',
         ];
@@ -234,7 +234,6 @@ function updateStatusTab(status) {
 const STAGE_LABELS = {
     'INIT':       '시스템 초기화 중',
     'IDLE':       '대기 중',
-    'DETECTING':  '출력물 탐지 중',
     'GRASPING':   'ACT 파지 진행 중',
     'INSPECTING': '품질 검사 중',
     'SORTING':    '분류 이동 중',
@@ -250,7 +249,7 @@ const STAGE_LABELS = {
 function updateStageLabel(state) {
     const el = document.getElementById('stageText');
     if (!el) return;
-    // "DETECTING_WAIT" 같은 세부 상태도 접두어로 매칭
+    // "GRASPING_WAIT" 같은 세부 상태도 접두어로 매칭
     let label = STAGE_LABELS[state];
     if (!label) {
         const prefix = Object.keys(STAGE_LABELS).find(k => state.startsWith(k));
