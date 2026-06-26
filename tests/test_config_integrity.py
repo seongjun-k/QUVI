@@ -89,9 +89,9 @@ def test_microros_baudrate_consistent_921600():
 
 
 # ─────────────────────────────────────────────
-# 항목 5: 핸드캠 토픽 일관성
+# 항목 5: 사이드캠 토픽 일관성
 # ─────────────────────────────────────────────
-def test_handcam_topic_default_matches_camera1():
+def test_sidecam_topic_default_matches_camera1():
     rc = _read(os.path.join(SRC, 'quvi_robot_control', 'quvi_robot_control',
                             'robot_control_node.py'))
-    assert "'handcam_topic', '/camera1/image_raw/compressed'" in rc
+    assert "'sidecam_topic', '/camera1/image_raw/compressed'" in rc

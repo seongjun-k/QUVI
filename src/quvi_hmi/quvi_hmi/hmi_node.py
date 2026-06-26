@@ -32,7 +32,7 @@ from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image, JointState
 from std_msgs.msg import Bool, String, Int32
 
-from quvi_msgs.msg import InspectionResult, ObjectArray, SystemStatus
+from quvi_msgs.msg import InspectionResult, SystemStatus
 
 # Flask + SocketIO
 from flask import Flask, Response, jsonify, render_template, send_from_directory
@@ -63,7 +63,7 @@ class HmiNode(Node):
         self.declare_parameter('host', '0.0.0.0')
         self.declare_parameter('port', 5000)
         self.declare_parameter('debug', False)
-        self.declare_parameter('camera1_topic', '/camera1/image_raw/compressed')
+        self.declare_parameter('sidecam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('camera2_topic', '/camera2/image_raw/compressed')
         self.declare_parameter('inspect_debug_topic', '/inspect/debug_image')
         self.declare_parameter('jpeg_quality', 70)
@@ -96,15 +96,14 @@ class HmiNode(Node):
             'rail_station_map': RAIL_STATION_MAP,
             'led_state': False,          # LED(턴테이블 링 조명) 현재 상태
         }
-        self._latest_detections = []
         self._inspection_history = []  # 최근 100건
         self._camera_frames = {
-            'camera1': None,
+            'sidecam': None,
             'camera2': None,
             'inspect_debug': None,
         }
         self._jpeg_cache = {
-            'camera1': None,
+            'sidecam': None,
             'camera2': None,
             'inspect_debug': None,
         }
@@ -112,8 +111,6 @@ class HmiNode(Node):
         # ─── ROS 2 Subscribers ───
         self.create_subscription(
             SystemStatus, '/hmi/status', self._status_cb, 10)
-        self.create_subscription(
-            ObjectArray, '/detection/objects', self._detection_cb, 10)
         self.create_subscription(
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
         self.create_subscription(
@@ -129,13 +126,13 @@ class HmiNode(Node):
         # send_turntable_command() 에서 직접 갱신한다.
 
         # 카메라 스트림
-        cam1_topic = self.get_parameter('camera1_topic').value
+        sidecam_topic = self.get_parameter('sidecam_topic').value
         cam2_topic = self.get_parameter('camera2_topic').value
         inspect_topic = self.get_parameter('inspect_debug_topic').value
 
         self.create_subscription(
-            CompressedImage, cam1_topic,
-            lambda msg: self._cam_cb(msg, 'camera1'), 5)
+            CompressedImage, sidecam_topic,
+            lambda msg: self._cam_cb(msg, 'sidecam'), 5)
         self.create_subscription(
             CompressedImage, cam2_topic,
             lambda msg: self._cam_cb(msg, 'camera2'), 5)
@@ -145,7 +142,6 @@ class HmiNode(Node):
 
         # ─── ROS 2 Publishers ───
         self._cmd_pub = self.create_publisher(String, '/hmi/command', 10)
-        self._trigger_pub = self.create_publisher(Bool, '/detection/trigger', 10)
         self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
         self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
         self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
@@ -182,14 +178,7 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['joint_positions'] = list(msg.position)
 
-    def _detection_cb(self, msg: ObjectArray):
-        with self._lock:
-            self._latest_detections = [{
-                'x': float(o.x), 'y': float(o.y),
-                'width': float(o.width), 'height': float(o.height),
-                'confidence': float(o.confidence),
-                'class_name': o.class_name,
-            } for o in msg.objects]
+
 
     def _inspection_cb(self, msg: InspectionResult):
         record = {
@@ -289,15 +278,7 @@ class HmiNode(Node):
             state = self._system_status.get('current_state', 'IDLE')
         return state in self._MANUAL_TRIGGER_SAFE_STATES
 
-    def trigger_detection(self, enable: bool) -> bool:
-        """수동 감지 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
-        if enable and not self._manual_trigger_allowed():
-            self.get_logger().warn('수동 감지 트리거 거부: FSM 이 자율 시퀀스 진행 중')
-            return False
-        msg = Bool()
-        msg.data = enable
-        self._trigger_pub.publish(msg)
-        return True
+
 
     def trigger_inspection(self, enable: bool) -> bool:
         """수동 검사 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
@@ -314,9 +295,7 @@ class HmiNode(Node):
         with self._lock:
             return self._system_status.copy()
 
-    def get_detections(self) -> list:
-        with self._lock:
-            return self._latest_detections.copy()
+
 
     def get_inspection_history(self) -> list:
         with self._lock:
@@ -382,9 +361,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     def api_status():
         return jsonify(hmi_node.get_status())
 
-    @app.route('/api/detections')
-    def api_detections():
-        return jsonify(hmi_node.get_detections())
+
 
     @app.route('/api/inspection/history')
     def api_inspection_history():
@@ -440,15 +417,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         else:
             return jsonify({'error': f'Invalid teleop action: {action}'}), 400
 
-    @app.route('/api/trigger/detection', methods=['POST'])
-    def api_trigger_detection():
-        if not hmi_node.trigger_detection(True):
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 수동 감지 트리거를 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
-        return jsonify({'ok': True})
+
 
     @app.route('/api/trigger/inspection', methods=['POST'])
     def api_trigger_inspection():
@@ -551,7 +520,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
     @app.route('/stream/<cam_key>')
     def video_stream(cam_key):
-        valid_keys = ['camera1', 'camera2', 'inspect_debug']
+        valid_keys = ['sidecam', 'camera2', 'inspect_debug']
         if cam_key not in valid_keys:
             return 'Invalid camera key', 404
         return Response(
@@ -564,7 +533,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         while rclpy.ok():
             try:
                 status = hmi_node.get_status()
-                detections = hmi_node.get_detections()
                 history = hmi_node.get_inspection_history()
 
                 total = len(history)
@@ -572,7 +540,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
                 socketio.emit('status_update', {
                     'status': status,
-                    'detections': detections,
                     'stats': {
                         'total': total,
                         'passed': passed,

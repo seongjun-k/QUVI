@@ -543,13 +543,7 @@ async function sendCommand(cmd) {
     }
 }
 
-async function triggerDetection() {
-    const res = await fetch('/api/trigger/detection', { method: 'POST' });
-    if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        console.error('[QUVI] 수동 탐지 거부:', data.error || res.status);
-    }
-}
+
 
 async function triggerInspection() {
     const res = await fetch('/api/trigger/inspection', { method: 'POST' });

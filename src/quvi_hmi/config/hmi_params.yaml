@@ -6,13 +6,12 @@ hmi_node:
     debug: false
 
     # ─── 카메라 토픽 ───
-    camera1_topic: "/camera1/image_raw/compressed"
+    sidecam_topic: "/camera1/image_raw/compressed"
     camera2_topic: "/camera2/image_raw/compressed"
     inspect_debug_topic: "/inspect/debug_image"
 
     # ─── ROS 토픽 ───
     system_status_topic: "/hmi/status"
-    detection_topic: "/detection/objects"
     inspection_topic: "/inspection/result"
 
     # ─── MJPEG 스트리밍 ───

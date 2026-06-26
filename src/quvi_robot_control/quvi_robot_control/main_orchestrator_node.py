@@ -14,7 +14,7 @@ from enum import Enum
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Float32, Int32, String
-from quvi_msgs.msg import GraspGoal, InspectionResult, ObjectArray, SystemStatus
+from quvi_msgs.msg import GraspGoal, InspectionResult, ObjectArray, SystemStatus, MotorStatus
 import quvi_robot_control.topics as topics
 
 
@@ -114,6 +114,7 @@ class MainOrchestratorNode(Node):
         self._grasp_online = False
         self._inspect_online = False
         self._motor_online = False
+        self._motor_homed = False
         self._act_ready = False
 
         # 완료 토픽 수신 플래그
@@ -175,6 +176,7 @@ class MainOrchestratorNode(Node):
         self.create_subscription(Bool, '/motor/rail_done', self._startup_inspect_done_cb, 10)
         self.create_subscription(Bool, '/motor/turntable_done', self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
+        self.create_subscription(MotorStatus, topics.TOPIC_MOTOR_STATUS, self._motor_status_cb, 10)
 
         # 로봇 피드백 완료 토픽 구독
         self.create_subscription(Bool, topics.TOPIC_ROBOT_ACT_DONE, self._robot_act_done_cb, 10)
@@ -208,6 +210,11 @@ class MainOrchestratorNode(Node):
                     self._error_msg = "ACT NOT READY"
                     self._state = FsmState.ERROR
                     return
+                if not self._motor_homed:
+                    self.get_logger().error('ESP32 모터 원점 복귀(Homing)가 완료되지 않았습니다. 시작을 차단합니다. ERROR 상태로 전환.')
+                    self._error_msg = "MOTOR NOT HOMED"
+                    self._state = FsmState.ERROR
+                    return
                 self._startup_rail_done = False
                 self._startup_turntable_done = False
                 self._state = FsmState.STARTUP_RAIL_HOME_TRIGGER
@@ -231,6 +238,7 @@ class MainOrchestratorNode(Node):
             self._pass_count = 0
             self._fail_count = 0
             self._act_ready = False
+            self._motor_homed = False
 
     def _estop_system_cb(self, msg: Bool):
         if msg.data:
@@ -299,6 +307,10 @@ class MainOrchestratorNode(Node):
         self._motor_online = True
         if "ACT_READY" in msg.data.upper():
             self._act_ready = True
+
+    def _motor_status_cb(self, msg: MotorStatus):
+        self._motor_online = True
+        self._motor_homed = msg.homed
 
     def _startup_rail_home_done_cb(self, msg: Bool):
         """STARTUP_RAIL_HOME_WAIT 상태에서만 레일 done 을 수락한다."""
@@ -646,7 +658,7 @@ class MainOrchestratorNode(Node):
         # Dynamically query the ROS 2 graph to check if other nodes are online
         inspect_online = self.count_publishers('/inspection/result') > 0
         grasp_online = self.count_publishers('/robot/status') > 0
-        motor_online = self.count_publishers('/robot/status') > 0
+        motor_online = self.count_publishers(topics.TOPIC_MOTOR_STATUS) > 0
 
         msg = SystemStatus()
         msg.header.stamp = self.get_clock().now().to_msg()

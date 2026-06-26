@@ -97,7 +97,7 @@ def generate_launch_description():
             'host': '0.0.0.0',
             'port': ParameterValue(LaunchConfiguration('hmi_port'), value_type=int),
             'debug': False,
-            'camera1_topic': '/camera1/image_raw/compressed',
+            'sidecam_topic': '/camera1/image_raw/compressed',
             'camera2_topic': '/camera2/image_raw/compressed',
             'inspect_debug_topic': '/inspect/debug_image',
             'jpeg_quality': 70,

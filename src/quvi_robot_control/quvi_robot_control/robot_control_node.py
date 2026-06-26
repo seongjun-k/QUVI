@@ -235,6 +235,11 @@ class RobotControlNode(Node):
             1.0 / 10.0, self._publish_joint_states,
             callback_group=self._cb_group)
 
+        # ─── 상태 주기적 브로드캐스트 타이머 (1 Hz) ───
+        self._status_pub_timer = self.create_timer(
+            1.0, self._broadcast_status_periodically,
+            callback_group=self._cb_group)
+
         self.get_logger().info(
             f'ROBOT_CONTROL_NODE 초기화 완료 (lerobot 공식 코드 사용) | '
             f'하드웨어={self._use_real_hardware} | '
@@ -971,6 +976,16 @@ class RobotControlNode(Node):
         status_msg = String()
         status_msg.data = f'[ROBOT] {msg}'
         self._status_pub.publish(status_msg)
+
+    def _broadcast_status_periodically(self):
+        """1Hz 주기로 HMI 상태 채널에 현재 상태를 브로드캐스트하여 오케스트레이터 등의 기동 타이밍 이슈를 방지한다."""
+        if self._use_act and self._act_ready:
+            if self._get_state() == RobotState.IDLE:
+                self._publish_status('ACT_READY')
+            else:
+                self._publish_status(self._get_state().name)
+        else:
+            self._publish_status(self._get_state().name)
 
     def _safe_estop_cleanup(self):
         try:
