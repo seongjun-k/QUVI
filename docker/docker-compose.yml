@@ -21,6 +21,7 @@ services:
       - /dev:/dev
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ${HOME}/.Xauthority:/root/.Xauthority:rw
+      - ${HOME}/physical_ai_tools:/physical_ai_tools:ro
 
     environment:
       - DISPLAY=${DISPLAY}
