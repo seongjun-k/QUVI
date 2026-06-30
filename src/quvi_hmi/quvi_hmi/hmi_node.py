@@ -151,6 +151,19 @@ class HmiNode(Node):
         self._rail_pub      = self.create_publisher(Int32,  '/motor/rail', 10)
         self._led_pub       = self.create_publisher(Bool,   '/motor/turntable_led', 10)
         self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
+        self._ref_capture_pub = self.create_publisher(Bool, '/inspection/capture_reference', 10)
+
+        # ─── 기준 이미지 캡처 턴테이블 동기화 ───
+        self._ref_turntable_done_event = threading.Event()
+        self.create_subscription(
+            Bool, '/motor/turntable_done',
+            self._ref_turntable_done_cb, 10)
+
+        # ─── 시퀀스 제어 ───
+        self._seq_thread = None
+        self._seq_stop_event = threading.Event()
+        self._inspect_result_event = threading.Event()
+        self._inspect_passed = False
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -202,6 +215,8 @@ class HmiNode(Node):
                 self._inspection_history.pop(0)
             # pass/fail 카운트는 오케스트레이터의 /hmi/status 가 단일 source of truth.
             # 여기서 증가시키면 _status_cb 와 이중 집계되므로 history 누적만 한다.
+            self._inspect_passed = msg.passed
+            self._inspect_result_event.set()
 
     def _cam_cb(self, msg: CompressedImage, key: str):
         np_arr = np.frombuffer(msg.data, np.uint8)
@@ -228,6 +243,11 @@ class HmiNode(Node):
         msg.data = command
         self._cmd_pub.publish(msg)
         self.get_logger().info(f'HMI 명령: {command}')
+
+        if command == 'START':
+            self._start_sequence()
+        elif command in ('STOP', 'ESTOP'):
+            self._stop_sequence()
 
     def send_rail_command(self, mm: float):
         """레일 목표 위치 발행 (Int32, steps 단위).
@@ -268,6 +288,202 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['led_state'] = bool(on)
         self.get_logger().info(f'LED 명령: {"ON" if on else "OFF"}')
+
+    def _ref_turntable_done_cb(self, msg: Bool):
+        if msg.data:
+            self._ref_turntable_done_event.set()
+
+    def send_capture_reference_command(self, start: bool):
+        """기준 이미지 캡쳐 트리거 발행 (/inspection/capture_reference).
+
+        start=True  : 캡쳐 모드 시작 — inspect_node가 턴테이블 done 신호마다 기준 이미지를 저장한다.
+        start=False : 캡쳐 모드 중단.
+        """
+        msg = Bool()
+        msg.data = bool(start)
+        self._ref_capture_pub.publish(msg)
+        self.get_logger().info(f'기준 이미지 캡쳐 명령: {"START" if start else "STOP"}')
+
+    # ─── 자율 시퀀스 ───
+
+    def _start_sequence(self):
+        """자율 시퀀스를 백그라운드 스레드로 시작한다."""
+        if self._seq_thread and self._seq_thread.is_alive():
+            self.get_logger().warn('시퀀스 이미 실행 중')
+            return
+        self._seq_stop_event.clear()
+        self._seq_thread = threading.Thread(
+            target=self._run_sequence, daemon=True)
+        self._seq_thread.start()
+
+    def _stop_sequence(self):
+        """실행 중인 자율 시퀀스에 정지 신호를 보낸다."""
+        self._seq_stop_event.set()
+
+    def _run_sequence(self):
+        """자율 시퀀스 본문 (별도 스레드에서 실행).
+
+        웨이포인트·속도 값은 test_sequence.py 와 동일하게 유지한다.
+        """
+        from dynamixel_sdk import PortHandler, PacketHandler, GroupSyncWrite
+
+        # ── 하드웨어 상수 (test_sequence.py 동일) ──
+        PORT     = '/dev/ttyFollower'
+        BAUDRATE = 1_000_000
+        PROTOCOL = 2.0
+        MOTORS = {
+            'shoulder_pan': 11, 'shoulder_lift': 12, 'elbow_flex': 13,
+            'wrist_flex': 14,   'wrist_roll': 15,    'gripper': 16,
+        }
+        ADDR_TORQUE_ENABLE    = 64
+        ADDR_PROFILE_ACCEL    = 108
+        ADDR_PROFILE_VELOCITY = 112
+        ADDR_GOAL_POSITION    = 116
+        LEN_GOAL_POSITION     = 4
+        PROFILE_VELOCITY      = 8
+        PROFILE_ACCEL         = 3
+        PROFILE_VELOCITY_GRIP = 20
+        PROFILE_ACCEL_GRIP    = 5
+        MOVE_WAIT             = 15.0
+        GRIPPER_WAIT          = 3.0
+        SETTLE                = 0.3
+        RAIL_WAIT             = 5.0   # 레일 이동 완료 고정 대기
+
+        # ── 웨이포인트 (test_sequence.py 동일) ──
+        POSE_P1 = {'shoulder_pan':2054,'shoulder_lift':1258,'elbow_flex':2800,'wrist_flex':2981,'wrist_roll':2035,'gripper':2150}
+        POSE_P2 = {'shoulder_pan':  12,'shoulder_lift':1843,'elbow_flex':2165,'wrist_flex':3123,'wrist_roll':2095,'gripper':2150}
+        POSE_P3 = {'shoulder_pan':  16,'shoulder_lift':1736,'elbow_flex':2413,'wrist_flex':3018,'wrist_roll':2087,'gripper':2150}
+        POSE_P4 = {'shoulder_pan':  16,'shoulder_lift':1841,'elbow_flex':2522,'wrist_flex':2759,'wrist_roll':2085,'gripper':2150}
+        POSE_P5 = {'shoulder_pan':2047,'shoulder_lift':1854,'elbow_flex':2460,'wrist_flex':2909,'wrist_roll':2050,'gripper':2150}
+        POSE_P6 = {'shoulder_pan':2039,'shoulder_lift':1076,'elbow_flex':2884,'wrist_flex':3094,'wrist_roll':1993,'gripper':2150}
+
+        # ── 레일 위치 (RAIL_STATION_MAP 기준) ──
+        RAIL_HOME    = 12.5     # INSPECT (A) — 검사 위치
+        RAIL_PASS    = 25.0     # PASS (B)
+        RAIL_FAIL    = 125.0    # FAIL (C)
+        RAIL_BED     = 381.25   # BED (D) — 빌드 베드 = 턴테이블 = 시작/복귀 위치
+
+        # ── 내부 헬퍼 ──
+        def open_bus():
+            port = PortHandler(PORT)
+            pkt  = PacketHandler(PROTOCOL)
+            if not port.openPort():
+                self.get_logger().error(f'포트 열기 실패: {PORT}')
+                return None, None
+            port.setBaudRate(BAUDRATE)
+            return port, pkt
+
+        def set_torque(port, pkt, enable):
+            val = 1 if enable else 0
+            for mid in MOTORS.values():
+                pkt.write1ByteTxRx(port, mid, ADDR_TORQUE_ENABLE, val)
+
+        def apply_profile(port, pkt, names, vel, acc):
+            for n in names:
+                mid = MOTORS[n]
+                pkt.write4ByteTxRx(port, mid, ADDR_PROFILE_ACCEL, acc)
+                pkt.write4ByteTxRx(port, mid, ADDR_PROFILE_VELOCITY, vel)
+
+        def write_pose(port, pkt, pose):
+            sw = GroupSyncWrite(port, pkt, ADDR_GOAL_POSITION, LEN_GOAL_POSITION)
+            for name, val in pose.items():
+                param = [val&0xFF,(val>>8)&0xFF,(val>>16)&0xFF,(val>>24)&0xFF]
+                sw.addParam(MOTORS[name], param)
+            sw.txPacket()
+            sw.clearParam()
+
+        def move_to(port, pkt, pose, label):
+            if self._seq_stop_event.is_set():
+                return False
+            self.get_logger().info(f'[시퀀스] {label}')
+            arm = [k for k in pose if k != 'gripper']
+            if arm:
+                apply_profile(port, pkt, arm, PROFILE_VELOCITY, PROFILE_ACCEL)
+            write_pose(port, pkt, pose)
+            end = time.time() + MOVE_WAIT + SETTLE
+            while time.time() < end:
+                if self._seq_stop_event.is_set():
+                    return False
+                time.sleep(0.1)
+            return True
+
+        def rail_move(mm, label):
+            if self._seq_stop_event.is_set():
+                return False
+            self.get_logger().info(f'[시퀀스] 레일 → {label} ({mm} mm)')
+            self.send_rail_command(mm)
+            time.sleep(RAIL_WAIT)
+            return not self._seq_stop_event.is_set()
+
+        def gripper_open(port, pkt):
+            apply_profile(port, pkt, ['gripper'], PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
+            write_pose(port, pkt, {'gripper': 2300})
+            time.sleep(GRIPPER_WAIT)
+
+        def gripper_close(port, pkt):
+            apply_profile(port, pkt, ['gripper'], PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
+            write_pose(port, pkt, {'gripper': 1800})
+            time.sleep(GRIPPER_WAIT)
+
+        # ── 시퀀스 본문 ──
+        port, pkt = open_bus()
+        if port is None:
+            return
+        set_torque(port, pkt, True)
+
+        try:
+            ok = True
+
+            # 0. 레일을 BED(381.25mm)로 이동 — 직전 사이클이 PASS/FAIL에 멈춰 있을 수 있음
+            ok = rail_move(RAIL_BED, '베드/턴테이블 이동')
+
+            # 1. 베드(=검사 위치)에서 출력물 접근 및 내려놓기
+            ok = ok and move_to(port, pkt, POSE_P1, 'P1 베드 위 대기')
+            ok = ok and move_to(port, pkt, POSE_P2, 'P2 180도 회전')
+            ok = ok and move_to(port, pkt, POSE_P3, 'P3 턴테이블 진입점')
+            ok = ok and move_to(port, pkt, POSE_P4, 'P4 놓기 지점')
+            if ok:
+                gripper_open(port, pkt)
+
+            ok = ok and move_to(port, pkt, POSE_P3, 'P3 퇴출 대기')
+
+            # 2. 검사 결과 대기 (/inspection/result 수신 이벤트)
+            if ok:
+                self.get_logger().info('[시퀀스] 검사 결과 대기...')
+                self._inspect_result_event.clear()
+                signaled = self._inspect_result_event.wait(timeout=30.0)
+                if not signaled:
+                    self.get_logger().warn('[시퀀스] 검사 타임아웃 — 양품으로 처리')
+                    self._inspect_passed = True
+                passed = self._inspect_passed
+                self.get_logger().info(f'[시퀀스] 판정: {"양품" if passed else "불량"}')
+
+            # 3. 양불 레일 분기
+            if ok:
+                if passed:
+                    ok = rail_move(RAIL_PASS, 'PASS')
+                else:
+                    ok = rail_move(RAIL_FAIL, 'FAIL')
+
+            # 4. 재파지 후 배출
+            ok = ok and move_to(port, pkt, POSE_P4, 'P4 출력물 재파지')
+            if ok:
+                gripper_close(port, pkt)
+            ok = ok and move_to(port, pkt, POSE_P3, 'P3 퇴출')
+            ok = ok and move_to(port, pkt, POSE_P5, 'P5 180도 반대 회전')
+            ok = ok and move_to(port, pkt, POSE_P1, 'P1 베드 위 대기')
+            ok = ok and move_to(port, pkt, POSE_P6, 'P6 배출 지점')
+            if ok:
+                gripper_open(port, pkt)
+
+            # 5. 레일 BED 복귀 (다음 사이클 준비)
+            rail_move(RAIL_BED, 'BED 복귀')
+            self.get_logger().info('[시퀀스] 완료')
+
+        except Exception as e:
+            self.get_logger().error(f'[시퀀스] 예외: {e}')
+        finally:
+            port.closePort()
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
@@ -501,6 +717,44 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node.send_led_command(False)
             return jsonify({'ok': True, 'led': False})
         return jsonify({'error': f'Invalid action: {action}'}), 400
+
+    # ─── 기준 이미지 캡쳐 API ───
+    @app.route('/api/capture/reference/start', methods=['POST'])
+    def api_capture_reference_start():
+        """기준 이미지 캡쳐를 시작한다.
+
+        정상품을 턴테이블에 올려둠 상태에서 호출한다.
+        1. /inspection/capture_reference = True 발행
+        2. 턴테이블을 0° → 90° → 180° → 270° 순서로 순환
+           (inspect_node가 /motor/turntable_done 수신 시 자동 캡쳐)
+        """
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        angles = data.get('angles', [0, 90, 180, 270])
+        delay  = float(data.get('delay_sec', 1.5))  # 턴테이블 회전 안정화 대기
+
+        def _run_capture_sequence():
+            import time as _time
+            hmi_node.send_capture_reference_command(True)
+            _time.sleep(0.3)
+            for angle in angles:
+                hmi_node._ref_turntable_done_event.clear()
+                hmi_node.send_turntable_command(angle)
+                # ESP32의 실제 turntable_done 신호를 기다림 (시간 기반 추측 제거)
+                done = hmi_node._ref_turntable_done_event.wait(timeout=delay + 5.0)
+                if not done:
+                    hmi_node.get_logger().warn(f'기준 캡처: {angle}° turntable_done 타임아웃')
+            hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
+
+        t = threading.Thread(target=_run_capture_sequence, daemon=True)
+        t.start()
+        return jsonify({'ok': True, 'angles': angles, 'delay_sec': delay})
+
+    @app.route('/api/capture/reference/stop', methods=['POST'])
+    def api_capture_reference_stop():
+        """기준 이미지 캡쳐를 중단한다."""
+        hmi_node.send_capture_reference_command(False)
+        return jsonify({'ok': True})
 
     # ─── MJPEG 스트리밍 ───
     def _mjpeg_generator(cam_key: str):

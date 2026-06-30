@@ -38,8 +38,8 @@ def generate_launch_description():
         description='실제 Dynamixel 하드웨어 사용 여부 (false=시뮬레이션)')
 
     use_act_arg = DeclareLaunchArgument(
-        'use_act', default_value='true',
-        description='ACT 모방학습 정책 로드 여부')
+        'use_act', default_value='false',
+        description='ACT 모방학습 정책 로드 여부 (demo/sequence-no-act 에서는 false)')
 
     follower_port_arg = DeclareLaunchArgument(
         'dxl_port', default_value='/dev/ttyFollower',

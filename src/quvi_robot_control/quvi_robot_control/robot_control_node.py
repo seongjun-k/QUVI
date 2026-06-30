@@ -70,12 +70,19 @@ import quvi_robot_control.topics as topics
 
 from quvi_msgs.msg import GraspGoal
 
-# ─────────────────────────────────────────────────────────────
-# lerobot 공식 코드 import
-# ─────────────────────────────────────────────────────────────
-LEROBOT_SRC = str(Path(__file__).resolve().parents[3] / 'lerobot' / 'src')
-if LEROBOT_SRC not in sys.path:
-    sys.path.insert(0, LEROBOT_SRC)
+# ─── lerobot 공식 코드 import ───
+import os
+possible_paths = [
+    '/workspace/lerobot/src',
+    str(Path(__file__).resolve().parents[3] / 'lerobot' / 'src'),
+    str(Path(__file__).resolve().parents[4] / 'lerobot' / 'src'),
+    '/home/ksj/QUVI/lerobot/src'
+]
+for p in possible_paths:
+    if os.path.isdir(p):
+        if p not in sys.path:
+            sys.path.insert(0, p)
+        break
 
 from lerobot.robots.omx_follower import OmxFollower
 from lerobot.robots.omx_follower.config_omx_follower import OmxFollowerConfig
@@ -161,14 +168,19 @@ POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1841, 'elbow_flex': 2522, 'wri
 POSE_P5 = {'shoulder_pan': 2047, 'shoulder_lift': 1854, 'elbow_flex': 2460, 'wrist_flex': 2909, 'wrist_roll': 2050, 'gripper': 2150}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2039, 'shoulder_lift': 1076, 'elbow_flex': 2884, 'wrist_flex': 3094, 'wrist_roll': 1993, 'gripper': 2150}  # 분류장 위치
 
-# ── 저속 이동 프로파일 (scripts/test_sequence.py 기준) ──────────────────────
+# ── 일반 동작 프로파일 (빈 손: 검사장 이동, 홈 복귀 등) ─────────────────────
 # Profile_Velocity 단위: 0.229 RPM  |  Profile_Acceleration 단위: 214.577 rev/min²
-PROFILE_VELOCITY      = 8    # 팔 관절 ~1.8 RPM
+PROFILE_VELOCITY      = 2    # 팔 관절 속도
 PROFILE_ACCEL         = 3    # 팔 관절 가속도
-PROFILE_VELOCITY_GRIP = 20   # 그리퍼 ~4.6 RPM
+PROFILE_VELOCITY_GRIP = 6    # 그리퍼 속도
 PROFILE_ACCEL_GRIP    = 5    # 그리퍼 가속도
-MOVE_WAIT             = 15.0  # 관절 이동 대기 초
-GRIPPER_WAIT_SLOW     = 3.0   # 그리퍼 열기/닫기 대기 초
+MOVE_WAIT             = 3.0  # 관절 이동 대기 초
+GRIPPER_WAIT_SLOW     = 3.0  # 그리퍼 열기/닫기 대기 초
+
+# ── P1-P6 시퀀스 전용 저속 프로파일 (물체 파지 중 — 낙하/파손 방지) ──────────
+PROFILE_VELOCITY_SEQ  = 1    # 팔 관절 속도 (vel=2 대비 절반, 안전 이송)
+PROFILE_ACCEL_SEQ     = 1    # 팔 관절 가속도 (부드러운 기동/정지)
+MOVE_WAIT_SEQ         = 5.0  # 웨이포인트 간 대기 초 (저속에 맞는 충분한 완료 대기)
 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
@@ -256,7 +268,7 @@ class RobotControlNode(Node):
         self.declare_parameter('dxl_port', '/dev/ttyFollower')
         self.declare_parameter('leader_dxl_port', '/dev/ttyLeader')
         # ACT
-        self.declare_parameter('use_act', True)
+        self.declare_parameter('use_act', False)
         self.declare_parameter('act_model_path',
             '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
         self.declare_parameter('act_chunk_size', 20)
@@ -586,16 +598,36 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _execute_act_grasp(self) -> bool:
         self._set_state(RobotState.ACT_GRASPING)
-        self.get_logger().info('ACT 파지 시작까지 10초 대기...')
-        self._publish_status('ACT 파지 대기 중 (10초)')
-        time.sleep(10.0)
-        self._publish_status('ACT 파지 시작')
-        self.get_logger().info('ACT 파지 시작')
 
-        if not self._act_ready:
-            self.get_logger().error('ACT 모델 미로드 — 파지 불가')
-            self._set_state(RobotState.IDLE)
-            return False
+        # ACT를 사용하지 않거나 로드가 안된 경우 룰베이스(티칭 기반) 파지 수행
+        if not self._use_act or not self._act_ready:
+            self.get_logger().info('ACT 미사용 또는 로드 안됨 — 룰베이스(티칭 기반) 파지를 실행합니다.')
+            self._publish_status('룰베이스 파지 시작')
+            
+            try:
+                # 사용자가 수동으로 물려준 상태이므로, 바로 POSE_P1(베드 위 대기)로 이동합니다.
+                self.get_logger().info('1. POSE_P1 위치로 즉시 이동 (그리퍼는 닫힘 상태 유지)')
+                
+                # POSE_P1 자세로 이동하되, 그리퍼는 사용자가 물려준 물체를 쥐도록 GRIPPER_CLOSE(1800)로 덮어씌웁니다.
+                p1_pose = {k: v for k, v in POSE_P1.items()}
+                p1_pose['gripper'] = GRIPPER_CLOSE
+                
+                self._write_raw_position(p1_pose)
+                self._wait_motion_done(p1_pose)
+
+                done_msg = Bool()
+                done_msg.data = True
+                self._act_done_pub.publish(done_msg)
+                self._grasp_done_pub.publish(done_msg)
+
+                self._set_state(RobotState.IDLE)
+                self._publish_status('룰베이스 파지 완료')
+                return True
+            except Exception as e:
+                self.get_logger().error(f'룰베이스 파지 중 오류: {e}')
+                self._set_state(RobotState.ERROR)
+                self._publish_status(f'ERROR: {e}')
+                return False
 
         try:
             import torch
@@ -807,7 +839,7 @@ class RobotControlNode(Node):
         self.get_logger().info('홈 복귀 시작')
 
         success = self._write_raw_position(POSE_HOME)
-        time.sleep(2.0)
+        self._wait_motion_done(POSE_HOME)
 
         done_msg = Bool()
         done_msg.data = True
@@ -823,19 +855,19 @@ class RobotControlNode(Node):
         self.get_logger().info('검사장 안착 시퀀스 시작')
 
         self._write_raw_position(POSE_LIFT_ARM)
-        time.sleep(1.5)
+        self._wait_motion_done(POSE_LIFT_ARM)
 
         self._write_raw_position({'shoulder_pan': 0})
-        time.sleep(1.5)
+        self._wait_motion_done({'shoulder_pan': 0})
 
         self._write_raw_position(POSE_PLACE_CHAMBER)
-        time.sleep(1.5)
+        self._wait_motion_done(POSE_PLACE_CHAMBER)
 
         self._write_raw_position({'gripper': GRIPPER_OPEN})
-        time.sleep(1.0)
+        self._wait_motion_done({'gripper': GRIPPER_OPEN})
 
         success = self._write_raw_position(POSE_HOME)
-        time.sleep(2.0)
+        self._wait_motion_done(POSE_HOME)
 
         done_msg = Bool()
         done_msg.data = True
@@ -851,16 +883,16 @@ class RobotControlNode(Node):
         self.get_logger().info('검사장 재파지 시퀀스 시작')
 
         self._write_raw_position(POSE_CHAMBER_PRE_PICK)
-        time.sleep(1.5)
+        self._wait_motion_done(POSE_CHAMBER_PRE_PICK)
 
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
-        time.sleep(1.0)
+        self._wait_motion_done({'gripper': GRIPPER_CLOSE})
 
         self._write_raw_position(POSE_LIFT_ARM)
-        time.sleep(1.5)
+        self._wait_motion_done(POSE_LIFT_ARM)
 
         success = self._write_raw_position({'shoulder_pan': 2048})
-        time.sleep(1.5)
+        self._wait_motion_done({'shoulder_pan': 2048})  # 180° 복귀 완료 확인 후 done 발행
 
         done_msg = Bool()
         done_msg.data = True
@@ -921,15 +953,49 @@ class RobotControlNode(Node):
             self.get_logger().warn(f'프로파일 설정 실패 (계속 진행): {e}')
 
     # ─────────────────────────────────────────────
+    # 모터 이동 완료 폴링
+    # ─────────────────────────────────────────────
+    def _wait_motion_done(self, goal: dict, timeout: float = 10.0, tol: int = 20):
+        """Present_Position 폴링으로 목표 위치 도달을 확인.
+
+        goal: _write_raw_position에 넘긴 것과 동일한 {joint: raw_value} 딕셔너리.
+        tol:  허용 오차 (raw 단위, 20 ≈ 1.75°).
+        """
+        if not self._use_real_hardware or not self._dxl_ready:
+            return
+        time.sleep(0.05)  # Goal_Position 반영 여유
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            positions = self._read_raw_positions()
+            if positions is None:
+                time.sleep(0.05)
+                continue
+            if all(abs(positions.get(j, 0) - v) <= tol for j, v in goal.items()):
+                time.sleep(0.1)  # 기계 안정화
+                return
+            time.sleep(0.05)
+        self.get_logger().warn(f'[_wait_motion_done] {timeout}s 타임아웃 — 강제 진행')
+
+    # ─────────────────────────────────────────────
     # lerobot bus 기반 모터 I/O
     # ─────────────────────────────────────────────
-    def _write_raw_position(self, positions: dict) -> bool:
+    def _write_raw_position(self, positions: dict,
+                            velocity: int = PROFILE_VELOCITY,
+                            accel: int = PROFILE_ACCEL,
+                            grip_velocity: int = PROFILE_VELOCITY_GRIP,
+                            grip_accel: int = PROFILE_ACCEL_GRIP) -> bool:
         positions = self._clip_shoulder_lift(positions, is_raw=True)
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
             return True
 
         try:
+            arm_joints_to_apply = [k for k in positions.keys() if k != 'gripper']
+            if arm_joints_to_apply:
+                self._apply_motor_profile(arm_joints_to_apply, velocity, accel)
+            if 'gripper' in positions:
+                self._apply_motor_profile(['gripper'], grip_velocity, grip_accel)
+
             with self._dxl_io_lock:
                 self._follower.bus.sync_write(
                     'Goal_Position', positions, normalize=False)
@@ -1052,27 +1118,34 @@ class RobotControlNode(Node):
           P1 → P2 → P3 → P4(놓기) → P3(후퇴) → P4(재집기)
           → P3(올리기) → P5(반대 회전) → P1(경유) → P6(최종 놓기)
         """
-        arm_joints = ['shoulder_pan', 'shoulder_lift', 'elbow_flex', 'wrist_flex', 'wrist_roll']
-
         def move_arm(pose: dict, label: str) -> bool:
             self.get_logger().info(f'이동: {label}')
             arm_only = {k: v for k, v in pose.items() if k != 'gripper'}
-            self._apply_motor_profile(arm_joints, PROFILE_VELOCITY, PROFILE_ACCEL)
-            success = self._write_raw_position(arm_only)
-            time.sleep(MOVE_WAIT)
+            success = self._write_raw_position(
+                arm_only,
+                velocity=PROFILE_VELOCITY_SEQ,
+                accel=PROFILE_ACCEL_SEQ,
+            )
+            self._wait_motion_done(arm_only)
             return success
 
         def grip_open():
             self.get_logger().info('그리퍼 열기')
-            self._apply_motor_profile(['gripper'], PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
-            self._write_raw_position({'gripper': GRIPPER_OPEN})
-            time.sleep(GRIPPER_WAIT_SLOW)
+            self._write_raw_position(
+                {'gripper': GRIPPER_OPEN},
+                grip_velocity=PROFILE_VELOCITY_GRIP,
+                grip_accel=PROFILE_ACCEL_GRIP,
+            )
+            self._wait_motion_done({'gripper': GRIPPER_OPEN})
 
         def grip_close():
             self.get_logger().info('그리퍼 닫기')
-            self._apply_motor_profile(['gripper'], PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
-            self._write_raw_position({'gripper': GRIPPER_CLOSE})
-            time.sleep(GRIPPER_WAIT_SLOW)
+            self._write_raw_position(
+                {'gripper': GRIPPER_CLOSE},
+                grip_velocity=PROFILE_VELOCITY_GRIP,
+                grip_accel=PROFILE_ACCEL_GRIP,
+            )
+            self._wait_motion_done({'gripper': GRIPPER_CLOSE})
 
         # P1 → P2 → P3 → P4 → 놓기
         for pose, label in [(POSE_P1, 'P1: 베드 위 대기'),
