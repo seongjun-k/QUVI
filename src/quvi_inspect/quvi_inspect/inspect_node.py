@@ -84,7 +84,6 @@ class InspectNode(Node):
 
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
-            f'SSIM 임계값: {self._ssim_thresh} | '
             f'촬영 각도: {self._angles}')
 
     # ─────────────────────────────────────────────

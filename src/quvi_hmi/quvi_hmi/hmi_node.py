@@ -157,6 +157,12 @@ class HmiNode(Node):
         self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
         self._ref_capture_pub = self.create_publisher(Bool, '/inspection/capture_reference', 10)
 
+        # ─── 기준 이미지 캡처 턴테이블 동기화 ───
+        self._ref_turntable_done_event = threading.Event()
+        self.create_subscription(
+            Bool, '/motor/turntable_done',
+            self._ref_turntable_done_cb, 10)
+
         # ─── 시퀀스 제어 ───
         self._seq_thread = None
         self._seq_stop_event = threading.Event()
@@ -293,6 +299,10 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['led_state'] = bool(on)
         self.get_logger().info(f'LED 명령: {"ON" if on else "OFF"}')
+
+    def _ref_turntable_done_cb(self, msg: Bool):
+        if msg.data:
+            self._ref_turntable_done_event.set()
 
     def send_capture_reference_command(self, start: bool):
         """기준 이미지 캡쳐 트리거 발행 (/inspection/capture_reference).
@@ -759,10 +769,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             hmi_node.send_capture_reference_command(True)
             _time.sleep(0.3)
             for angle in angles:
+                hmi_node._ref_turntable_done_event.clear()
                 hmi_node.send_turntable_command(angle)
-                _time.sleep(delay)
-                # turntable_done은 ESP32가 발행; 여기서는 시간 기반 done 시뮬레이션
-                # 실제 환경에서는 /motor/turntable_done이 inspect_node로 직접 전달됨
+                # ESP32의 실제 turntable_done 신호를 기다림 (시간 기반 추측 제거)
+                done = hmi_node._ref_turntable_done_event.wait(timeout=delay + 5.0)
+                if not done:
+                    hmi_node.get_logger().warn(f'기준 캡처: {angle}° turntable_done 타임아웃')
             hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
 
         t = threading.Thread(target=_run_capture_sequence, daemon=True)

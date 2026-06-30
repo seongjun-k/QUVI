@@ -34,6 +34,7 @@ class FsmState(Enum):
     PLACING_CHAMBER_TRIGGER = "PLACING_CHAMBER_TRIGGER"
     PLACING_CHAMBER_WAIT = "PLACING_CHAMBER_WAIT"
     INSPECTING_TRIGGER = "INSPECTING_TRIGGER"
+    INSPECTING_LED_STABILIZE = "INSPECTING_LED_STABILIZE"
     INSPECTING_ROTATE = "INSPECTING_ROTATE"
     INSPECTING_WAIT_TURNTABLE = "INSPECTING_WAIT_TURNTABLE"
     INSPECTING_CAPTURE = "INSPECTING_CAPTURE"
@@ -455,19 +456,25 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.INSPECTING_TRIGGER:
             self._inspect_done = False
-            # LED ON — 검사 시작
+            # LED ON — 카메라 노출 안정화 대기 시작
             led_on = Bool()
             led_on.data = True
             self._led_pub.publish(led_on)
-            # 챔버 품질 검사 노드 활성화
-            inspect_trigger = Bool()
-            inspect_trigger.data = True
-            self._inspect_trigger_pub.publish(inspect_trigger)
-
-            # 턴테이블 회전 및 캡처 제어 진입
-            self._inspect_angle_idx = 0
+            self.get_logger().info('조명 ON — 카메라 노출 안정화 대기 3초')
             self._state_timer_counter = 0
-            self._state = FsmState.INSPECTING_ROTATE
+            self._state = FsmState.INSPECTING_LED_STABILIZE
+
+        elif self._state == FsmState.INSPECTING_LED_STABILIZE:
+            self._state_timer_counter += 1
+            if self._state_timer_counter >= int(3.0 * self._loop_rate):
+                # 검사 노드 활성화 및 턴테이블 회전 진입
+                inspect_trigger = Bool()
+                inspect_trigger.data = True
+                self._inspect_trigger_pub.publish(inspect_trigger)
+                self._inspect_angle_idx = 0
+                self._state_timer_counter = 0
+                self.get_logger().info('카메라 노출 안정화 완료 — 턴테이블 검사 시작')
+                self._state = FsmState.INSPECTING_ROTATE
 
         elif self._state == FsmState.INSPECTING_ROTATE:
             angle = self._inspect_angles[self._inspect_angle_idx]
