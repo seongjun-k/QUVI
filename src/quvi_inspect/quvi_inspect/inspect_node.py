@@ -91,9 +91,16 @@ class InspectNode(Node):
             max(0.05, float(self._capture_settle)), self._on_settle_elapsed)
         self._settle_timer.cancel()
 
+        # ─── 검사 워치독 (#4) ───
+        # turntable_done 누락(예: 0°에서 0°로 '이동' 시 done 미발행)으로 캡처가
+        # 4장을 못 채우면 판정이 영영 실행되지 않아 오케스트레이터가 타임아웃/ERROR
+        # 로 빠진다. 검사 활성 후 일정 시간 내 미완료면 확보된 캡처로 마무리한다.
+        self._inspection_start = 0.0
+        self._inspection_watchdog = self.create_timer(1.0, self._watchdog_cb)
+
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
-            f'촬영 각도: {self._angles}')
+            f'촬영 각도: {self._angles} | 판정 타임아웃: {self._finalize_sec}s')
 
     # ─────────────────────────────────────────────
     # 파라미터 (선언 + 로드 통합)
@@ -116,6 +123,7 @@ class InspectNode(Node):
             # ─── 턴테이블 / 전처리 ───
             ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
             ('capture_settle_sec',      0.4,                                '_capture_settle'),
+            ('inspection_finalize_sec', 12.0,                               '_finalize_sec'),
             ('roi_margin',              20,                                 '_roi_margin'),
             ('gaussian_blur_ksize',     5,                                  '_blur_k'),
             ('binary_threshold',        127,                                '_bin_thresh'),
@@ -239,8 +247,26 @@ class InspectNode(Node):
         if msg.data:
             self._inspection_active = True
             self._captured_images.clear()
+            self._inspection_start = time.time()   # 워치독 기준 (#4)
             self.get_logger().info('검사 모드 활성화 — 턴테이블 회전 대기 중')
         else:
+            self._inspection_active = False
+
+    def _watchdog_cb(self):
+        """검사 완료 워치독 (#4). turntable_done 누락 등으로 캡처가 부족해도
+        일정 시간 후 확보된 이미지로 판정을 마무리해 오케스트레이터 정지를 막는다."""
+        if not self._inspection_active:
+            return
+        if (time.time() - self._inspection_start) < self._finalize_sec:
+            return
+        n = len(self._captured_images)
+        if n >= 1:
+            self.get_logger().warn(
+                f'검사 타임아웃({self._finalize_sec}s) — 확보 {n}/{len(self._angles)}장으로 판정 강행')
+            self._run_inspection()   # _surface_analysis 는 누락 각도를 건너뛴다
+        else:
+            # 한 장도 못 잡음 — 판정 불가. 활성 해제하고 경고(오케스트레이터는 타임아웃 처리).
+            self.get_logger().error('검사 타임아웃 — 캡처 이미지 0장, 판정 불가')
             self._inspection_active = False
 
     def _ref_capture_trigger_callback(self, msg: Bool):
