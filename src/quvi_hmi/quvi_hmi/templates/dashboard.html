@@ -337,26 +337,6 @@
             <div class="status-tab-container">
                 <!-- 상단 카드 그리드 -->
                 <div class="status-grid">
-                    <!-- ACT 모델 선택 카드 -->
-                    <div class="card status-card">
-                        <div class="card-header">
-                            <span class="card-title">🧠 ACT 모델 선택</span>
-                            <span class="card-subtitle-addon" id="actModelState">-</span>
-                        </div>
-                        <div class="card-body status-card-body">
-                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                                <select id="actModelSelect" style="flex:1; min-width:180px; padding:6px;">
-                                    <option value="">모델 목록 로딩 중...</option>
-                                </select>
-                                <button id="actModelLoadBtn" class="btn" onclick="loadActModel()">로드</button>
-                            </div>
-                            <div style="margin-top:8px; font-size:0.85em; color:#aaa;">
-                                현재 모델: <span id="actCurrentModel">-</span>
-                                &nbsp;|&nbsp; ACT 사용: <span id="actUseState">-</span>
-                            </div>
-                            <div id="actModelMsg" style="margin-top:6px; font-size:0.8em; color:#7bd;"></div>
-                        </div>
-                    </div>
                     <!-- 로봇암 관절 상태 카드 -->
                     <div class="card status-card">
                         <div class="card-header">
@@ -511,6 +491,45 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- ACT 모델 선택 카드 (수동 제어 패널 위, 4칸 배치) -->
+                <div class="card status-card" style="margin-top:16px;" id="act-model-panel">
+                    <div class="card-header">
+                        <span class="card-title">🧠 ACT 모델 선택</span>
+                        <span style="font-size:11px;color:var(--text-muted);">IDLE 상태에서만 적용</span>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:12px; align-items:end;">
+                            <!-- 1칸: 모델 선택 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">모델</div>
+                                <select id="actModelSelect" style="width:100%;padding:6px;box-sizing:border-box;">
+                                    <option value="">로딩 중...</option>
+                                </select>
+                            </div>
+                            <!-- 2칸: 로드 버튼 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">적용</div>
+                                <button id="actModelLoadBtn" class="btn manual-exec-btn" style="width:100%;" onclick="loadActModel()">로드</button>
+                            </div>
+                            <!-- 3칸: 현재 모델 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">현재 모델</div>
+                                <div id="actCurrentModel" style="font-size:13px;font-weight:600;">-</div>
+                            </div>
+                            <!-- 4칸: 상태 / ACT 사용 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">상태</div>
+                                <div style="font-size:13px;">
+                                    <span id="actModelState">-</span>
+                                    <span style="color:var(--text-muted);"> · ACT </span>
+                                    <span id="actUseState">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="actModelMsg" style="margin-top:8px;font-size:11px;color:#7bd;"></div>
                     </div>
                 </div>
 
