@@ -191,6 +191,10 @@ PROFILE_ACCEL_SEQ     = 600    # 가속시간 ms
 PROFILE_VELOCITY_ACT  = 50     # 이동시간 ms
 PROFILE_ACCEL_ACT     = 25     # 가속시간 ms
 
+# 그리퍼 개폐 대기 (#2). 그리퍼는 전류기반 위치제어라 물체를 쥐면 목표 위치에
+# 도달하지 못하므로 위치 수렴 폴링 대신 고정 시간만 대기한다.
+GRIPPER_SETTLE_SEC    = 1.2
+
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
 
@@ -237,6 +241,10 @@ class RobotControlNode(Node):
         # ─── 내부 상태 ───
         self._state: RobotState = RobotState.IDLE
         self._state_lock = threading.Lock()
+
+        # STOP/ESTOP 소프트 중단 이벤트 (#1/#3). 진행 중 동작 스레드가 이 이벤트를
+        # 확인하고 즉시 빠져나온다. 새 명령 수락 시 해제.
+        self._abort_event = threading.Event()
 
         self._latest_sidecam: Optional[np.ndarray] = None
         self._sidecam_lock = threading.Lock()
@@ -622,6 +630,12 @@ class RobotControlNode(Node):
             self._on_act_model_select, 10,
             callback_group=self._cb_group)
 
+        # HMI 명령 수신 → STOP/ESTOP 시 진행 중 동작 소프트 중단 (#1)
+        self._hmi_cmd_sub = self.create_subscription(
+            String, topics.TOPIC_HMI_COMMAND,
+            self._hmi_command_callback, 10,
+            callback_group=self._cb_group)
+
         # ── Publishers ──
         # latched(TRANSIENT_LOCAL): 늦게 붙는 HMI 구독자도 최신 상태를 즉시 받는다.
         from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
@@ -704,6 +718,47 @@ class RobotControlNode(Node):
             self._esp32_rail_done = True
 
     # ─────────────────────────────────────────────
+    # 소프트 중단 (STOP) 처리 (#1/#3)
+    # ─────────────────────────────────────────────
+    def _hmi_command_callback(self, msg: String):
+        """HMI 명령 수신. STOP/ESTOP 시 진행 중 동작을 소프트 중단한다.
+
+        ESTOP 은 별도 /system/estop 으로 토크 차단까지 하지만, 여기서도
+        중단 이벤트를 세워 동작 스레드가 즉시 빠져나오게 한다.
+        """
+        cmd = msg.data.strip().upper()
+        if cmd in ('STOP', 'ESTOP'):
+            self.get_logger().warn(f'HMI {cmd} 수신 — 진행 중 동작 소프트 중단')
+            self._abort_event.set()
+            threading.Thread(target=self._soft_stop, daemon=True).start()
+        elif cmd in ('START', 'RESET'):
+            self._abort_event.clear()
+
+    def _should_abort(self) -> bool:
+        """진행 중 동작을 중단해야 하는지 (STOP 이벤트 또는 ERROR 상태)."""
+        return self._abort_event.is_set() or self._get_state() == RobotState.ERROR
+
+    def _soft_stop(self):
+        """진행 중 이동을 현재 위치로 즉시 정지 (토크 유지). STOP 소프트 정지용.
+
+        ESTOP(_safe_estop_cleanup)로 토크가 이미 꺼졌다면 no-op.
+        """
+        if not self._use_real_hardware or not self._dxl_ready:
+            return
+        positions = self._read_raw_positions()
+        if not positions:
+            return
+        arm = {k: v for k, v in positions.items() if k != 'gripper'}
+        if not arm:
+            return
+        try:
+            with self._dxl_io_lock:
+                self._follower.bus.sync_write('Goal_Position', arm, normalize=False)
+            self.get_logger().info('소프트 정지: 현재 위치로 목표 고정')
+        except Exception as e:
+            self.get_logger().warn(f'소프트 정지 실패: {e}')
+
+    # ─────────────────────────────────────────────
     # 명령 콜백 (토픽 기반 — 비동기)
     # ─────────────────────────────────────────────
     def _try_start_command(self, target_state: RobotState, target_func, *args):
@@ -714,6 +769,7 @@ class RobotControlNode(Node):
                 return False
             self._state = target_state
             self._publish_status(self._state.name)
+        self._abort_event.clear()   # 새 명령 수락 → 이전 STOP 중단 해제
         t = threading.Thread(target=target_func, args=args, daemon=True)
         t.start()
         return True
@@ -856,6 +912,11 @@ class RobotControlNode(Node):
                     self.get_logger().error('ESTOP 감지 — ACT 청크 실행을 중단합니다.')
                     self._safe_estop_cleanup()
                     return False
+                if self._abort_event.is_set():   # 소프트 STOP (#1)
+                    self.get_logger().warn('STOP 감지 — ACT 파지 중단 (토크 유지)')
+                    self._soft_stop()
+                    self._set_state(RobotState.IDLE)
+                    return False
 
                 with self._sidecam_lock:
                     frame = self._latest_sidecam
@@ -912,6 +973,11 @@ class RobotControlNode(Node):
                     if self._get_state() == RobotState.ERROR:
                         self.get_logger().error(f'ESTOP 감지 — ACT 실행 중단 (청크#{chunk_count} 스텝 {i})')
                         self._safe_estop_cleanup()
+                        return False
+                    if self._abort_event.is_set():   # 소프트 STOP (#1)
+                        self.get_logger().warn('STOP 감지 — ACT 파지 중단 (토크 유지)')
+                        self._soft_stop()
+                        self._set_state(RobotState.IDLE)
                         return False
 
                     step_start = time.time()
@@ -1078,7 +1144,7 @@ class RobotControlNode(Node):
         self._wait_motion_done(POSE_PLACE_CHAMBER)
 
         self._write_raw_position({'gripper': GRIPPER_OPEN})
-        self._wait_motion_done({'gripper': GRIPPER_OPEN})
+        self._wait_gripper()
 
         success = self._write_raw_position(POSE_HOME)
         self._wait_motion_done(POSE_HOME)
@@ -1100,7 +1166,7 @@ class RobotControlNode(Node):
         self._wait_motion_done(POSE_CHAMBER_PRE_PICK)
 
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
-        self._wait_motion_done({'gripper': GRIPPER_CLOSE})
+        self._wait_gripper()
 
         self._write_raw_position(POSE_LIFT_ARM)
         self._wait_motion_done(POSE_LIFT_ARM)
@@ -1168,12 +1234,18 @@ class RobotControlNode(Node):
 
         goal: _write_raw_position에 넘긴 것과 동일한 {joint: raw_value} 딕셔너리.
         tol:  허용 오차 (raw 단위, 20 ≈ 1.75°).
+
+        주의: 그리퍼(전류기반 위치제어)는 물체를 쥐면 목표에 도달하지 못하므로
+        이 함수로 대기하면 안 된다. 그리퍼는 _wait_gripper() 를 사용할 것 (#2).
         """
         if not self._use_real_hardware or not self._dxl_ready:
             return
         time.sleep(0.05)  # Goal_Position 반영 여유
         deadline = time.time() + timeout
         while time.time() < deadline:
+            if self._should_abort():   # STOP/ESTOP (#1/#3)
+                self._soft_stop()
+                return
             positions = self._read_raw_positions()
             if positions is None:
                 time.sleep(0.05)
@@ -1184,6 +1256,19 @@ class RobotControlNode(Node):
             time.sleep(0.05)
         self.get_logger().warn(f'[_wait_motion_done] {timeout}s 타임아웃 — 강제 진행')
 
+    def _wait_gripper(self, settle: float = GRIPPER_SETTLE_SEC):
+        """그리퍼 개폐 완료 대기 — 고정 지연 (#2).
+
+        그리퍼는 전류기반 위치제어라 물체를 쥐면 목표 위치에 도달하지 못한다.
+        따라서 위치 수렴 폴링(_wait_motion_done) 대신 고정 시간만 대기한다.
+        STOP/ESTOP 중단에 반응하도록 잘게 나눠 대기한다.
+        """
+        end = time.time() + settle
+        while time.time() < end:
+            if self._should_abort():
+                return
+            time.sleep(0.05)
+
     # ─────────────────────────────────────────────
     # lerobot bus 기반 모터 I/O
     # ─────────────────────────────────────────────
@@ -1192,6 +1277,11 @@ class RobotControlNode(Node):
                             accel: int = PROFILE_ACCEL,
                             grip_velocity: int = PROFILE_VELOCITY_GRIP,
                             grip_accel: int = PROFILE_ACCEL_GRIP) -> bool:
+        # STOP/ESTOP 중에는 새 목표를 쓰지 않는다 (#1/#3). 홈/안착/재파지 등
+        # 모든 선형 시퀀스가 이 경로를 쓰므로 여기서 일괄 차단한다.
+        # (_soft_stop 은 bus.sync_write 를 직접 호출하므로 이 가드의 영향을 받지 않는다.)
+        if self._abort_event.is_set():
+            return False
         positions = self._clip_safe_targets(positions, is_raw=True)
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
@@ -1292,6 +1382,7 @@ class RobotControlNode(Node):
         self._publish_status('ERROR: ESTOP ACTIVE — 토크 해제됨')
 
     def _execute_reset(self) -> bool:
+        self._abort_event.clear()   # 리셋 시 이전 STOP 중단 해제 (#1)
         with self._dxl_io_lock:
             if self._follower:
                 try:
@@ -1327,6 +1418,9 @@ class RobotControlNode(Node):
           → P3(올리기) → P5(반대 회전) → P1(경유) → P6(최종 놓기)
         """
         def move_arm(pose: dict, label: str) -> bool:
+            if self._should_abort():   # STOP/ESTOP 시 새 목표 발행 안 함 (#1/#3)
+                self.get_logger().warn(f'시퀀스 중단 감지 — {label} 생략')
+                return False
             self.get_logger().info(f'이동: {label}')
             arm_only = {k: v for k, v in pose.items() if k != 'gripper'}
             success = self._write_raw_position(
@@ -1335,25 +1429,29 @@ class RobotControlNode(Node):
                 accel=PROFILE_ACCEL_SEQ,
             )
             self._wait_motion_done(arm_only)
-            return success
+            return success and not self._should_abort()
 
         def grip_open():
+            if self._should_abort():
+                return
             self.get_logger().info('그리퍼 열기')
             self._write_raw_position(
                 {'gripper': GRIPPER_OPEN},
                 grip_velocity=PROFILE_VELOCITY_GRIP,
                 grip_accel=PROFILE_ACCEL_GRIP,
             )
-            self._wait_motion_done({'gripper': GRIPPER_OPEN})
+            self._wait_gripper()
 
         def grip_close():
+            if self._should_abort():
+                return
             self.get_logger().info('그리퍼 닫기')
             self._write_raw_position(
                 {'gripper': GRIPPER_CLOSE},
                 grip_velocity=PROFILE_VELOCITY_GRIP,
                 grip_accel=PROFILE_ACCEL_GRIP,
             )
-            self._wait_motion_done({'gripper': GRIPPER_CLOSE})
+            self._wait_gripper()
 
         # P1 → P2 → P3 → P4 → 놓기
         for pose, label in [(POSE_P1, 'P1: 베드 위 대기'),
