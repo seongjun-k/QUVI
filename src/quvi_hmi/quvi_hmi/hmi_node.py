@@ -52,6 +52,25 @@ RAIL_STATION_MAP = [
 RAIL_STEPS_PER_MM = 80.0
 RAIL_MAX_STEPS    = 33600  # RAIL_MAX_LIMIT (420mm × 80 steps/mm)
 
+# ─── 장치 매핑 (대시보드 선택 → config 파일 → 런치가 읽음) ───
+DEVICE_CONFIG_PATH = '/workspace/data/device_config.json'
+RESTART_SENTINEL   = '/workspace/data/.restart_requested'
+# 역할별 기본 장치(=udev 심링크). full_system.launch.py 의 기본값과 일치해야 한다.
+DEVICE_DEFAULTS = {
+    'sidecam_device':   '/dev/sidecam',
+    'fixed_cam_device': '/dev/fixed_cam',
+    'dxl_port':         '/dev/ttyFollower',
+    'leader_dxl_port':  '/dev/ttyLeader',
+    'micro_ros_port':   '/dev/ttyESP32',
+}
+DEVICE_ROLES = [
+    {'key': 'sidecam_device',   'label': '사이드캠 (camera1)',   'type': 'video'},
+    {'key': 'fixed_cam_device', 'label': '고정캠 (camera2)',     'type': 'video'},
+    {'key': 'dxl_port',         'label': '로봇 Follower',        'type': 'serial'},
+    {'key': 'leader_dxl_port',  'label': '로봇 Leader',          'type': 'serial'},
+    {'key': 'micro_ros_port',   'label': 'ESP (micro-ROS)',      'type': 'serial'},
+]
+
 
 class HmiNode(Node):
     """ROS 2 ↔ Flask 브리지 노드."""
@@ -323,6 +342,70 @@ class HmiNode(Node):
         self._act_model_select_pub.publish(msg)
         self.get_logger().info(f'ACT 모델 선택 발행: {path}')
 
+    # ─── 장치 매핑 (카메라/로봇/ESP USB) ───
+    def scan_devices(self) -> dict:
+        """연결 가능한 장치 후보를 스캔한다 (안정적 by-id 우선)."""
+        import glob
+
+        def _uniq(seq):
+            seen, out = set(), []
+            for x in seq:
+                if x and x not in seen:
+                    seen.add(x)
+                    out.append(x)
+            return out
+
+        serial = _uniq(
+            sorted(glob.glob('/dev/serial/by-id/*'))
+            + sorted(glob.glob('/dev/ttyUSB*'))
+            + sorted(glob.glob('/dev/ttyACM*'))
+            + [p for p in ('/dev/ttyFollower', '/dev/ttyLeader', '/dev/ttyESP32')
+               if os.path.exists(p)])
+        video = _uniq(
+            sorted(glob.glob('/dev/v4l/by-id/*'))
+            + sorted(glob.glob('/dev/video*'))
+            + [p for p in ('/dev/sidecam', '/dev/fixed_cam') if os.path.exists(p)])
+        return {'serial': serial, 'video': video}
+
+    def load_device_config(self) -> dict:
+        """저장된 장치 매핑(없으면 기본값)을 반환."""
+        cfg = {}
+        try:
+            with open(DEVICE_CONFIG_PATH, encoding='utf-8') as f:
+                cfg = json.load(f)
+        except Exception:
+            cfg = {}
+        merged = dict(DEVICE_DEFAULTS)
+        merged.update({k: v for k, v in cfg.items() if k in DEVICE_DEFAULTS})
+        return merged
+
+    def save_device_config(self, cfg: dict):
+        """장치 매핑을 config 파일로 저장 (알려진 키만)."""
+        clean = {k: str(cfg[k]) for k in DEVICE_DEFAULTS if cfg.get(k)}
+        os.makedirs(os.path.dirname(DEVICE_CONFIG_PATH), exist_ok=True)
+        with open(DEVICE_CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(clean, f, ensure_ascii=False, indent=2)
+        self.get_logger().info(f'장치 설정 저장: {clean}')
+
+    def request_restart(self, delay: int = 5):
+        """delay 초 후 시스템(ros2 launch)을 재시작한다.
+
+        run.sh 의 감시 루프가 sentinel 을 보고 relaunch 한다. 여기서는
+        sentinel 을 만든 뒤, 분리된 프로세스로 잠시 후 launch 를 종료시킨다.
+        """
+        import subprocess
+        try:
+            open(RESTART_SENTINEL, 'w').close()
+        except Exception as e:
+            self.get_logger().error(f'재시작 sentinel 생성 실패: {e}')
+            return False
+        self.get_logger().warn(f'{delay}초 후 시스템 재시작')
+        # 분리 세션으로 실행해 launch 종료에도 살아남아 종료 신호를 보낸다.
+        subprocess.Popen(
+            ['bash', '-c', f'sleep {int(delay)}; pkill -TERM -f "ros2 launch quvi_bringup"'],
+            start_new_session=True)
+        return True
+
     def send_capture_reference_command(self, start: bool):
         """기준 이미지 캡쳐 트리거 발행 (/inspection/capture_reference).
 
@@ -471,6 +554,35 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             return jsonify({'error': '알 수 없는 모델 경로'}), 400
         hmi_node.send_act_model_select(path)
         return jsonify({'ok': True, 'path': path})
+
+    # ─── 장치 매핑 API ───
+    @app.route('/api/devices')
+    def api_devices():
+        """장치 후보 목록 + 현재 매핑 + 역할 정의."""
+        return jsonify({
+            'candidates': hmi_node.scan_devices(),
+            'current': hmi_node.load_device_config(),
+            'roles': DEVICE_ROLES,
+        })
+
+    @app.route('/api/devices/apply', methods=['POST'])
+    def api_devices_apply():
+        """장치 매핑 저장 후 시스템 재시작 예약 (기본 5초)."""
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        cfg = data.get('config') or {}
+        known = {k: v for k, v in cfg.items() if k in DEVICE_DEFAULTS}
+        if not known:
+            return jsonify({'error': '유효한 장치 항목 없음'}), 400
+        try:
+            merged = hmi_node.load_device_config()
+            merged.update(known)
+            hmi_node.save_device_config(merged)
+        except Exception as e:
+            return jsonify({'error': f'저장 실패: {e}'}), 500
+        delay = int(data.get('delay_sec', 5))
+        ok = hmi_node.request_restart(delay=delay)
+        return jsonify({'ok': bool(ok), 'restart_in': delay, 'saved': merged})
 
     @app.route('/api/inspection/history')
     def api_inspection_history():

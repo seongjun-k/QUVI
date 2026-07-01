@@ -907,3 +907,102 @@ async function loadActModel() {
 
 refreshActModels();
 setInterval(refreshActModels, 5000);
+
+// ─── 장치 설정 (카메라/로봇/ESP USB) ───
+function _shortDev(path) {
+    // by-id 경로는 길어서 마지막 요소만 짧게 표시
+    if (!path) return '';
+    const parts = path.split('/');
+    return parts[parts.length - 1];
+}
+
+async function refreshDevices() {
+    const grid = document.getElementById('deviceRolesGrid');
+    if (!grid) return;
+    try {
+        const res = await fetch('/api/devices');
+        const data = await res.json();
+        const roles = data.roles || [];
+        const cands = data.candidates || {};
+        const current = data.current || {};
+
+        grid.innerHTML = '';
+        for (const role of roles) {
+            const list = (cands[role.type] || []).slice();
+            const cur = current[role.key] || '';
+            // 현재 값이 후보에 없어도 선택지에 포함(연결 안 됐거나 심링크)
+            if (cur && !list.includes(cur)) list.unshift(cur);
+
+            const cell = document.createElement('div');
+            const lbl = document.createElement('div');
+            lbl.style.cssText = 'font-size:11px;color:var(--text-muted);margin-bottom:4px;';
+            lbl.textContent = role.label;
+            const sel = document.createElement('select');
+            sel.id = 'dev_' + role.key;
+            sel.style.cssText = 'width:100%;padding:6px;box-sizing:border-box;';
+            if (list.length === 0) {
+                const o = document.createElement('option');
+                o.value = ''; o.textContent = '(후보 없음)';
+                sel.appendChild(o);
+            }
+            for (const d of list) {
+                const o = document.createElement('option');
+                o.value = d;
+                o.textContent = _shortDev(d);
+                o.title = d;
+                if (d === cur) o.selected = true;
+                sel.appendChild(o);
+            }
+            cell.appendChild(lbl);
+            cell.appendChild(sel);
+            grid.appendChild(cell);
+        }
+    } catch (e) {
+        grid.innerHTML = '<div style="color:var(--accent-red);font-size:12px;">장치 목록 로드 실패</div>';
+    }
+}
+
+async function applyDeviceConfig() {
+    const msgEl = document.getElementById('deviceMsg');
+    const btn = document.getElementById('deviceApplyBtn');
+    const roleKeys = ['sidecam_device', 'fixed_cam_device', 'dxl_port', 'leader_dxl_port', 'micro_ros_port'];
+    const config = {};
+    for (const k of roleKeys) {
+        const sel = document.getElementById('dev_' + k);
+        if (sel && sel.value) config[k] = sel.value;
+    }
+    if (Object.keys(config).length === 0) {
+        if (msgEl) { msgEl.textContent = '선택된 장치가 없습니다.'; msgEl.style.color = 'var(--accent-red)'; }
+        return;
+    }
+    if (!confirm('장치 설정을 저장하고 5초 뒤 시스템을 재시작합니다.\n계속하시겠습니까?')) return;
+
+    if (btn) btn.disabled = true;
+    try {
+        const res = await fetch('/api/devices/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config, delay_sec: 5 }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            let sec = data.restart_in || 5;
+            if (msgEl) msgEl.style.color = 'var(--accent-green)';
+            const tick = setInterval(() => {
+                if (msgEl) msgEl.textContent = `저장됨 — ${sec}초 뒤 재시작...`;
+                if (sec-- <= 0) {
+                    clearInterval(tick);
+                    if (msgEl) msgEl.textContent = '재시작 중... 잠시 후 페이지를 새로고침하세요.';
+                }
+            }, 1000);
+        } else {
+            if (msgEl) { msgEl.textContent = '오류: ' + (data.error || '알 수 없음'); msgEl.style.color = 'var(--accent-red)'; }
+            if (btn) btn.disabled = false;
+        }
+    } catch (e) {
+        if (msgEl) { msgEl.textContent = '네트워크 오류'; msgEl.style.color = 'var(--accent-red)'; }
+        if (btn) btn.disabled = false;
+    }
+}
+
+refreshDevices();

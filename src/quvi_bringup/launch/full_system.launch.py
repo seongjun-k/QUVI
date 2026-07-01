@@ -18,7 +18,26 @@ from ament_index_python.packages import get_package_share_directory
 import os
 
 
+def _load_device_config():
+    """대시보드에서 저장한 장치 매핑을 읽어 기본값으로 사용한다.
+    파일이 없거나 손상되면 빈 dict → 기존 하드코딩 기본값을 사용한다.
+    """
+    import json
+    for path in ('/workspace/data/device_config.json',
+                 os.path.join(os.path.dirname(__file__), '..', '..', '..',
+                              'data', 'device_config.json')):
+        try:
+            with open(path, encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return {}
+
+
 def generate_launch_description():
+
+    # 대시보드 장치 설정(있으면) 로드 — 하드코딩 기본값을 덮어쓴다.
+    _dev = _load_device_config()
 
     # ─── Launch Arguments ───
     hmi_port_arg = DeclareLaunchArgument(
@@ -26,11 +45,11 @@ def generate_launch_description():
         description='HMI Web UI 포트')
 
     sidecam_arg = DeclareLaunchArgument(
-        'sidecam_device', default_value='/dev/sidecam',
+        'sidecam_device', default_value=_dev.get('sidecam_device', '/dev/sidecam'),
         description='사이드캠 장치 경로')
 
     fixed_cam_arg = DeclareLaunchArgument(
-        'fixed_cam_device', default_value='/dev/fixed_cam',
+        'fixed_cam_device', default_value=_dev.get('fixed_cam_device', '/dev/fixed_cam'),
         description='고정 카메라 장치 경로')
 
     use_real_hardware_arg = DeclareLaunchArgument(
@@ -42,11 +61,11 @@ def generate_launch_description():
         description='ACT 모방학습 정책 로드 여부 (demo/sequence-no-act 에서는 false)')
 
     follower_port_arg = DeclareLaunchArgument(
-        'dxl_port', default_value='/dev/ttyFollower',
+        'dxl_port', default_value=_dev.get('dxl_port', '/dev/ttyFollower'),
         description='팔로워 암 Dynamixel 포트')
 
     leader_port_arg = DeclareLaunchArgument(
-        'leader_dxl_port', default_value='/dev/ttyLeader',
+        'leader_dxl_port', default_value=_dev.get('leader_dxl_port', '/dev/ttyLeader'),
         description='리더 암 Dynamixel 포트 (텔레오퍼레이션)')
 
     sidecam_autoexposure_arg = DeclareLaunchArgument(
@@ -66,7 +85,7 @@ def generate_launch_description():
         description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
     micro_ros_port_arg = DeclareLaunchArgument(
-        'micro_ros_port', default_value='/dev/ttyESP32',
+        'micro_ros_port', default_value=_dev.get('micro_ros_port', '/dev/ttyESP32'),
         description='micro-ROS agent 시리얼 포트')
 
     micro_ros_baud_arg = DeclareLaunchArgument(

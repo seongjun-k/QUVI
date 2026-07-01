@@ -68,7 +68,15 @@ if [ -t 0 ]; then
             exit 1
         fi
         source /workspace/install/setup.bash
-        ros2 launch quvi_bringup full_system.launch.py
+        # 대시보드 장치 변경 시 재시작 감시 루프. sentinel 없으면 1회 실행 후 종료(기존 동작).
+        rm -f /workspace/data/.restart_requested
+        while true; do
+            ros2 launch quvi_bringup full_system.launch.py
+            [ -f /workspace/data/.restart_requested ] || break
+            rm -f /workspace/data/.restart_requested
+            echo '🔁 장치 설정 변경 — 시스템 재기동'
+            sleep 2
+        done
     "
 else
     docker exec -i "${TARGET_CONTAINER}" bash -c "
@@ -79,7 +87,14 @@ else
             exit 1
         fi
         source /workspace/install/setup.bash
-        ros2 launch quvi_bringup full_system.launch.py
+        rm -f /workspace/data/.restart_requested
+        while true; do
+            ros2 launch quvi_bringup full_system.launch.py
+            [ -f /workspace/data/.restart_requested ] || break
+            rm -f /workspace/data/.restart_requested
+            echo '🔁 장치 설정 변경 — 시스템 재기동'
+            sleep 2
+        done
     "
 fi
 

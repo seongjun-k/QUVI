@@ -494,6 +494,24 @@
                     </div>
                 </div>
 
+                <!-- 장치 설정 카드 (카메라/로봇/ESP USB) -->
+                <div class="card status-card" style="margin-top:16px;" id="device-config-panel">
+                    <div class="card-header">
+                        <span class="card-title">🔌 장치 설정 (USB)</span>
+                        <span style="font-size:11px;color:var(--text-muted);">저장 시 시스템 재시작 필요</span>
+                    </div>
+                    <div class="card-body">
+                        <div id="deviceRolesGrid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;">
+                            <div style="color:var(--text-muted);font-size:12px;">장치 목록 로딩 중...</div>
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <button class="btn manual-exec-btn" id="deviceApplyBtn" onclick="applyDeviceConfig()">저장 및 재시작</button>
+                            <button class="btn" onclick="refreshDevices()">새로고침</button>
+                            <span id="deviceMsg" style="font-size:11px;color:#7bd;"></span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- ACT 모델 선택 카드 (수동 제어 패널 위, 4칸 배치) -->
                 <div class="card status-card" style="margin-top:16px;" id="act-model-panel">
                     <div class="card-header">
