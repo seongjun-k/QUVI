@@ -172,9 +172,8 @@ class MainOrchestratorNode(Node):
         self._startup_rail_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
 
     def _setup_subscribers(self):
-        # 레일/턴테이블 done 구독 (시작 초기화 시)
-        self.create_subscription(Bool, '/motor/rail_done', self._startup_rail_home_done_cb, 10)
-        self.create_subscription(Bool, '/motor/rail_done', self._startup_inspect_done_cb, 10)
+        # 레일/턴테이블 done 구독 (시작 초기화 시) — rail_done 은 단일 콜백에서 상태로 분기 (T3)
+        self.create_subscription(Bool, '/motor/rail_done', self._startup_rail_done_cb, 10)
         self.create_subscription(Bool, '/motor/turntable_done', self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
         self.create_subscription(MotorStatus, topics.TOPIC_MOTOR_STATUS, self._motor_status_cb, 10)
@@ -313,14 +312,10 @@ class MainOrchestratorNode(Node):
         self._motor_online = True
         self._motor_homed = msg.homed
 
-    def _startup_rail_home_done_cb(self, msg: Bool):
-        """STARTUP_RAIL_HOME_WAIT 상태에서만 레일 done 을 수락한다."""
-        if msg.data and self._state == FsmState.STARTUP_RAIL_HOME_WAIT:
-            self._startup_rail_done = True
-
-    def _startup_inspect_done_cb(self, msg: Bool):
-        """STARTUP_INSPECT_WAIT 상태에서만 레일 done 을 수락한다."""
-        if msg.data and self._state == FsmState.STARTUP_INSPECT_WAIT:
+    def _startup_rail_done_cb(self, msg: Bool):
+        """STARTUP 레일 이동 완료 — 홈/검사장 대기 상태에서 수락 (단일 콜백, T3)."""
+        if msg.data and self._state in (
+                FsmState.STARTUP_RAIL_HOME_WAIT, FsmState.STARTUP_INSPECT_WAIT):
             self._startup_rail_done = True
 
     def _startup_turntable_done_cb(self, msg: Bool):

@@ -82,6 +82,15 @@ class InspectNode(Node):
         self._current_object_index = 0
         self._last_align_info: Dict[int, Dict] = {}
 
+        # ─── 캡처 안정화 타이머 (T4) ───
+        # 턴테이블 done 직후 기구 진동·카메라 노출이 안정될 때까지 잠깐 대기 후 캡처한다.
+        # 콜백을 blocking sleep 하면 이미지 갱신도 멈춰 오래된 프레임을 잡으므로,
+        # 비차단 일회성 타이머로 지연시킨다. 재사용을 위해 생성 후 즉시 취소해 둔다.
+        self._pending_ref = False
+        self._settle_timer = self.create_timer(
+            max(0.05, float(self._capture_settle)), self._on_settle_elapsed)
+        self._settle_timer.cancel()
+
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
             f'촬영 각도: {self._angles}')
@@ -106,6 +115,7 @@ class InspectNode(Node):
             ('min_hole_area_px',        50,                                 '_min_hole_px'),
             # ─── 턴테이블 / 전처리 ───
             ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
+            ('capture_settle_sec',      0.4,                                '_capture_settle'),
             ('roi_margin',              20,                                 '_roi_margin'),
             ('gaussian_blur_ksize',     5,                                  '_blur_k'),
             ('binary_threshold',        127,                                '_bin_thresh'),
@@ -179,11 +189,24 @@ class InspectNode(Node):
         self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
 
     def _turntable_done_callback(self, msg: Bool):
-        """턴테이블 이동 완료 시 즉시 캡처."""
+        """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약 (T4)."""
         if not msg.data:
             return
+        if not (self._ref_capture_active or self._inspection_active):
+            return
+        # 이미 안정화 대기 중이면 중복 done 무시 (done 재발행 방어).
+        if not self._settle_timer.is_canceled():
+            return
+        self._pending_ref = self._ref_capture_active
+        self._settle_timer.reset()   # capture_settle_sec 후 _on_settle_elapsed 발화
 
-        if self._ref_capture_active:
+    def _on_settle_elapsed(self):
+        """안정화 지연 경과 후 실제 캡처 수행 (일회성)."""
+        self._settle_timer.cancel()
+
+        if self._pending_ref:
+            if not self._ref_capture_active:
+                return
             for angle in self._angles:
                 if angle not in self._captured_images:
                     self._capture_reference_angle(angle)
@@ -192,7 +215,6 @@ class InspectNode(Node):
 
         if not self._inspection_active:
             return
-
         # 오케스트레이터가 순차적으로 명령을 보내므로, done 순서 = 각도 순서로 가정.
         # 이미 캡처된 각도는 건너뛰고, 아직 캡처되지 않은 가장 빠른 각도를 캡처.
         for angle in self._angles:
