@@ -714,7 +714,10 @@ class RobotControlNode(Node):
                 self._latest_sidecam = frame
 
     def _esp32_rail_done_callback(self, msg: Bool):
-        if msg.data:
+        # 레일 이동 중일 때만 done 을 수락한다 (#7). 오케스트레이터가 STARTUP 에서
+        # /motor/rail 로 직접 보낸 이동의 done 이 robot_control 의 플래그를 엉뚱하게
+        # 세팅하는 것을 방지한다. (그 경우는 오케스트레이터가 직접 처리한다.)
+        if msg.data and self._get_state() == RobotState.MOVING_RAIL:
             self._esp32_rail_done = True
 
     # ─────────────────────────────────────────────

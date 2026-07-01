@@ -158,6 +158,12 @@ class MainOrchestratorNode(Node):
 
         # 로봇 및 구동부 명령 발행
         self._robot_grasp_pub = self.create_publisher(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD, 10)
+        # 레일 명령 경로는 의도적으로 두 가지다 (#5, 변경 시 주의):
+        #   (1) 본 사이클: _robot_rail_pub → /robot/rail_command (RailPosition 코드 0~3)
+        #       → robot_control_node 가 mm→steps 변환 후 /motor/rail 발행, done 은 /robot/rail_done.
+        #   (2) STARTUP: _startup_rail_pub → /motor/rail 직접(steps). 0mm 홈처럼
+        #       RailPosition 코드에 없는 위치를 써야 해서 robot_control 을 우회한다.
+        #       done 은 ESP32 의 /motor/rail_done 을 오케스트레이터가 직접 수신(_startup_rail_done_cb).
         self._robot_rail_pub = self.create_publisher(Int32, topics.TOPIC_ROBOT_RAIL_CMD, 10)
         self._robot_rotate_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_ROTATE_CMD, 10)
         self._robot_release_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RELEASE_CMD, 10)
