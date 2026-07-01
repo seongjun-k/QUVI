@@ -138,11 +138,30 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
    ACT 운용 동안 이 두 관절을 POSITION 모드(±한도)로 운용하는 방안을 검토.
    최소한 소프트웨어 클램프(2번)로 두 관절의 목표를 안전 회전 범위로 제한.
 
-### P2 — ACT 입력 파이프라인 학습 일치 검증 (C5)
+### P2 — ACT 입력 파이프라인 학습 일치 검증 (C5)  ※ 검증 완료
 
-1. `act_model_path`의 모델 메타(`config.json`, 정규화 통계)에서 **입력 이미지 해상도/정규화/관측 키**를 확인.
-2. `robot_control_node.py:654-657,678-681`의 resize·`/255.0`·키 이름을 학습과 일치시킨다.
-3. 첫 추론 워밍업: 본격 전송 전 N스텝은 현재 자세 유지/저속으로 시작해 큐를 채운다.
+모델 메타(`/home/ksj/physical_ai_tools/.../GUVI0625100FF/checkpoints/100000/pretrained_model/config.json`,
+`train_config.json`) 대조 결과 **전처리는 학습과 일치 — 코드 수정 불필요**:
+
+| 항목 | 학습(config) | QUVI 코드 | 판정 |
+|------|--------------|-----------|------|
+| 이미지 키 | `observation.images.camera1` | 동일 (`:679`) | ✅ |
+| 이미지 shape | `[3,480,640]` (C,H,W) | `cv2.resize(frame,(640,480))`→H480×W640→CHW | ✅ |
+| 이미지 스케일 | VISUAL MEAN_STD + `use_imagenet_stats=true` ([0,1] RGB 기준) | `/255.0` 후 BGR→RGB | ✅ |
+| 상태 shape/단위 | `[6]` STATE MEAN_STD (lerobot 정규화 단위) | `sync_read(normalize=True)` 6관절 | ✅ |
+| 액션 shape/단위 | `[6]` ACTION MEAN_STD → lerobot 정규화 단위 | `send_action({name.pos})` | ✅ |
+| image_transforms | `enable=false` | 해당 없음 | ✅ |
+
+→ **폭주는 전처리 불일치가 아니라 C1(이중 제어)·C2·C4(안전장치)였음이 확정.** (P0·P1에서 해소)
+
+발견된 실제 결함 및 조치:
+1. **(수정) 에피소드 간 액션 큐 미리셋.** `ACTPolicy.select_action`은 `n_action_steps=100`
+   액션 큐를 호출 간 유지한다(`modeling_act.py:111-133`). `_execute_act_grasp`가 `reset()`을
+   호출하지 않아, 두 번째 파지부터 **직전 관측 기반의 낡은 액션이 먼저 실행**된다.
+   → ACT 루프 진입 시 `self._act_policy.reset()` 추가.
+2. (확인) `select_action`은 1스텝 액션을 반환하며 QUVI 루프가 30Hz로 재호출 → 큐가 자동 관리됨. 정상.
+3. (참고) 모델은 `device=cuda`로 학습됐으나 실행은 `act_device=cpu`. 가중치는 장치 독립적이라 기능상
+   무방하며, 재추론(큐 소진 시)만 지연 → 필요 시 GPU 사용 검토.
 
 ### P3 — 프로파일 일관화 (C6)
 
@@ -182,8 +201,8 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
 - [x] (P1) `OmxFollowerConfig.max_relative_target` 보수값 설정 (param `act_max_relative_target`=8.0)
 - [x] (P1) `_clip_shoulder_lift` 폐기 → `_clip_safe_targets` 전 관절 안전 클램프로 대체
 - [x] (P1) `shoulder_pan`·`wrist_roll` 다회전 폭주 차단 — 정규화 DEGREES ±178° 소프트 클램프
-- [ ] (P2) ACT 모델 메타 대조 — 이미지 해상도/정규화/관측 키 일치
-- [ ] (P2) 첫 추론 워밍업 로직 추가
+- [x] (P2) ACT 모델 메타 대조 — 이미지 해상도/정규화/관측 키 일치 (전처리 일치 확인, 수정 불필요)
+- [x] (P2) 에피소드 간 액션 큐 리셋 추가 (`ACTPolicy.reset()`) — 낡은 액션 실행 방지
 - [ ] (P3) ACT/시퀀스/홈 모드별 프로파일 명시 설정 — 누수 제거
 - [ ] (P4) inspect 캡처 안정화 지연 추가
 - [ ] (P4) `/motor/rail_done` 구독·done 토픽 정리

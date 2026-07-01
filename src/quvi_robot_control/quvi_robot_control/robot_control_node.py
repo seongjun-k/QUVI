@@ -663,6 +663,9 @@ class RobotControlNode(Node):
         try:
             import torch
             import cv2
+            # P2: 이전 파지 에피소드의 낡은 액션 큐를 비운다. reset() 없이는 두 번째
+            # 파지부터 직전 관측 기반의 남은 액션이 먼저 실행돼 예기치 않게 움직인다.
+            self._act_policy.reset()
             ACT_GRASP_DURATION = 10.0
             dt = 1.0 / ACT_CONTROL_HZ
             start = time.time()
