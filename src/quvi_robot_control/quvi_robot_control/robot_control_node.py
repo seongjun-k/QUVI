@@ -267,11 +267,18 @@ class RobotControlNode(Node):
         # ─── ACT 모델 로드 ───
         self._act_policy = None
         self._act_ready = False
+        self._act_loading = False
+        self._act_reload_lock = threading.Lock()
+        self._act_models_cache = []
         if self._use_act:
             self._load_act_policy()
 
         # ─── ROS 통신 ───
         self._setup_ros_interfaces()
+
+        # ─── ACT 모델 목록/현재상태 최초 발행 (대시보드 연동) ───
+        self._publish_act_models()
+        self._publish_act_current()
 
         # ─── 관절 상태 발행 타이머 (10 Hz) ───
         self._joint_pub_timer = self.create_timer(
@@ -304,6 +311,9 @@ class RobotControlNode(Node):
             '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
         self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
+        # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
+        self.declare_parameter('act_models_root',
+            '/physical_ai_tools/lerobot/outputs/train')
         # 안전(P1): send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
@@ -328,6 +338,7 @@ class RobotControlNode(Node):
         self._act_model_path    = self.get_parameter('act_model_path').value
         self._act_chunk_size    = self.get_parameter('act_chunk_size').value
         self._act_device        = self.get_parameter('act_device').value
+        self._act_models_root   = self.get_parameter('act_models_root').value
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
         self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
         self._rail_mm = {
@@ -369,8 +380,12 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # ACT 모델 로드
     # ─────────────────────────────────────────────
-    def _load_act_policy(self):
-        """LeRobot ACTPolicy 로드."""
+    def _load_act_policy(self, model_path: str = None) -> bool:
+        """LeRobot ACTPolicy 로드. model_path 미지정 시 현재 self._act_model_path 사용.
+
+        성공 시 self._act_policy 교체 + self._act_model_path 갱신 + True 반환.
+        실패 시 기존 정책을 유지하고 False 반환.
+        """
         try:
             import sys
             for _lerobot_src in ['/workspace/lerobot/src', '/physical_ai_tools/lerobot/src']:
@@ -380,9 +395,10 @@ class RobotControlNode(Node):
             from lerobot.policies.act.modeling_act import ACTPolicy
         except ImportError as e:
             self.get_logger().error(f'LeRobot/torch 미설치: {e}')
-            return
+            return False
 
-        resolved_path = Path(self._act_model_path)
+        target = model_path if model_path else self._act_model_path
+        resolved_path = Path(target)
         if not resolved_path.is_absolute():
             resolved_path = Path('/workspace') / resolved_path
         resolved_path = resolved_path.resolve()
@@ -391,16 +407,152 @@ class RobotControlNode(Node):
         try:
             if not resolved_path.exists():
                 raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
-            self._act_policy = ACTPolicy.from_pretrained(str(resolved_path))
-            self._act_policy.eval()
+            policy = ACTPolicy.from_pretrained(str(resolved_path))
+            policy.eval()
             device = self._act_device
-            self._act_policy = self._act_policy.to(device)
+            policy = policy.to(device)
+            # 성공 후 원자적으로 교체
+            self._act_policy = policy
             self._act_device_obj = device
+            self._act_model_path = str(resolved_path)
             self._act_ready = True
-            self.get_logger().info(f'ACT 모델 로드 완료 (device={device})')
+            self.get_logger().info(f'ACT 모델 로드 완료: {resolved_path} (device={device})')
+            return True
         except Exception as e:
             self.get_logger().error(f'ACT 모델 로드 실패: {e}')
-            self._act_ready = False
+            return False
+
+    # ─────────────────────────────────────────────
+    # ACT 모델 스캔 / 런타임 선택 (HMI 대시보드 연동)
+    # ─────────────────────────────────────────────
+    def _scan_act_models(self) -> list:
+        """학습 출력 폴더에서 호환 가능한 pretrained_model 을 탐색한다.
+
+        구조: <root>/<run_name>/checkpoints/<step>/pretrained_model/config.json
+        각 run 은 가장 최신(step 최대) 체크포인트를 대표로 사용한다.
+        호환 조건: input 에 observation.images.camera1 + observation.state,
+                   output action shape == [6].
+        반환: [{'name','path','step'}] (name 오름차순)
+        """
+        import json
+        roots = []
+        if self._act_models_root:
+            roots.append(Path(self._act_models_root))
+        # act_model_path 로부터 train 루트 유추 (.../train/<run>/checkpoints/<step>/pretrained_model)
+        try:
+            p = Path(self._act_model_path)
+            if 'checkpoints' in p.parts:
+                idx = p.parts.index('checkpoints')
+                roots.append(Path(*p.parts[:idx - 1]))  # train 루트
+        except Exception:
+            pass
+
+        seen_roots = set()
+        models = []
+        for root in roots:
+            root = root.resolve()
+            if root in seen_roots or not root.is_dir():
+                continue
+            seen_roots.add(root)
+            for run_dir in sorted(root.iterdir()):
+                ckpt_root = run_dir / 'checkpoints'
+                if not ckpt_root.is_dir():
+                    continue
+                # step 최대(최신) 체크포인트 선택
+                steps = [d for d in ckpt_root.iterdir()
+                         if d.is_dir() and (d / 'pretrained_model' / 'config.json').is_file()]
+                if not steps:
+                    continue
+                def _step_key(d):
+                    try:
+                        return int(d.name)
+                    except ValueError:
+                        return -1
+                latest = max(steps, key=_step_key)
+                pm = latest / 'pretrained_model'
+                try:
+                    cfg = json.load(open(pm / 'config.json'))
+                    inp = cfg.get('input_features', {})
+                    act = cfg.get('output_features', {}).get('action', {}).get('shape')
+                    compatible = ('observation.images.camera1' in inp
+                                  and 'observation.state' in inp and act == [6])
+                    if not compatible:
+                        self.get_logger().warn(f'ACT 모델 호환 불가(건너뜀): {run_dir.name}')
+                        continue
+                    models.append({'name': run_dir.name,
+                                   'path': str(pm.resolve()),
+                                   'step': latest.name})
+                except Exception as e:
+                    self.get_logger().warn(f'ACT 모델 config 읽기 실패({run_dir.name}): {e}')
+        models.sort(key=lambda m: m['name'])
+        return models
+
+    def _publish_act_models(self):
+        """스캔한 모델 목록을 latched 토픽으로 발행."""
+        import json
+        try:
+            models = self._scan_act_models()
+        except Exception as e:
+            self.get_logger().error(f'ACT 모델 스캔 실패: {e}')
+            models = []
+        self._act_models_cache = models
+        msg = String()
+        msg.data = json.dumps(models, ensure_ascii=False)
+        self._act_models_pub.publish(msg)
+
+    def _publish_act_current(self):
+        """현재 모델·로드 상태를 latched 토픽으로 발행."""
+        import json
+        name = ''
+        for m in getattr(self, '_act_models_cache', []):
+            if m['path'] == self._act_model_path:
+                name = m['name']
+                break
+        payload = {
+            'path': self._act_model_path,
+            'name': name,
+            'ready': bool(self._act_ready),
+            'loading': bool(self._act_loading),
+            'use_act': bool(self._use_act),
+        }
+        msg = String()
+        msg.data = json.dumps(payload, ensure_ascii=False)
+        self._act_current_pub.publish(msg)
+
+    def _on_act_model_select(self, msg: String):
+        """HMI 에서 모델 선택 수신 → 백그라운드 재로드."""
+        path = msg.data.strip()
+        if not path:
+            return
+        t = threading.Thread(target=self._reload_act_policy, args=(path,), daemon=True)
+        t.start()
+
+    def _reload_act_policy(self, path: str):
+        """런타임 ACT 모델 재로드. IDLE 상태에서만 허용, 중복 로드 방지."""
+        if not self._act_reload_lock.acquire(blocking=False):
+            self.get_logger().warn('ACT 재로드 이미 진행 중 — 요청 무시')
+            return
+        try:
+            if self._get_state() != RobotState.IDLE:
+                self.get_logger().warn(
+                    f'ACT 재로드 거부: 로봇이 IDLE 아님(현재 {self._get_state().name})')
+                self._publish_status('ACT 모델 변경 거부: 동작 중')
+                return
+            self._act_loading = True
+            self._publish_act_current()
+            _parts = Path(path).parts
+            _run = _parts[-4] if len(_parts) >= 4 else path   # .../<run>/checkpoints/<step>/pretrained_model
+            self._publish_status(f'ACT 모델 로딩 중: {_run}')
+            ok = self._load_act_policy(path)
+            if ok:
+                self._use_act = True   # 선택 시 자동 ON (결정사항)
+                self._publish_status('ACT 모델 로드 완료 (ACT 사용 ON)')
+            else:
+                self._publish_status('ACT 모델 로드 실패')
+        finally:
+            self._act_loading = False
+            self._publish_act_current()
+            self._act_reload_lock.release()
 
     # ─────────────────────────────────────────────
     # ROS 인터페이스 설정
@@ -464,7 +616,22 @@ class RobotControlNode(Node):
             self._reset_cmd_callback, 10,
             callback_group=self._cb_group)
 
+        # ACT 모델 선택 수신 (대시보드) → 백그라운드 재로드
+        self._act_model_select_sub = self.create_subscription(
+            String, '/robot/act_model_select',
+            self._on_act_model_select, 10,
+            callback_group=self._cb_group)
+
         # ── Publishers ──
+        # latched(TRANSIENT_LOCAL): 늦게 붙는 HMI 구독자도 최신 상태를 즉시 받는다.
+        from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
+        _latched = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
+                              durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self._act_models_pub = self.create_publisher(
+            String, '/robot/act_models', _latched)
+        self._act_current_pub = self.create_publisher(
+            String, '/robot/act_current', _latched)
+
         self._joint_state_pub = self.create_publisher(
             JointState, '/robot/joint_states', 10)
 

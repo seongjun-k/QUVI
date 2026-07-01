@@ -822,3 +822,93 @@ async function stopRefCapture() {
         console.error('[QUVI] 기준 캡쳐 중단 실패:', e);
     }
 }
+
+// ─── ACT 모델 선택 ───
+let _actModelUserTouched = false;
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'actModelSelect') _actModelUserTouched = true;
+});
+
+async function refreshActModels() {
+    try {
+        const res = await fetch('/api/act/models');
+        const data = await res.json();
+        const sel = document.getElementById('actModelSelect');
+        const models = data.models || [];
+        const current = data.current || {};
+
+        if (sel) {
+            // 사용자가 드롭다운을 건드리는 중엔 옵션 재구성 생략 (선택 유지)
+            if (!_actModelUserTouched || sel.options.length <= 1) {
+                const prev = sel.value;
+                sel.innerHTML = '';
+                if (models.length === 0) {
+                    sel.innerHTML = '<option value="">사용 가능한 모델 없음</option>';
+                } else {
+                    for (const m of models) {
+                        const opt = document.createElement('option');
+                        opt.value = m.path;
+                        opt.textContent = `${m.name} (step ${m.step})`;
+                        if (m.path === (prev || current.path)) opt.selected = true;
+                        sel.appendChild(opt);
+                    }
+                }
+            }
+        }
+
+        const curEl = document.getElementById('actCurrentModel');
+        if (curEl) curEl.textContent = current.name || (current.path ? '(경로 지정됨)' : '없음');
+        const useEl = document.getElementById('actUseState');
+        if (useEl) {
+            useEl.textContent = current.use_act ? 'ON' : 'OFF';
+            useEl.style.color = current.use_act ? 'var(--accent-green)' : 'var(--text-muted)';
+        }
+        const stEl = document.getElementById('actModelState');
+        const loadBtn = document.getElementById('actModelLoadBtn');
+        if (current.loading) {
+            if (stEl) { stEl.textContent = '로딩 중...'; stEl.style.color = 'var(--accent-orange, #e9a)'; }
+            if (loadBtn) loadBtn.disabled = true;
+        } else {
+            if (stEl) {
+                stEl.textContent = current.ready ? '준비됨' : '미로드';
+                stEl.style.color = current.ready ? 'var(--accent-green)' : 'var(--text-muted)';
+            }
+            if (loadBtn) loadBtn.disabled = false;
+        }
+    } catch (e) {
+        // 서버 대기 중일 수 있음 — 조용히 무시
+    }
+}
+
+async function loadActModel() {
+    const sel = document.getElementById('actModelSelect');
+    const msgEl = document.getElementById('actModelMsg');
+    const path = sel ? sel.value : '';
+    if (!path) {
+        if (msgEl) { msgEl.textContent = '모델을 선택하세요.'; msgEl.style.color = 'var(--accent-red)'; }
+        return;
+    }
+    _actModelUserTouched = false;
+    if (msgEl) { msgEl.textContent = '로드 요청 전송...'; msgEl.style.color = 'var(--text-muted)'; }
+    try {
+        const res = await fetch('/api/act/select', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (msgEl) { msgEl.textContent = '로드 요청됨 — 로봇이 IDLE일 때만 적용됩니다.'; msgEl.style.color = 'var(--accent-green)'; }
+            // 로딩 상태 반영 위해 잠시 자주 폴링
+            let n = 0;
+            const t = setInterval(() => { refreshActModels(); if (++n > 15) clearInterval(t); }, 1000);
+        } else {
+            if (msgEl) { msgEl.textContent = '오류: ' + (data.error || '알 수 없음'); msgEl.style.color = 'var(--accent-red)'; }
+        }
+    } catch (e) {
+        if (msgEl) { msgEl.textContent = '네트워크 오류'; msgEl.style.color = 'var(--accent-red)'; }
+    }
+}
+
+refreshActModels();
+setInterval(refreshActModels, 5000);

@@ -108,9 +108,23 @@ class HmiNode(Node):
             'inspect_debug': None,
         }
 
+        # ─── ACT 모델 선택 (대시보드) ───
+        self._act_models = []       # [{'name','path','step'}]
+        self._act_current = {}      # {'path','name','ready','loading','use_act'}
+        self._act_model_select_pub = self.create_publisher(
+            String, '/robot/act_model_select', 10)
+
         # ─── ROS 2 Subscribers ───
         self.create_subscription(
             SystemStatus, '/hmi/status', self._status_cb, 10)
+        # ACT 모델 목록/현재상태 (robot_control_node 가 latched 로 발행)
+        from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
+        _latched = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
+                              durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(
+            String, '/robot/act_models', self._act_models_cb, _latched)
+        self.create_subscription(
+            String, '/robot/act_current', self._act_current_cb, _latched)
         self.create_subscription(
             InspectionResult, '/inspection/result', self._inspection_cb, 10)
         self.create_subscription(
@@ -285,6 +299,30 @@ class HmiNode(Node):
         if msg.data:
             self._ref_turntable_done_event.set()
 
+    # ─── ACT 모델 선택 ───
+    def _act_models_cb(self, msg: String):
+        import json
+        try:
+            with self._lock:
+                self._act_models = json.loads(msg.data)
+        except Exception as e:
+            self.get_logger().warn(f'ACT 모델 목록 파싱 실패: {e}')
+
+    def _act_current_cb(self, msg: String):
+        import json
+        try:
+            with self._lock:
+                self._act_current = json.loads(msg.data)
+        except Exception as e:
+            self.get_logger().warn(f'ACT 현재상태 파싱 실패: {e}')
+
+    def send_act_model_select(self, path: str):
+        """선택한 ACT 모델 경로를 robot_control_node 로 발행."""
+        msg = String()
+        msg.data = str(path)
+        self._act_model_select_pub.publish(msg)
+        self.get_logger().info(f'ACT 모델 선택 발행: {path}')
+
     def send_capture_reference_command(self, start: bool):
         """기준 이미지 캡쳐 트리거 발행 (/inspection/capture_reference).
 
@@ -389,6 +427,31 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         return jsonify(hmi_node.get_status())
 
 
+
+    # ─── ACT 모델 선택 API ───
+    @app.route('/api/act/models')
+    def api_act_models():
+        """사용 가능한 ACT 모델 목록 + 현재 모델 상태."""
+        with hmi_node._lock:
+            models = list(hmi_node._act_models)
+            current = dict(hmi_node._act_current)
+        return jsonify({'models': models, 'current': current})
+
+    @app.route('/api/act/select', methods=['POST'])
+    def api_act_select():
+        """ACT 모델 선택 → robot_control_node 로 재로드 요청 발행."""
+        from flask import request
+        data = request.get_json(silent=True) or {}
+        path = (data.get('path') or '').strip()
+        if not path:
+            return jsonify({'error': 'path 필요'}), 400
+        # 알려진 모델 경로인지 검증 (임의 경로 로드 방지)
+        with hmi_node._lock:
+            valid = any(m.get('path') == path for m in hmi_node._act_models)
+        if not valid:
+            return jsonify({'error': '알 수 없는 모델 경로'}), 400
+        hmi_node.send_act_model_select(path)
+        return jsonify({'ok': True, 'path': path})
 
     @app.route('/api/inspection/history')
     def api_inspection_history():

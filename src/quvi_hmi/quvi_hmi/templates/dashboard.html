@@ -337,6 +337,26 @@
             <div class="status-tab-container">
                 <!-- 상단 카드 그리드 -->
                 <div class="status-grid">
+                    <!-- ACT 모델 선택 카드 -->
+                    <div class="card status-card">
+                        <div class="card-header">
+                            <span class="card-title">🧠 ACT 모델 선택</span>
+                            <span class="card-subtitle-addon" id="actModelState">-</span>
+                        </div>
+                        <div class="card-body status-card-body">
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                <select id="actModelSelect" style="flex:1; min-width:180px; padding:6px;">
+                                    <option value="">모델 목록 로딩 중...</option>
+                                </select>
+                                <button id="actModelLoadBtn" class="btn" onclick="loadActModel()">로드</button>
+                            </div>
+                            <div style="margin-top:8px; font-size:0.85em; color:#aaa;">
+                                현재 모델: <span id="actCurrentModel">-</span>
+                                &nbsp;|&nbsp; ACT 사용: <span id="actUseState">-</span>
+                            </div>
+                            <div id="actModelMsg" style="margin-top:6px; font-size:0.8em; color:#7bd;"></div>
+                        </div>
+                    </div>
                     <!-- 로봇암 관절 상태 카드 -->
                     <div class="card status-card">
                         <div class="card-header">
