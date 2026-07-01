@@ -83,10 +83,25 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
 
 ### C6. Profile_Velocity 전역 상태 누수 — 동작별 속도 불일치
 
-`_apply_motor_profile`(`robot_control_node.py:943-953`)이 Profile_Velocity/Acceleration를 모터 EEPROM/RAM에
+`_apply_motor_profile`이 Profile_Velocity/Acceleration를 모터 RAM에
 전역으로 쓰고 그대로 남는다. ACT 경로의 `send_action`은 프로파일을 세팅하지 않으므로
-직전 동작이 남긴 값(초기 `configure()`=50, 또는 시퀀스가 남긴 1/2/8)을 그대로 물려받는다.
-→ ACT 돌진 시 속도가 상황에 따라 달라지고, 빠른 프로파일이 남아 있으면 충격이 커진다.
+직전 동작이 남긴 값(초기 `configure()`=50, 또는 시퀀스가 남긴 값)을 그대로 물려받는다.
+→ ACT 실행 시 속도가 상황에 따라 달라진다.
+
+### C7. (치명적) 시간기반/속도기반 프로파일 혼동 — 시퀀스가 "저속"이 아니라 최대속도
+
+`omx_follower.configure()`(`omx_follower.py:185-189`)가 **Drive_Mode Bit2 = 시간기반 프로파일**을
+설정한다(`final_drive_mode = 4 | direction_bit`). 코드 전체에서 이를 되돌리는 곳은 없다.
+
+시간기반 프로파일에서 레지스터 의미가 바뀐다:
+- `Profile_Velocity`  = **이동 완료 시간(ms)** — 속도가 아님. 값이 작을수록 빠르다.
+- `Profile_Acceleration` = 가속 시간(ms).
+
+그런데 QUVI 코드는 이를 **속도기반(0.229 RPM)으로 오해**했다(주석: "저속", "vel=2 대비 절반").
+그 결과 시퀀스의 `PROFILE_VELOCITY_SEQ=1`, 일반 `PROFILE_VELOCITY=2`, 원본 master `=8` 은
+"저속"이 아니라 **1~8ms 이동 = 사실상 최대속도**였다. → 시퀀스/일반 동작이 난폭하게 튀는 직접 원인.
+(반면 P0에서 제거된 HMI `_run_sequence`는 자체 포트에서 Drive_Mode 를 건드리지 않아 기본
+속도기반으로 동작 → 같은 값이 실제 저속이었다. 두 경로의 체감 속도가 달랐던 이유.)
 
 ### 타이밍 문제 (시퀀스)
 
@@ -163,10 +178,19 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
 3. (참고) 모델은 `device=cuda`로 학습됐으나 실행은 `act_device=cpu`. 가중치는 장치 독립적이라 기능상
    무방하며, 재추론(큐 소진 시)만 지연 → 필요 시 GPU 사용 검토.
 
-### P3 — 프로파일 일관화 (C6)
+### P3 — 프로파일 일관화 (C6·C7)  ※ 구현 완료
 
-1. ACT 진입 시 `send_action` 직전에 의도한 ACT용 Profile_Velocity/Acceleration를 **명시적으로 1회 설정**.
-2. 각 동작 모드(홈/시퀀스/ACT) 진입 시 프로파일을 항상 재설정해 누수 제거.
+1. **(C7) 프로파일 상수를 시간기반 ms 로 재정의.** 값이 클수록 느림을 반영해 보수적 저속으로 설정:
+   일반 이동 `PROFILE_VELOCITY=1200ms`, 그리퍼 `800ms`, **시퀀스(파지 중) `PROFILE_VELOCITY_SEQ=2000ms`**,
+   ACT `PROFILE_VELOCITY_ACT=50ms`(학습 조건과 동일). 오해를 부른 "0.229 RPM" 주석 제거.
+   ※ ms 값은 하드웨어에서 미세조정할 보수적 초기값.
+2. **(C6) ACT 진입 시 프로파일 명시 설정.** `_execute_act_grasp` ACT 루프 진입부에서
+   `_apply_motor_profile(JOINT_NAMES, 50ms, 25ms)` 호출 → 직전 시퀀스(2000ms)의 누수 제거.
+3. 일반/시퀀스/홈 이동은 `_write_raw_position` 이 호출마다 프로파일을 적용하므로 모드별 재설정 보장.
+4. 사용되지 않던 `MOVE_WAIT`/`MOVE_WAIT_SEQ`/`GRIPPER_WAIT_SLOW` 데드코드 제거.
+
+> ⚠️ 안전: 시간기반 확정(코드 검증) 하에 값을 **키우는(느리게)** 방향이라 위험 방향 변경이 아니다.
+> 단, 하드웨어 최초 구동 시 §4 절차대로 저속에서 실제 이동 시간을 확인하고 조정할 것.
 
 ### P4 — 타이밍/검사 정합 (T1~T4)  ※ P0 적용 후 자연 해소 + 보강
 
@@ -203,7 +227,8 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
 - [x] (P1) `shoulder_pan`·`wrist_roll` 다회전 폭주 차단 — 정규화 DEGREES ±178° 소프트 클램프
 - [x] (P2) ACT 모델 메타 대조 — 이미지 해상도/정규화/관측 키 일치 (전처리 일치 확인, 수정 불필요)
 - [x] (P2) 에피소드 간 액션 큐 리셋 추가 (`ACTPolicy.reset()`) — 낡은 액션 실행 방지
-- [ ] (P3) ACT/시퀀스/홈 모드별 프로파일 명시 설정 — 누수 제거
+- [x] (P3/C7) 프로파일 상수 시간기반 ms 로 재정의 (시퀀스 2000ms 저속, 오해 주석 제거)
+- [x] (P3/C6) ACT 진입 시 프로파일 명시 설정 — 시퀀스 프로파일 누수 제거
 - [ ] (P4) inspect 캡처 안정화 지연 추가
 - [ ] (P4) `/motor/rail_done` 구독·done 토픽 정리
 - [ ] (검증) 4장 점진 절차 1→5 순차 통과
@@ -223,8 +248,7 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
 | C3 무효 클리핑 | `robot_control_node.py:905-938` (특히 919,929) |
 | C4 다회전 관절·제한 부재 | `omx_follower.py:56,60,170-178,197-204` |
 | C5 ACT 이미지 전처리/관측 | `robot_control_node.py:654-657,678-681` |
-| C6 프로파일 전역 누수 | `robot_control_node.py:943-953,193-194` |
-| T1 개루프 고정 대기 | `hmi_node.py:347-350,403-416` |
+| C6 프로파일 전역 누수 | `robot_control_node.py` `_apply_motor_profile`, ACT `send_action` |
+| C7 시간기반 프로파일 오해 (저속≠저속) | `omx_follower.py:185-189` (Drive_Mode 4=시간기반) |
+| T1 개루프 고정 대기 | `hmi_node.py` `_run_sequence` (P0 에서 제거) |
 | T4 캡처 즉시 트리거 | `inspect_node.py:181-210` |
-</content>
-</invoke>

@@ -168,19 +168,28 @@ POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1841, 'elbow_flex': 2522, 'wri
 POSE_P5 = {'shoulder_pan': 2047, 'shoulder_lift': 1854, 'elbow_flex': 2460, 'wrist_flex': 2909, 'wrist_roll': 2050, 'gripper': 2150}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2039, 'shoulder_lift': 1076, 'elbow_flex': 2884, 'wrist_flex': 3094, 'wrist_roll': 1993, 'gripper': 2150}  # 분류장 위치
 
-# ── 일반 동작 프로파일 (빈 손: 검사장 이동, 홈 복귀 등) ─────────────────────
-# Profile_Velocity 단위: 0.229 RPM  |  Profile_Acceleration 단위: 214.577 rev/min²
-PROFILE_VELOCITY      = 2    # 팔 관절 속도
-PROFILE_ACCEL         = 3    # 팔 관절 가속도
-PROFILE_VELOCITY_GRIP = 6    # 그리퍼 속도
-PROFILE_ACCEL_GRIP    = 5    # 그리퍼 가속도
-MOVE_WAIT             = 3.0  # 관절 이동 대기 초
-GRIPPER_WAIT_SLOW     = 3.0  # 그리퍼 열기/닫기 대기 초
-
-# ── P1-P6 시퀀스 전용 저속 프로파일 (물체 파지 중 — 낙하/파손 방지) ──────────
-PROFILE_VELOCITY_SEQ  = 1    # 팔 관절 속도 (vel=2 대비 절반, 안전 이송)
-PROFILE_ACCEL_SEQ     = 1    # 팔 관절 가속도 (부드러운 기동/정지)
-MOVE_WAIT_SEQ         = 5.0  # 웨이포인트 간 대기 초 (저속에 맞는 충분한 완료 대기)
+# ── Dynamixel 프로파일 (⚠️ 시간기반 프로파일 모드) ───────────────────────────
+# omx_follower.configure() 가 Drive_Mode Bit2(시간기반 프로파일)를 설정하므로
+#   Profile_Velocity     = 이동 완료 시간(ms)   ← 속도 아님!
+#   Profile_Acceleration = 가속 시간(ms)
+# 값이 "작을수록 빠르고", "클수록 느리고 부드럽다". 제약: 가속시간 ≤ 이동시간/2.
+# (과거 코드는 이를 속도(0.229 RPM)로 오해해 vel=1~8 을 '저속'으로 썼으나
+#  실제로는 1~8ms = 사실상 최대속도였다. 시퀀스 난폭 동작의 원인. 계획서 C7.)
+# ※ 아래 ms 값은 보수적 초기값이며 하드웨어에서 미세조정한다.
+#
+# 일반 동작 (빈 손: 검사장 이동, 홈 복귀 등)
+PROFILE_VELOCITY      = 1200   # 이동시간 ms (부드러운 중속)
+PROFILE_ACCEL         = 400    # 가속시간 ms
+PROFILE_VELOCITY_GRIP = 800    # 그리퍼 이동시간 ms
+PROFILE_ACCEL_GRIP    = 200    # 그리퍼 가속시간 ms
+#
+# P1~P6 시퀀스 (물체 파지 중 — 낙하/파손 방지 위해 더 느리게)
+PROFILE_VELOCITY_SEQ  = 2000   # 이동시간 ms (저속 안전 이송)
+PROFILE_ACCEL_SEQ     = 600    # 가속시간 ms
+#
+# ACT 추론 (학습 시 configure() 기본값 50ms 로 녹화됨 → 동일 유지해 동역학 일치)
+PROFILE_VELOCITY_ACT  = 50     # 이동시간 ms
+PROFILE_ACCEL_ACT     = 25     # 가속시간 ms
 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
@@ -666,6 +675,10 @@ class RobotControlNode(Node):
             # P2: 이전 파지 에피소드의 낡은 액션 큐를 비운다. reset() 없이는 두 번째
             # 파지부터 직전 관측 기반의 남은 액션이 먼저 실행돼 예기치 않게 움직인다.
             self._act_policy.reset()
+            # P3(C6): ACT용 프로파일을 명시적으로 설정해 직전 동작(시퀀스=2000ms 등)의
+            # 프로파일 누수를 제거한다. 학습 녹화 시 configure() 기본값(50ms)이 적용됐으므로
+            # 동일하게 맞춰 학습 동역학과 일치시킨다.
+            self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
             ACT_GRASP_DURATION = 10.0
             dt = 1.0 / ACT_CONTROL_HZ
             start = time.time()
@@ -966,7 +979,7 @@ class RobotControlNode(Node):
         return out
 
     # ─────────────────────────────────────────────
-    # 저속 프로파일 적용 (시퀀스 전용)
+    # 모터 프로파일 적용 (시간기반: velocity=이동시간 ms, accel=가속시간 ms)
     # ─────────────────────────────────────────────
     def _apply_motor_profile(self, joint_names: list, velocity: int, accel: int):
         if not self._use_real_hardware or not self._dxl_ready or not self._follower:
@@ -1139,7 +1152,7 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _execute_taught_sequence(self) -> bool:
         """
-        P1~P6 웨이포인트 저속 실행 (PROFILE_VELOCITY=8, ~1.8 RPM).
+        P1~P6 웨이포인트 저속 실행 (시간기반 프로파일 PROFILE_VELOCITY_SEQ=2000ms).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
         순서 (test_sequence.py 기반):
