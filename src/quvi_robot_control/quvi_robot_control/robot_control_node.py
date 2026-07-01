@@ -185,6 +185,28 @@ MOVE_WAIT_SEQ         = 5.0  # 웨이포인트 간 대기 초 (저속에 맞는 
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
 
+# ── 관절 안전 범위 (P1: ACT/시퀀스 폭주 방지) ────────────────────────────────
+# 정규화 단위 안전 범위 — send_action 경로(ACT·텔레옵).
+#   shoulder_pan, wrist_roll : DEGREES 모드. 1회전이 [-180°, +180°] 에 매핑되며
+#     EXTENDED_POSITION 이라 unnormalize 시 클램프가 없어 다회전 폭주가 가능하다.
+#     ±178° 로 제한해 한 바퀴 안에 묶는다.
+#   shoulder_lift/elbow_flex/wrist_flex : RANGE_M100_100 → ±100 (unnormalize 도 자동 클램프하나 명시).
+#   gripper : RANGE_0_100 → 0~100.
+NORM_SAFE_RANGE = {
+    'shoulder_pan':  (-178.0, 178.0),
+    'shoulder_lift': (-100.0, 100.0),
+    'elbow_flex':    (-100.0, 100.0),
+    'wrist_flex':    (-100.0, 100.0),
+    'wrist_roll':    (-178.0, 178.0),
+    'gripper':       (0.0, 100.0),
+}
+# raw 단위 안전 범위 — sync_write 직접 경로(시퀀스·홈). 모터 Min/Max_Position_Limit 와 동일.
+RAW_SAFE_RANGE = {
+    'shoulder_lift': (830, 3129),
+    'elbow_flex':    (1024, 3140),
+    'wrist_flex':    (0, 4095),
+}
+
 
 # ─────────────────────────────────────────────────────────────
 # RobotControlNode
@@ -273,6 +295,9 @@ class RobotControlNode(Node):
             '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
         self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
+        # 안전(P1): send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
+        # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
+        self.declare_parameter('act_max_relative_target', 8.0)
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
         self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
@@ -294,6 +319,8 @@ class RobotControlNode(Node):
         self._act_model_path    = self.get_parameter('act_model_path').value
         self._act_chunk_size    = self.get_parameter('act_chunk_size').value
         self._act_device        = self.get_parameter('act_device').value
+        # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
+        self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
         self._rail_mm = {
             RailPosition.BED:     self.get_parameter('rail_mm_bed').value,
             RailPosition.INSPECT: self.get_parameter('rail_mm_inspect').value,
@@ -315,12 +342,16 @@ class RobotControlNode(Node):
             follower_config = OmxFollowerConfig(
                 port=self._dxl_port_name,
                 id='quvi_follower',
+                # 안전(P1 C2): send_action 1스텝 상대이동 캡. ACT 이상치·첫 추론
+                # 슬램을 하드웨어 직전에서 차단. sync_write 직접 경로(시퀀스)에는 영향 없음.
+                max_relative_target=self._act_max_rel_target,
             )
             self._follower = OmxFollower(follower_config)
             self._follower.connect()
             self._dxl_ready = True
             self.get_logger().info(
                 f'OmxFollower 연결 완료 | 포트={self._dxl_port_name} | '
+                f'상대이동캡={self._act_max_rel_target} | '
                 f'모터: {list(self._follower.bus.motors.keys())}')
         except Exception as e:
             self.get_logger().error(f'OmxFollower 초기화 실패: {e}')
@@ -703,7 +734,7 @@ class RobotControlNode(Node):
                     step_start = time.time()
                     if self._use_real_hardware and self._dxl_ready:
                         action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
-                        action_dict = self._clip_shoulder_lift(action_dict, is_raw=False)
+                        action_dict = self._clip_safe_targets(action_dict, is_raw=False)
                         with self._dxl_io_lock:
                             self._follower.send_action(action_dict)
                     else:
@@ -902,40 +933,34 @@ class RobotControlNode(Node):
         self._publish_status('검사장 재파지 완료')
         return success
 
-    def _clip_shoulder_lift(self, positions: dict, is_raw: bool) -> dict:
-        """shoulder_lift 값이 한계치 미만으로 낮아지지 않도록 클리핑한다.
+    def _clip_safe_targets(self, positions: dict, is_raw: bool) -> dict:
+        """관절 목표값을 안전 범위로 클램프한다 (P1 C3·C4).
 
-        is_raw=True  : Dynamixel raw 위치값(0~4095) 기준.
-                       limit=1024 ≈ 90도 (4095 * 90/360 ≈ 1024).
-        is_raw=False : lerobot OmxFollower 정규화 범위(-100~100) 기준.
-                       limit=-100.0 = 정규화 최솟값(실질적 통과).
+        is_raw=False : send_action 정규화 입력(ACT·텔레옵). DEGREES 관절
+                       (shoulder_pan, wrist_roll)의 다회전 폭주를 ±178° 로 차단.
+                       → NORM_SAFE_RANGE 적용.
+        is_raw=True  : sync_write raw 입력(시퀀스·홈). 모터 Min/Max_Position_Limit
+                       와 동일한 범위로 클램프. → RAW_SAFE_RANGE 적용.
 
-        ⚠️ 주의: ACT 출력이 lerobot 정규화 범위(-100~100)가 아닌 라디안이라면
-                  is_raw=False 클리핑은 무의미(limit=-100.0은 원래 최솟값).
-                  ACT 모델 출력 단위를 반드시 확인하고 사용할 것.
+        키는 'name' 과 'name.pos' 양식을 모두 지원한다.
+        범위에 없는 관절(raw 경로의 shoulder_pan/wrist_roll/gripper 등)은 그대로 둔다.
         """
-        positions = dict(positions)
-        if 'shoulder_lift' in positions:
-            limit = 1024 if is_raw else -100.0
-            if positions['shoulder_lift'] < limit:
+        table = RAW_SAFE_RANGE if is_raw else NORM_SAFE_RANGE
+        out = dict(positions)
+        for key, val in positions.items():
+            joint = key[:-4] if key.endswith('.pos') else key
+            rng = table.get(joint)
+            if rng is None:
+                continue
+            lo, hi = rng
+            if val < lo or val > hi:
+                clamped = min(hi, max(lo, val))
                 self.get_logger().warn(
-                    f"[Limit] shoulder_lift 값이 한계치(90도={limit})보다 작아 제한을 적용합니다: "
-                    f"{positions['shoulder_lift']} -> {limit}",
-                    once=True
-                )
-                positions['shoulder_lift'] = limit
-        
-        if 'shoulder_lift.pos' in positions:
-            limit = 1024 if is_raw else -100.0
-            if positions['shoulder_lift.pos'] < limit:
-                self.get_logger().warn(
-                    f"[Limit] shoulder_lift.pos 값이 한계치(90도={limit})보다 작아 제한을 적용합니다: "
-                    f"{positions['shoulder_lift.pos']} -> {limit}",
-                    once=True
-                )
-                positions['shoulder_lift.pos'] = limit
-                
-        return positions
+                    f'[안전클램프] {joint} {val:.2f} → {clamped:.2f} '
+                    f'({"raw" if is_raw else "norm"} {lo}~{hi})',
+                    throttle_duration_sec=2.0)
+                out[key] = clamped
+        return out
 
     # ─────────────────────────────────────────────
     # 저속 프로파일 적용 (시퀀스 전용)
@@ -984,7 +1009,7 @@ class RobotControlNode(Node):
                             accel: int = PROFILE_ACCEL,
                             grip_velocity: int = PROFILE_VELOCITY_GRIP,
                             grip_accel: int = PROFILE_ACCEL_GRIP) -> bool:
-        positions = self._clip_shoulder_lift(positions, is_raw=True)
+        positions = self._clip_safe_targets(positions, is_raw=True)
         if not self._use_real_hardware or not self._dxl_ready:
             self.get_logger().debug(f'[SIM] 관절 목표: {positions}')
             return True
@@ -1342,7 +1367,7 @@ class RobotControlNode(Node):
                             if key in action:
                                 action[key] -= offset
 
-                    action = self._clip_shoulder_lift(action, is_raw=False)
+                    action = self._clip_safe_targets(action, is_raw=False)
                     with self._dxl_io_lock:
                         self._follower.send_action(action)
                 except Exception as e:

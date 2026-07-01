@@ -176,12 +176,12 @@ ACT 경로에는 실질적인 소프트웨어 관절 보호가 **전무**하다.
 
 ## 5. 작업 체크리스트
 
-- [ ] (P0) `hmi_node.send_command`의 시퀀스 직접 호출 제거 — 단일 제어자 확립
-- [ ] (P0) `hmi_node._run_sequence`/raw dynamixel 포트 개방 제거 또는 격리
-- [ ] (P0) START 후 `/dev/ttyFollower` 단일 개방 검증
-- [ ] (P1) `OmxFollowerConfig.max_relative_target` 보수값 설정
-- [ ] (P1) `_clip_shoulder_lift` 폐기 → 전 관절 안전 클램프로 대체
-- [ ] (P1) `shoulder_pan`·`wrist_roll` 위치 제한/모드 검토 적용
+- [x] (P0) `hmi_node.send_command`의 시퀀스 직접 호출 제거 — 단일 제어자 확립
+- [x] (P0) `hmi_node._run_sequence`/raw dynamixel 포트 개방 제거 또는 격리
+- [ ] (P0) START 후 `/dev/ttyFollower` 단일 개방 검증  ※ 하드웨어 기동 시
+- [x] (P1) `OmxFollowerConfig.max_relative_target` 보수값 설정 (param `act_max_relative_target`=8.0)
+- [x] (P1) `_clip_shoulder_lift` 폐기 → `_clip_safe_targets` 전 관절 안전 클램프로 대체
+- [x] (P1) `shoulder_pan`·`wrist_roll` 다회전 폭주 차단 — 정규화 DEGREES ±178° 소프트 클램프
 - [ ] (P2) ACT 모델 메타 대조 — 이미지 해상도/정규화/관측 키 일치
 - [ ] (P2) 첫 추론 워밍업 로직 추가
 - [ ] (P3) ACT/시퀀스/홈 모드별 프로파일 명시 설정 — 누수 제거
