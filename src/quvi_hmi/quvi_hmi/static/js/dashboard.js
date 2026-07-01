@@ -568,27 +568,22 @@ updateClock();
 // ─── 초기 데이터 로드 ───
 async function loadInitialData() {
     try {
-        const [statusRes, historyRes] = await Promise.all([
+        const [statusRes, historyRes, statsRes] = await Promise.all([
             fetch('/api/status'),
             fetch('/api/inspection/history'),
+            fetch('/api/inspection/stats'),
         ]);
         const status = await statusRes.json();
         const history = await historyRes.json();
+        const stats = await statsRes.json();
 
         updateStatus(status);
+        // pass/fail 통계는 오케스트레이터 카운트 단일 출처 (#6)
+        updateStats(stats);
 
         if (history.length > 0) {
             historyData = history.reverse().slice(0, 50);
-            const last = historyData[0];
-            updateLatestInspection(last);
-
-            const pass = historyData.filter(h => h.passed).length;
-            const fail = historyData.length - pass;
-            updateStats({
-                passed: pass,
-                failed: fail,
-                pass_rate: historyData.length > 0 ? (pass / historyData.length * 100) : 0,
-            });
+            updateLatestInspection(historyData[0]);
         }
     } catch (e) {
         console.log('[QUVI] 초기 데이터 로드 실패 (서버 대기 중)');

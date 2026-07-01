@@ -366,6 +366,25 @@ class HmiNode(Node):
         with self._lock:
             return self._inspection_history.copy()
 
+    def compute_stats(self) -> dict:
+        """검사 통계 (#6). pass/fail/total 은 오케스트레이터 카운트를 단일 출처로
+        사용하고(= /hmi/status), 평균 검사시간만 history 에서 구한다.
+        history 길이로 pass/fail 를 재집계하면 오케스트레이터 카운트와 어긋난다.
+        """
+        with self._lock:
+            passed = int(self._system_status.get('pass_count', 0))
+            failed = int(self._system_status.get('fail_count', 0))
+            times = [h['inspection_time_sec'] for h in self._inspection_history]
+        total = passed + failed
+        avg_time = sum(times) / len(times) if times else 0.0
+        return {
+            'total': total,
+            'passed': passed,
+            'failed': failed,
+            'pass_rate': (passed / total * 100) if total > 0 else 0.0,
+            'avg_inspection_time': round(avg_time, 2),
+        }
+
     def get_camera_jpeg(self, key: str) -> bytes | None:
         with self._lock:
             return self._jpeg_cache.get(key)
@@ -459,19 +478,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
     @app.route('/api/inspection/stats')
     def api_inspection_stats():
-        history = hmi_node.get_inspection_history()
-        total = len(history)
-        passed = sum(1 for h in history if h['passed'])
-        failed = total - passed
-        avg_time = (sum(h['inspection_time_sec'] for h in history) / total
-                    if total > 0 else 0.0)
-        return jsonify({
-            'total': total,
-            'passed': passed,
-            'failed': failed,
-            'pass_rate': (passed / total * 100) if total > 0 else 0.0,
-            'avg_inspection_time': round(avg_time, 2),
-        })
+        return jsonify(hmi_node.compute_stats())
 
     # ─── 제어 API ───
     @app.route('/api/command/<cmd>', methods=['POST'])
@@ -662,18 +669,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             try:
                 status = hmi_node.get_status()
                 history = hmi_node.get_inspection_history()
-
-                total = len(history)
-                passed = sum(1 for h in history if h['passed'])
+                # pass/fail 는 오케스트레이터 카운트 단일 출처 (#6)
+                stats = hmi_node.compute_stats()
 
                 socketio.emit('status_update', {
                     'status': status,
-                    'stats': {
-                        'total': total,
-                        'passed': passed,
-                        'failed': total - passed,
-                        'pass_rate': round((passed / total * 100), 1) if total > 0 else 0.0,
-                    },
+                    'stats': stats,
                     'latest_inspection': history[-1] if history else None,
                 })
             except Exception:
