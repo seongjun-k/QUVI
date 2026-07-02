@@ -332,10 +332,10 @@ function updateLatestInspection(result) {
 
 // ─── 검사 상세 내역 탭 업데이트 ───
 function updateInspectionDetailTab(result) {
-    const noResult = document.getElementById('noResult');
-    const detailContainer = document.getElementById('detailContainer');
+    const noResult = document.getElementById('detailNoResult');
+    const detailContainer = document.getElementById('detailResult');
     const badge = document.getElementById('detailBadge');
-    
+
     noResult.style.display = 'none';
     detailContainer.style.display = 'block';
 
@@ -593,7 +593,7 @@ async function loadInitialData() {
 loadInitialData();
 drawDonut(0, 0);
 
-// ─── 탭 전환 ───
+// ─── 탭 전환 (?tab= 파라미터로 초기 탭 딥링크 가능) ───
 function switchTab(tabName) {
     // 탭 판넬 전환
     document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
@@ -604,6 +604,10 @@ function switchTab(tabName) {
     const targetMenu = document.getElementById(`menu-${tabName}`);
     if (targetMenu) targetMenu.classList.add('active');
 }
+
+const _initialTab = new URLSearchParams(location.search).get('tab');
+// 존재하는 탭일 때만 전환 — 잘못된 값이면 기본 탭 유지 (빈 화면 방지)
+if (_initialTab && document.getElementById(`tab-${_initialTab}`)) switchTab(_initialTab);
 
 // ─── 텔레오퍼레이션 토글 API 호출 ───
 async function toggleTeleop(enable) {
