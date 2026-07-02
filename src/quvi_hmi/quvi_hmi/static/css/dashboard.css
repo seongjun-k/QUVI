@@ -7,7 +7,9 @@
     --bg-secondary: #161b22;
     --bg-card: #1c2128;
     --bg-card-hover: #22272e;
+    --bg-tertiary: #10141a;
     --border: #30363d;
+    --border-color: #30363d;
     --text-primary: #e6edf3;
     --text-secondary: #8b949e;
     --text-muted: #484f58;
@@ -21,6 +23,9 @@
     --fail-bg: rgba(248, 81, 73, 0.12);
     --radius: 8px;
     --shadow: 0 1px 3px rgba(0,0,0,0.3);
+    --shadow-md: 0 4px 16px rgba(0,0,0,0.28);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.4);
+    --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
     --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
@@ -33,10 +38,62 @@
 body {
     background: var(--bg-primary);
     color: var(--text-primary);
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-family: var(--font-sans);
     font-size: 14px;
     line-height: 1.5;
     overflow-x: hidden;
+    font-feature-settings: 'tnum' 1, 'cv05' 1;
+}
+
+/* ─── 아이콘 (카드 타이틀/캠 라벨 공통) ─── */
+.ci {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    vertical-align: -2px;
+}
+
+.card-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ─── 스크롤바 (다크 테마) ─── */
+::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 20px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+    background-clip: padding-box;
+}
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+/* ─── 포커스 상태 (키보드 접근성 + 마감 디테일) ─── */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+.switch input:focus-visible + .slider {
+    outline: 2px solid var(--accent-blue);
+    outline-offset: 2px;
 }
 
 /* ─── 헤더 ─── */
@@ -62,9 +119,10 @@ body {
 
 .logo {
     font-size: 20px;
-    font-weight: 700;
+    font-weight: 800;
     letter-spacing: 2px;
     color: var(--accent-blue);
+    font-family: var(--font-mono);
 }
 
 .logo span {
@@ -111,6 +169,7 @@ body {
     height: 8px;
     border-radius: 50%;
     background: currentColor;
+    box-shadow: 0 0 6px currentColor;
     animation: pulse 2s infinite;
 }
 
@@ -246,14 +305,20 @@ body {
     border-color: var(--text-muted);
 }
 
+.btn:active {
+    transform: scale(0.97);
+}
+
 .btn-start {
-    background: rgba(63, 185, 80, 0.15);
+    background: linear-gradient(135deg, rgba(63, 185, 80, 0.22), rgba(63, 185, 80, 0.12));
     border-color: var(--accent-green);
     color: var(--accent-green);
+    font-weight: 600;
 }
 
 .btn-start:hover {
-    background: rgba(63, 185, 80, 0.25);
+    background: linear-gradient(135deg, rgba(63, 185, 80, 0.34), rgba(63, 185, 80, 0.2));
+    box-shadow: 0 0 0 3px rgba(63, 185, 80, 0.12);
 }
 
 .btn-stop {
@@ -267,16 +332,18 @@ body {
 }
 
 .btn-estop {
-    background: rgba(248, 81, 73, 0.2);
+    background: linear-gradient(135deg, rgba(248, 81, 73, 0.24), rgba(248, 81, 73, 0.14));
     border-color: var(--accent-red);
     color: var(--accent-red);
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
+    box-shadow: 0 0 0 1px rgba(248, 81, 73, 0.15);
 }
 
 .btn-estop:hover {
-    background: rgba(248, 81, 73, 0.35);
+    background: linear-gradient(135deg, rgba(248, 81, 73, 0.4), rgba(248, 81, 73, 0.22));
+    box-shadow: 0 0 0 3px rgba(248, 81, 73, 0.15);
 }
 
 .control-divider {
@@ -303,11 +370,13 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius);
     overflow: hidden;
-    transition: border-color 0.15s ease;
+    box-shadow: var(--shadow);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .card:hover {
     border-color: #3d444d;
+    box-shadow: var(--shadow-md);
 }
 
 .card-header {
@@ -345,12 +414,14 @@ body {
     border-radius: var(--radius);
     padding: 16px;
     text-align: center;
-    transition: transform 0.15s ease, border-color 0.15s ease;
+    box-shadow: var(--shadow);
+    transition: transform 0.18s cubic-bezier(0.25, 0.8, 0.25, 1), border-color 0.18s ease, box-shadow 0.18s ease;
 }
 
 .stat-card:hover {
     transform: translateY(-2px);
     border-color: var(--text-muted);
+    box-shadow: var(--shadow-md);
 }
 
 .stat-value {
@@ -358,6 +429,7 @@ body {
     font-size: 32px;
     font-weight: 700;
     line-height: 1.2;
+    font-variant-numeric: tabular-nums;
 }
 
 .stat-value.blue { color: var(--accent-blue); }
@@ -401,13 +473,18 @@ body {
     position: absolute;
     top: 8px;
     left: 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
     background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
     color: var(--text-primary);
-    padding: 2px 8px;
-    border-radius: 4px;
+    padding: 4px 10px;
+    border-radius: 20px;
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0.5px;
+    border: 1px solid rgba(255,255,255,0.08);
 }
 
 .camera-status {
@@ -676,11 +753,24 @@ body {
     flex-direction: column;
     padding: 24px 16px;
     flex-shrink: 0;
+    position: relative;
+}
+
+.sidebar::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    left: -60px;
+    width: 220px;
+    height: 220px;
+    background: radial-gradient(circle, rgba(88,166,255,0.15) 0%, rgba(88,166,255,0) 70%);
+    pointer-events: none;
 }
 
 .sidebar .logo {
     font-size: 26px;
     font-weight: 800;
+    font-family: var(--font-mono);
     letter-spacing: 3px;
     background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
     -webkit-background-clip: text;
@@ -688,6 +778,7 @@ body {
     -webkit-text-fill-color: transparent;
     margin-bottom: 32px;
     padding-left: 8px;
+    position: relative;
 }
 
 .sidebar .logo span {
@@ -735,6 +826,7 @@ body {
     background: rgba(88, 166, 255, 0.12);
     color: var(--accent-blue);
     font-weight: 600;
+    box-shadow: inset 3px 0 0 var(--accent-blue);
 }
 
 .main-container {
@@ -744,6 +836,9 @@ body {
     min-width: 0;
     height: 100vh;
     overflow-y: auto;
+    background:
+        radial-gradient(ellipse 900px 400px at 100% 0%, rgba(88,166,255,0.05) 0%, rgba(88,166,255,0) 60%),
+        var(--bg-primary);
 }
 
 /* ─── 탭 시스템 ─── */
@@ -753,6 +848,12 @@ body {
 
 .tab-pane.active {
     display: block;
+    animation: tabFadeIn 0.25s ease;
+}
+
+@keyframes tabFadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
 }
 
 /* ─── 텔레오퍼레이션 뷰 ─── */

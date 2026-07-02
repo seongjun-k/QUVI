@@ -35,7 +35,7 @@ from std_msgs.msg import Bool, String, Int32
 from quvi_msgs.msg import InspectionResult, SystemStatus
 
 # Flask + SocketIO
-from flask import Flask, Response, jsonify, render_template, send_from_directory
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 from flask_socketio import SocketIO
 
 
@@ -395,7 +395,8 @@ class HmiNode(Node):
         """
         import subprocess
         try:
-            open(RESTART_SENTINEL, 'w').close()
+            with open(RESTART_SENTINEL, 'w'):
+                pass
         except Exception as e:
             self.get_logger().error(f'재시작 sentinel 생성 실패: {e}')
             return False
@@ -547,7 +548,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/act/select', methods=['POST'])
     def api_act_select():
         """ACT 모델 선택 → robot_control_node 로 재로드 요청 발행."""
-        from flask import request
         data = request.get_json(silent=True) or {}
         path = (data.get('path') or '').strip()
         if not path:
@@ -573,7 +573,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/devices/apply', methods=['POST'])
     def api_devices_apply():
         """장치 매핑 저장 후 시스템 재시작 예약 (기본 5초)."""
-        from flask import request
         data = request.get_json(silent=True) or {}
         cfg = data.get('config') or {}
         known = {k: v for k, v in cfg.items() if k in DEVICE_DEFAULTS}
@@ -647,7 +646,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/rail/move', methods=['POST'])
     def api_rail_move():
         """JSON body: {"mm": <float>} — Rail 목표 위치 발행."""
-        from flask import request
         if not hmi_node._manual_trigger_allowed():
             return jsonify({
                 'ok': False,
@@ -667,7 +665,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/turntable/move', methods=['POST'])
     def api_turntable_move():
         """JSON body: {"angle": <int>} — 턴테이블 목표 각도 발행."""
-        from flask import request
         if not hmi_node._manual_trigger_allowed():
             return jsonify({
                 'ok': False,
@@ -726,7 +723,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         2. 턴테이블을 0° → 90° → 180° → 270° 순서로 순환
            (inspect_node가 /motor/turntable_done 수신 시 자동 캡쳐)
         """
-        from flask import request
         data = request.get_json(silent=True) or {}
         angles = data.get('angles', [0, 90, 180, 270])
         delay  = float(data.get('delay_sec', 1.5))  # 턴테이블 회전 안정화 대기
@@ -755,19 +751,21 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         return jsonify({'ok': True})
 
     # ─── MJPEG 스트리밍 ───
+    # No Signal 프레임은 정적이므로 앱 초기화 시 한 번만 인코딩해 캐싱한다
+    # (루프마다 np.zeros + imencode 재생성 시 CPU 낭비).
+    _blank = np.zeros((240, 320, 3), dtype=np.uint8)
+    cv2.putText(_blank, 'No Signal', (80, 130),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 80, 80), 2)
+    _, _blank_buf = cv2.imencode('.jpg', _blank)
+    _blank_jpeg = _blank_buf.tobytes()
+
     def _mjpeg_generator(cam_key: str):
         while True:
             jpeg = hmi_node.get_camera_jpeg(cam_key)
-            if jpeg is not None:
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n')
-            else:
-                blank = np.zeros((240, 320, 3), dtype=np.uint8)
-                cv2.putText(blank, 'No Signal', (80, 130),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (80, 80, 80), 2)
-                _, buf = cv2.imencode('.jpg', blank)
-                yield (b'--frame\r\n'
-                       b'Content-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+            if jpeg is None:
+                jpeg = _blank_jpeg
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n')
             time.sleep(1.0 / hmi_node._stream_fps)
 
     @app.route('/stream/<cam_key>')

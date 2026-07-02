@@ -4,6 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QUVI — Quality Vision Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 </head>
@@ -127,17 +130,17 @@
                 <div class="camera-grid">
                     <div class="camera-feed">
                         <img src="/stream/sidecam" alt="사이드캠" loading="lazy">
-                        <div class="camera-label">📷 사이드캠 — Zone 1 (Pickup)</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>사이드캠 — Zone 1 (Pickup)</div>
                         <div class="camera-status" id="sidecamStatus"></div>
                     </div>
                     <div class="camera-feed">
                         <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
-                        <div class="camera-label">📷 검사캠 — Zone 2 (Inspection)</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>검사캠 — Zone 2 (Inspection)</div>
                         <div class="camera-status" id="cam2Status"></div>
                     </div>
                     <div class="camera-feed">
                         <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
-                        <div class="camera-label">🔬 검사 판정 결과</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 판정 결과</div>
                     </div>
                 </div>
 
@@ -306,7 +309,7 @@
                             </div>
 
                             <div class="warning-box">
-                                <strong>⚠️ 안전 조작 및 주의사항</strong>
+                                <strong><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>안전 조작 및 주의사항</strong>
                                 <ul>
                                     <li><strong>충돌 조심</strong>: 팔로워 로봇이 리더 로봇의 급격한 동작을 그대로 따라 하므로, 조작 반경 내 장애물을 사전에 확인해 주세요.</li>
                                     <li><strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 화면 상단 또는 컨트롤러의 <strong>E-STOP</strong> 버튼을 클릭하십시오.</li>
@@ -324,7 +327,7 @@
                         <div class="card-body" style="padding:16px;">
                             <div class="camera-feed main-teleop-feed">
                                 <img src="/stream/sidecam" alt="사이드캠" loading="lazy">
-                                <div class="camera-label">📷 조종용 실시간 사이드캠 피드</div>
+                                <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>조종용 실시간 사이드캠 피드</div>
                             </div>
                         </div>
                     </div>
@@ -340,7 +343,7 @@
                     <!-- 로봇암 관절 상태 카드 -->
                     <div class="card status-card">
                         <div class="card-header">
-                            <span class="card-title">🤖 로봇암 관절 각도 (6축)</span>
+                            <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>로봇암 관절 각도 (6축)</span>
                             <span class="card-subtitle-addon" id="jointSyncTime">정상</span>
                         </div>
                         <div class="card-body status-card-body">
@@ -426,14 +429,16 @@
                         <!-- 리니어 레일 상태 카드 -->
                         <div class="card status-card">
                             <div class="card-header">
-                                <span class="card-title">🚊 리니어 레일 (Linear Rail)</span>
+                                <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="18" x2="22" y2="18"/><rect x="7" y="8" width="10" height="8" rx="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="19" r="1"/></svg>리니어 레일 (Linear Rail)</span>
                             </div>
                             <div class="card-body">
                                 <div class="rail-track-container">
                                     <!-- 레일 트랙 선 -->
                                     <div class="rail-track">
                                         <div class="rail-carriage" id="railCarriage">
-                                            <div class="carriage-icon">🤖</div>
+                                            <div class="carriage-icon">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73V8z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                                            </div>
                                         </div>
                                     </div>
                                     <!-- 구역 표시핀들 -->
@@ -470,7 +475,7 @@
                         <!-- 턴테이블 상태 카드 -->
                         <div class="card status-card">
                             <div class="card-header">
-                                <span class="card-title">🔄 턴테이블 회전 (Turntable)</span>
+                                <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>턴테이블 회전 (Turntable)</span>
                             </div>
                             <div class="card-body turntable-card-body">
                                 <div class="turntable-visual">
@@ -500,7 +505,7 @@
                 <!-- 장치 설정 카드 (카메라/로봇/ESP USB) -->
                 <div class="card status-card" style="flex:1 1 360px; margin-top:0;" id="device-config-panel">
                     <div class="card-header">
-                        <span class="card-title">🔌 장치 설정 (USB)</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12l-1 5a5 5 0 0 1-10 0z"/><line x1="12" y1="17" x2="12" y2="22"/></svg>장치 설정 (USB)</span>
                         <span style="font-size:11px;color:var(--text-muted);">저장 시 시스템 재시작 필요</span>
                     </div>
                     <div class="card-body">
@@ -518,7 +523,7 @@
                 <!-- ACT 모델 선택 카드 (장치 설정 옆) -->
                 <div class="card status-card" style="flex:1 1 360px; margin-top:0;" id="act-model-panel">
                     <div class="card-header">
-                        <span class="card-title">🧠 ACT 모델 선택</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>ACT 모델 선택</span>
                         <span style="font-size:11px;color:var(--text-muted);">IDLE 상태에서만 적용</span>
                     </div>
                     <div class="card-body">
@@ -559,7 +564,7 @@
                 <!-- 수동 제어 패널 카드 -->
                 <div class="card status-card" style="margin-top:16px;" id="manual-control-panel">
                     <div class="card-header">
-                        <span class="card-title">🕹️ 수동 제어 패널</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><line x1="12" y1="10" x2="12" y2="19"/><line x1="7" y1="19" x2="17" y2="19"/></svg>수동 제어 패널</span>
                         <span style="font-size:11px;color:var(--text-muted);">IDLE / FINISHED 상태에서만 동작</span>
                     </div>
                     <div class="card-body">
@@ -675,7 +680,7 @@
                 <!-- 하단 FSM 순서도 카드 -->
                 <div class="card status-card" style="margin-top:16px;">
                     <div class="card-header">
-                        <span class="card-title">⛓️ 시스템 상태 시퀀스 (FSM Flow)</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>시스템 상태 시퀀스 (FSM Flow)</span>
                     </div>
                     <div class="card-body">
                         <div class="fsm-flow-container">
@@ -744,7 +749,7 @@
             <div class="inspection-tab-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">📷 턴테이블 캡쳐 원본 (Live)</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>턴테이블 캡쳐 원본 (Live)</span>
                     </div>
                     <div class="card-body">
                         <div class="camera-feed" style="height: auto;">
@@ -754,7 +759,7 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">🔬 검사 결과 디버그 뷰</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 결과 디버그 뷰</span>
                     </div>
                     <div class="card-body">
                         <div class="camera-feed" style="height: auto;">
@@ -764,7 +769,7 @@
                 </div>
                 <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
-                        <span class="card-title">📝 상세 판정 기준 및 결과</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>상세 판정 기준 및 결과</span>
                         <span id="detailBadge" class="result-badge" style="display:none;">—</span>
                     </div>
                     <div class="card-body">
