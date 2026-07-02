@@ -42,6 +42,15 @@ data/datasets/inspection/images/
 *.engine
 claude.md
 
+# Runtime-generated (소스 아님)
+data/inspection_logs/
+data/reference_images/
+data/device_config.json
+data/.restart_requested
+
+# QUVI 무관 (별도 위젯)
+ClaudeUsageWidget/
+
 # OS
 .DS_Store
 Thumbs.db

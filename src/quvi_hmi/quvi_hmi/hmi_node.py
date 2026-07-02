@@ -401,8 +401,13 @@ class HmiNode(Node):
             return False
         self.get_logger().warn(f'{delay}초 후 시스템 재시작')
         # 분리 세션으로 실행해 launch 종료에도 살아남아 종료 신호를 보낸다.
+        # 패턴은 "bin/ros2 ..." 로 실제 launch 프로세스만 매칭해야 한다 —
+        # "ros2 launch quvi_bringup" 만으로는 스크립트 본문에 같은 문자열을 가진
+        # run.sh 감시 루프 bash 까지 죽어 relaunch 가 불발된다.
+        # 시그널은 SIGINT — ros2 launch 는 SIGTERM 수신 시 자식 노드를 정리하지
+        # 않고 고아로 남긴다 (ros2/launch#666, Jazzy 미수정).
         subprocess.Popen(
-            ['bash', '-c', f'sleep {int(delay)}; pkill -TERM -f "ros2 launch quvi_bringup"'],
+            ['bash', '-c', f'sleep {int(delay)}; pkill -INT -f "bin/ros2 launch quvi_bringup"'],
             start_new_session=True)
         return True
 

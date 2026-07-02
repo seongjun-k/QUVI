@@ -133,18 +133,6 @@ POSE_HOME = {
     'shoulder_pan': 2048, 'shoulder_lift': 1800, 'elbow_flex': 1200,
     'wrist_flex': 2048, 'wrist_roll': 2048, 'gripper': 2048,
 }
-POSE_FRONT = {
-    'shoulder_pan': 2048, 'shoulder_lift': 1400, 'elbow_flex': 900,
-    'wrist_flex': 1800, 'wrist_roll': 2048, 'gripper': 2300,
-}
-POSE_BACK = {
-    'shoulder_pan': 0, 'shoulder_lift': 1400, 'elbow_flex': 900,
-    'wrist_flex': 1800, 'wrist_roll': 2048, 'gripper': 2300,
-}
-POSE_PLACE = {
-    'shoulder_pan': 2048, 'shoulder_lift': 1600, 'elbow_flex': 1100,
-    'wrist_flex': 2048, 'wrist_roll': 2048, 'gripper': 2300,
-}
 
 POSE_LIFT_ARM = {
     'shoulder_lift': 1800, 'elbow_flex': 1200, 'wrist_flex': 2048, 'wrist_roll': 2048,
@@ -1080,11 +1068,8 @@ class RobotControlNode(Node):
         self._publish_status(f'자세 변경: {label}')
         self.get_logger().info(f'자세 변경: {label} → {target_pose}')
 
-        if target_pose == POSE_BACK and POSE_BACK == POSE_FRONT:
-            self.get_logger().warn('경고: POSE_BACK과 POSE_FRONT의 모터 제어값이 동일합니다.')
-
         success = self._write_raw_position(target_pose)
-        time.sleep(1.5)
+        self._wait_motion_done(target_pose)   # 고정 sleep 대신 완료 폴링(abort-aware)
 
         self._set_state(RobotState.IDLE)
         self._publish_status(f'자세 변경 완료: {label}')

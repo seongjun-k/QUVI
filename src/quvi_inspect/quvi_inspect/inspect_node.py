@@ -30,7 +30,7 @@ from quvi_robot_control.utils import decode_compressed, decode_raw, BinaryCache,
 
 
 class InspectNode(Node):
-    """양불 판정 노드 — CAD 비교 + 표면 특징 분석."""
+    """양불 판정 노드 — 표면 특징 분석 (CAD 비교는 제거됨)."""
 
     def __init__(self):
         super().__init__('inspect_node')
