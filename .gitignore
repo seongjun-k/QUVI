@@ -48,6 +48,10 @@ data/reference_images/
 data/device_config.json
 data/.restart_requested
 
+# ML 이상탐지 산출물 (백본 가중치 275MB + 뱅크/데이터셋, 학습 재현은 스크립트로)
+data/models/
+data/anomaly_dataset/
+
 # QUVI 무관 (별도 위젯)
 ClaudeUsageWidget/
 
