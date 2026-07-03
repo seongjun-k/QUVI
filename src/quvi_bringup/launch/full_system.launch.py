@@ -9,7 +9,8 @@ QUVI 전체 시스템 Launch 파일
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, ExecuteProcess
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, ExecuteProcess, RegisterEventHandler
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
@@ -172,6 +173,17 @@ def generate_launch_description():
         output='screen',
     )
 
+    # ESP32 는 agent 재기동에 재협상하지 못하므로, agent 기동 전에 DTR/RTS로
+    # 하드 리셋해 프레시 부팅시킨다 (부팅 시 재시도 루프가 새 agent를 잡음).
+    esp32_reset = ExecuteProcess(
+        cmd=[
+            'python3', '/workspace/scripts/reset_esp32.py',
+            '--port', LaunchConfiguration('micro_ros_port'),
+        ],
+        name='esp32_reset',
+        output='screen',
+    )
+
     return LaunchDescription([
         hmi_port_arg,
         sidecam_arg,
@@ -190,7 +202,10 @@ def generate_launch_description():
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
 
-        micro_ros_agent,
+        esp32_reset,
+        RegisterEventHandler(
+            OnProcessExit(target_action=esp32_reset, on_exit=[micro_ros_agent])
+        ),
         vision_launch,
         hmi_node,
         robot_control_node,
