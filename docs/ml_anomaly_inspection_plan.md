@@ -59,8 +59,9 @@ preprocess_for_ml(bgr_image, bin_thresh) -> 256×256 RGB tensor
 ## 4. 단계별 실행 (Surgical / 롤백 보장)
 
 ### Phase 0 — 데이터 수집 + 검수 (선행 게이트, 성패 좌우)
-- [ ] `scripts/build_anomaly_dataset.py`: `inspection_logs`의 `*_PASS` 폴더를 각도별로 모아 `data/anomaly_dataset/{angle}/`로 정리 + 썸네일 시트 생성
-- [ ] 실제 장비로 정상품 반복 검사 촬영 — **목표 각도당 ≥50장, 최소 20장**. 조명·거치 조건은 실검사와 동일하게, 자연스러운 놓임 편차 포함(정상 변동성 학습)
+- [x] `scripts/build_anomaly_dataset.py`: `inspection_logs`의 `*_PASS` 폴더를 각도별로 모아 `data/anomaly_dataset/{angle}/`로 정리 + 썸네일 시트 생성
+- [x] **HMI 데이터셋 촬영 모드** (2026-07-03 추가): 검사 사이클 없이 대시보드 버튼으로 수집 — `/api/capture/dataset/start` → 턴테이블 자동 순환, **정지 후 2.0s(노출 안정) 캡처 → 1.0s 후 다음 회전**. 컬러 원본을 `data/anomaly_dataset/raw/{angle}/{timestamp}.png` 누적 저장 (기준 이미지 무영향)
+- [ ] 실제 장비로 정상품 반복 촬영 — **목표 각도당 ≥50장, 최소 20장**. 조명·거치 조건은 실검사와 동일하게, 자연스러운 놓임 편차 포함(정상 변동성 학습). 방법: 정상품 올림 → "데이터셋 촬영" 버튼 → 재배치 → 반복
 - [ ] **사람 검수(필수)**: 룰 판정이 붙인 PASS 라벨을 그대로 믿지 않음 — 썸네일 시트에서 사람이 불량 혼입 제거. *오염된 정상셋 = 불량을 정상으로 학습*
 - 게이트: 검수 통과 정상 이미지 각도당 20장 미만이면 중단하고 재평가
 
@@ -71,6 +72,7 @@ preprocess_for_ml(bgr_image, bin_thresh) -> 256×256 RGB tensor
 - [ ] 산출물: 각도별 정상/불량 점수 분포 리포트 (분리도 눈으로 확인)
 
 ### Phase 2 — 노드 통합 (판정은 아직 룰)
+- [ ] **캡처 타이밍 정합**: 데이터셋은 정지 후 2.0s(노출 안정)에 촬영되나 실검사는 `capture_settle_sec=0.4s`에 촬영 → train/infer 노출 조건 불일치. 검사 settle을 2.0s로 올리고 `inspection_finalize_sec`(현 12s)·오케스트레이터 페이싱을 함께 상향 조정할 것
 - [ ] `_load_params`에 추가: `anomaly_enabled(False)`, `anomaly_model_dir`, `anomaly_threshold`, `anomaly_device('cuda')`
 - [ ] init에서 뱅크 로드 (파일 없거나 로드 실패 → 경고 로그 + 자동 비활성, **노드는 절대 죽지 않음**)
 - [ ] `_surface_analysis()`에서 각도별 이상점수 계산, worst(최대) 점수를 결과 dict에 추가

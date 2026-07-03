@@ -64,6 +64,10 @@ class InspectNode(Node):
             Bool, '/inspection/capture_reference',
             self._ref_capture_trigger_callback, 10)
 
+        self._dataset_capture_sub = self.create_subscription(
+            Bool, '/inspection/capture_dataset',
+            self._dataset_capture_trigger_callback, 10)
+
         self._grasp_cmd_sub = self.create_subscription(
             GraspGoal, '/robot/grasp_command',
             self._grasp_cmd_callback, 10)
@@ -79,6 +83,7 @@ class InspectNode(Node):
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
         self._ref_capture_active = False
+        self._dataset_capture_active = False
         self._current_object_index = 0
         self._last_align_info: Dict[int, Dict] = {}
 
@@ -90,6 +95,13 @@ class InspectNode(Node):
         self._settle_timer = self.create_timer(
             max(0.05, float(self._capture_settle)), self._on_settle_elapsed)
         self._settle_timer.cancel()
+
+        # ─── 데이터셋 촬영 모드 전용 안정화 타이머 ───
+        # ML 정상품 데이터셋 수집용 별도 병렬 모드. 기존 _settle_timer 경로는 건드리지 않고
+        # 전용 타이머로 분리해 노출 안정 대기 시간(dataset_capture_settle_sec)을 독립 적용한다.
+        self._ds_settle_timer = self.create_timer(
+            max(0.05, float(self._ds_settle_sec)), self._on_dataset_settle_elapsed)
+        self._ds_settle_timer.cancel()
 
         # ─── 검사 워치독 (#4) ───
         # turntable_done 누락(예: 0°에서 0°로 '이동' 시 done 미발행)으로 캡처가
@@ -136,6 +148,9 @@ class InspectNode(Node):
             ('inspection_log_dir',      '/workspace/data/inspection_logs',  '_log_dir'),
             ('publish_debug_image',     True,                               '_pub_debug'),
             ('debug_image_topic',       '/inspect/debug_image',             '_debug_topic'),
+            # ─── 데이터셋 촬영 모드 (ML 정상품 수집) ───
+            ('dataset_capture_settle_sec', 2.0,                             '_ds_settle_sec'),
+            ('dataset_capture_dir',     '/workspace/data/anomaly_dataset/raw', '_ds_dir'),
         ]
 
         for name, default, attr_name in params:
@@ -199,6 +214,12 @@ class InspectNode(Node):
     def _turntable_done_callback(self, msg: Bool):
         """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약 (T4)."""
         if not msg.data:
+            return
+        if self._dataset_capture_active:
+            # 데이터셋 촬영 모드는 전용 타이머로 분리 처리 (기존 경로 무변경).
+            if not self._ds_settle_timer.is_canceled():
+                return
+            self._ds_settle_timer.reset()   # dataset_capture_settle_sec 후 _on_dataset_settle_elapsed 발화
             return
         if not (self._ref_capture_active or self._inspection_active):
             return
@@ -304,6 +325,58 @@ class InspectNode(Node):
             self._ref_capture_active = False
             self.get_logger().info(
                 f'기준 이미지 {len(self._angles)}장 캡처 완료 — 즉시 적용됨')
+
+    def _dataset_capture_trigger_callback(self, msg: Bool):
+        """데이터셋 촬영 트리거 수신 (ML 정상품 데이터셋 수집용 별도 병렬 모드)."""
+        if msg.data:
+            if self._inspection_active or self._ref_capture_active:
+                self.get_logger().warn('검사/기준 캡처 진행 중 — 데이터셋 캡처 무시')
+                return
+            self._dataset_capture_active = True
+            self._captured_images.clear()
+            self.get_logger().info(
+                f'데이터셋 촬영 모드 활성화 | '
+                f'저장 경로: {self._ds_dir} | '
+                f'턴테이블 {self._angles}° 순서로 회전시키세요')
+        else:
+            self._dataset_capture_active = False
+
+    def _on_dataset_settle_elapsed(self):
+        """데이터셋 촬영 모드: 안정화 지연 경과 후 캡처 수행 (일회성)."""
+        self._ds_settle_timer.cancel()
+
+        if not self._dataset_capture_active:
+            return
+        for angle in self._angles:
+            if angle not in self._captured_images:
+                self._capture_dataset_angle(angle)
+                break
+
+    def _capture_dataset_angle(self, angle: int):
+        """현재 프레임을 컬러 원본 그대로 데이터셋 디렉토리에 저장.
+
+        기준 이미지(_reference_images)와 무관한 별도 경로로,
+        grayscale 전처리 없이 원본을 저장한다.
+        """
+        if self._latest_frame is None:
+            self.get_logger().warn(f'{angle}° 데이터셋 캡처 실패: 카메라 프레임 없음')
+            return
+
+        frame = self._latest_frame.copy()
+        self._captured_images[angle] = frame
+
+        angle_dir = os.path.join(self._ds_dir, str(angle))
+        os.makedirs(angle_dir, exist_ok=True)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        path = os.path.join(angle_dir, f'{timestamp}.png')
+        cv2.imwrite(path, frame)
+        self.get_logger().info(f'데이터셋 이미지 저장: {path}')
+
+        if len(self._captured_images) == len(self._angles):
+            self._dataset_capture_active = False
+            self._captured_images.clear()
+            self.get_logger().info(
+                f'데이터셋 {len(self._angles)}장 저장 완료 — 경로: {self._ds_dir}')
 
     # ─────────────────────────────────────────────
     # 메인 검사 로직

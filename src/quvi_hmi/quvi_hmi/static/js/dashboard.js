@@ -822,6 +822,59 @@ async function stopRefCapture() {
     }
 }
 
+// ─── 데이터셋 촬영 (ML 정상품 수집) ───
+async function startDatasetCapture() {
+    const settleSec = parseFloat(document.getElementById('dsCaptureSettle')?.value || 2.0);
+    const postSec = 1.0;
+    const statusEl = document.getElementById('dsCaptureStatus');
+    const startBtn = document.getElementById('dsCaptureStartBtn');
+    const stopBtn  = document.getElementById('dsCaptureStopBtn');
+
+    if (statusEl) statusEl.textContent = '촬영 진행 중... (0° → 90° → 180° → 270°)';
+    if (statusEl) statusEl.style.color = 'var(--accent-green)';
+    if (startBtn) startBtn.disabled = true;
+
+    try {
+        const res = await fetch('/api/capture/dataset/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                angles: [0, 90, 180, 270],
+                settle_sec: settleSec,
+                post_capture_sec: postSec,
+            }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            // (settle+post) × 4각도 후 완료로 표시
+            const totalMs = (settleSec + postSec) * 4 * 1000 + 1000;
+            setTimeout(() => {
+                if (statusEl) { statusEl.textContent = '촬영 완료 ✓'; statusEl.style.color = 'var(--accent-green)'; }
+                if (startBtn) startBtn.disabled = false;
+            }, totalMs);
+        } else {
+            if (statusEl) { statusEl.textContent = '오류: ' + (data.error || '알 수 없음'); statusEl.style.color = 'var(--accent-red)'; }
+            if (startBtn) startBtn.disabled = false;
+        }
+    } catch (e) {
+        console.error('[QUVI] 데이터셋 촬영 시작 실패:', e);
+        if (statusEl) { statusEl.textContent = '네트워크 오류'; statusEl.style.color = 'var(--accent-red)'; }
+        if (startBtn) startBtn.disabled = false;
+    }
+}
+
+async function stopDatasetCapture() {
+    const statusEl = document.getElementById('dsCaptureStatus');
+    const startBtn = document.getElementById('dsCaptureStartBtn');
+    try {
+        await fetch('/api/capture/dataset/stop', { method: 'POST' });
+        if (statusEl) { statusEl.textContent = '촬영 중단됨'; statusEl.style.color = 'var(--text-muted)'; }
+        if (startBtn) startBtn.disabled = false;
+    } catch (e) {
+        console.error('[QUVI] 데이터셋 촬영 중단 실패:', e);
+    }
+}
+
 // ─── ACT 모델 선택 ───
 let _actModelUserTouched = false;
 document.addEventListener('change', (e) => {

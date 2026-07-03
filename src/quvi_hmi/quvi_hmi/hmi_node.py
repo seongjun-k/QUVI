@@ -185,6 +185,7 @@ class HmiNode(Node):
         self._led_pub       = self.create_publisher(Bool,   '/motor/turntable_led', 10)
         self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
         self._ref_capture_pub = self.create_publisher(Bool, '/inspection/capture_reference', 10)
+        self._ds_capture_pub = self.create_publisher(Bool, '/inspection/capture_dataset', 10)
 
         # ─── 기준 이미지 캡처 턴테이블 동기화 ───
         self._ref_turntable_done_event = threading.Event()
@@ -422,6 +423,18 @@ class HmiNode(Node):
         msg.data = bool(start)
         self._ref_capture_pub.publish(msg)
         self.get_logger().info(f'기준 이미지 캡쳐 명령: {"START" if start else "STOP"}')
+
+    def send_capture_dataset_command(self, start: bool):
+        """데이터셋 촬영 트리거 발행 (/inspection/capture_dataset).
+
+        start=True  : ML 정상품 데이터셋 촬영 모드 시작 — inspect_node가 턴테이블
+                       done 신호마다 컬러 원본 이미지를 저장한다 (기준 이미지와 별도 경로).
+        start=False : 촬영 모드 중단.
+        """
+        msg = Bool()
+        msg.data = bool(start)
+        self._ds_capture_pub.publish(msg)
+        self.get_logger().info(f'데이터셋 촬영 명령: {"START" if start else "STOP"}')
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
@@ -748,6 +761,51 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     def api_capture_reference_stop():
         """기준 이미지 캡쳐를 중단한다."""
         hmi_node.send_capture_reference_command(False)
+        return jsonify({'ok': True})
+
+    # ─── 데이터셋 촬영 API (ML 정상품 수집) ───
+    @app.route('/api/capture/dataset/start', methods=['POST'])
+    def api_capture_dataset_start():
+        """데이터셋(ML 정상품 수집) 촬영을 시작한다.
+
+        정상품을 턴테이블에 올려둔 상태에서 호출한다.
+        1. /inspection/capture_dataset = True 발행
+        2. 턴테이블을 순서대로 회전
+           (inspect_node가 done 수신 후 settle_sec 뒤 캡처, 캡처 후
+            post_capture_sec 뒤에야 다음 회전 명령을 보내 노출 안정을 보장)
+        """
+        data = request.get_json(silent=True) or {}
+        angles = data.get('angles', [0, 90, 180, 270])
+        settle_sec = float(data.get('settle_sec', 2.0))
+        post_capture_sec = float(data.get('post_capture_sec', 1.0))
+
+        def _run_dataset_sequence():
+            import time as _time
+            hmi_node.send_capture_dataset_command(True)
+            _time.sleep(0.3)
+            for angle in angles:
+                hmi_node._ref_turntable_done_event.clear()
+                hmi_node.send_turntable_command(angle)
+                # ESP32의 실제 turntable_done 신호를 기다림 (시간 기반 추측 제거)
+                done = hmi_node._ref_turntable_done_event.wait(
+                    timeout=settle_sec + post_capture_sec + 5.0)
+                if not done:
+                    hmi_node.get_logger().warn(f'데이터셋 캡처: {angle}° turntable_done 타임아웃')
+                # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
+                _time.sleep(settle_sec + post_capture_sec)
+            hmi_node.get_logger().info(f'데이터셋 촬영 순환 완료: {angles}')
+
+        t = threading.Thread(target=_run_dataset_sequence, daemon=True)
+        t.start()
+        return jsonify({
+            'ok': True, 'angles': angles,
+            'settle_sec': settle_sec, 'post_capture_sec': post_capture_sec,
+        })
+
+    @app.route('/api/capture/dataset/stop', methods=['POST'])
+    def api_capture_dataset_stop():
+        """데이터셋 촬영을 중단한다."""
+        hmi_node.send_capture_dataset_command(False)
         return jsonify({'ok': True})
 
     # ─── MJPEG 스트리밍 ───
