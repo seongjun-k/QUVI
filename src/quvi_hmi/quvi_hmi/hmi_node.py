@@ -16,7 +16,6 @@ Flask + WebSocket 기반 Web HMI 대시보드.
   발행: /hmi/command (시작/정지/비상정지)
 """
 
-import base64
 import json
 import os
 import threading
@@ -35,9 +34,38 @@ from std_msgs.msg import Bool, String, Int32
 from quvi_msgs.msg import InspectionResult, SystemStatus
 
 # Flask + SocketIO
-from flask import Flask, Response, jsonify, render_template, request, send_from_directory
+from flask import Flask, Response, jsonify, render_template, request
 from flask_socketio import SocketIO
 
+
+# ─── ROS 토픽 이름 (이 파일 안에서만 사용하는 SSoT.
+#      quvi_robot_control/topics.py 의 값과 일치해야 한다) ───
+TOPIC_HMI_STATUS          = '/hmi/status'
+TOPIC_HMI_COMMAND         = '/hmi/command'
+TOPIC_ACT_MODELS          = '/robot/act_models'
+TOPIC_ACT_CURRENT         = '/robot/act_current'
+TOPIC_ACT_MODEL_SELECT    = '/robot/act_model_select'
+TOPIC_INSPECTION_RESULT   = '/inspection/result'
+TOPIC_INSPECTION_TRIGGER  = '/inspection/trigger'
+TOPIC_CAPTURE_REFERENCE   = '/inspection/capture_reference'
+TOPIC_CAPTURE_DATASET     = '/inspection/capture_dataset'
+TOPIC_ROBOT_JOINT_STATES  = '/robot/joint_states'
+TOPIC_ROBOT_TELEOP_CMD    = '/robot/teleop_command'
+TOPIC_ESTOP               = '/system/estop'
+TOPIC_MOTOR_RAIL          = '/motor/rail'
+TOPIC_MOTOR_TURNTABLE_CMD = '/motor/turntable_cmd'
+TOPIC_MOTOR_TURNTABLE_LED = '/motor/turntable_led'
+TOPIC_MOTOR_TURNTABLE_DONE = '/motor/turntable_done'
+
+# ─── FSM 표시 상태 (SSoT) ───
+# 상태 발원지는 main_orchestrator_node.py 의 FsmState 이며, 대시보드는 접두어
+# 매칭으로 아래 대분류만 표시한다. 상태 추가·변경 시 이 목록과
+# dashboard.js(FSM_NODES·STAGE_LABELS), dashboard.html(fsm_* 노드) 3파일을
+# 동시에 수정해야 한다.
+FSM_DISPLAY_STATES = (
+    'INIT', 'IDLE', 'GRASPING', 'INSPECTING', 'SORTING',
+    'RELEASING', 'HOMING', 'TELEOPING', 'FINISHED', 'ERROR', 'ESTOP',
+)
 
 # 레일 스테이션 맵 (index → {name, mm})
 # 캘리브레이션 후 mm 값을 여기서만 수정하면 UI에 자동 반영된다.
@@ -131,23 +159,23 @@ class HmiNode(Node):
         self._act_models = []       # [{'name','path','step'}]
         self._act_current = {}      # {'path','name','ready','loading','use_act'}
         self._act_model_select_pub = self.create_publisher(
-            String, '/robot/act_model_select', 10)
+            String, TOPIC_ACT_MODEL_SELECT, 10)
 
         # ─── ROS 2 Subscribers ───
         self.create_subscription(
-            SystemStatus, '/hmi/status', self._status_cb, 10)
+            SystemStatus, TOPIC_HMI_STATUS, self._status_cb, 10)
         # ACT 모델 목록/현재상태 (robot_control_node 가 latched 로 발행)
         from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
         _latched = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                               durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(
-            String, '/robot/act_models', self._act_models_cb, _latched)
+            String, TOPIC_ACT_MODELS, self._act_models_cb, _latched)
         self.create_subscription(
-            String, '/robot/act_current', self._act_current_cb, _latched)
+            String, TOPIC_ACT_CURRENT, self._act_current_cb, _latched)
         self.create_subscription(
-            InspectionResult, '/inspection/result', self._inspection_cb, 10)
+            InspectionResult, TOPIC_INSPECTION_RESULT, self._inspection_cb, 10)
         self.create_subscription(
-            JointState, '/robot/joint_states', self._joint_states_cb, 10)
+            JointState, TOPIC_ROBOT_JOINT_STATES, self._joint_states_cb, 10)
         # NOTE: /motor/rail 은 명령 토픽(HMI→ESP32)이므로 구독하지 않음.
         # 구독하면 자신이 발행한 명령을 즉시 수신하여 실제 위치처럼 표시되는
         # 루프백 문제가 발생한다. rail_position 은 send_rail_command() 에서
@@ -174,23 +202,23 @@ class HmiNode(Node):
             lambda msg: self._cam_raw_cb(msg, 'inspect_debug'), 5)
 
         # ─── ROS 2 Publishers ───
-        self._cmd_pub = self.create_publisher(String, '/hmi/command', 10)
-        self._inspect_trigger_pub = self.create_publisher(Bool, '/inspection/trigger', 10)
-        self._teleop_pub = self.create_publisher(Bool, '/robot/teleop_command', 10)
-        self._estop_pub = self.create_publisher(Bool, '/system/estop', 10)
+        self._cmd_pub = self.create_publisher(String, TOPIC_HMI_COMMAND, 10)
+        self._inspect_trigger_pub = self.create_publisher(Bool, TOPIC_INSPECTION_TRIGGER, 10)
+        self._teleop_pub = self.create_publisher(Bool, TOPIC_ROBOT_TELEOP_CMD, 10)
+        self._estop_pub = self.create_publisher(Bool, TOPIC_ESTOP, 10)
         # [fix] /motor/rail 퍼블리셔 타입: Float32 → Int32
         # ESP32 rail_subscription_callback이 std_msgs/Int32로 수신하므로 타입을 일치시킴.
         # send_rail_command()에서 mm → steps 변환 후 발행한다.
-        self._rail_pub      = self.create_publisher(Int32,  '/motor/rail', 10)
-        self._led_pub       = self.create_publisher(Bool,   '/motor/turntable_led', 10)
-        self._turntable_pub = self.create_publisher(Int32,  '/motor/turntable_cmd', 10)
-        self._ref_capture_pub = self.create_publisher(Bool, '/inspection/capture_reference', 10)
-        self._ds_capture_pub = self.create_publisher(Bool, '/inspection/capture_dataset', 10)
+        self._rail_pub      = self.create_publisher(Int32,  TOPIC_MOTOR_RAIL, 10)
+        self._led_pub       = self.create_publisher(Bool,   TOPIC_MOTOR_TURNTABLE_LED, 10)
+        self._turntable_pub = self.create_publisher(Int32,  TOPIC_MOTOR_TURNTABLE_CMD, 10)
+        self._ref_capture_pub = self.create_publisher(Bool, TOPIC_CAPTURE_REFERENCE, 10)
+        self._ds_capture_pub = self.create_publisher(Bool, TOPIC_CAPTURE_DATASET, 10)
 
         # ─── 기준 이미지 캡처 턴테이블 동기화 ───
         self._ref_turntable_done_event = threading.Event()
         self.create_subscription(
-            Bool, '/motor/turntable_done',
+            Bool, TOPIC_MOTOR_TURNTABLE_DONE,
             self._ref_turntable_done_cb, 10)
 
         # 자율 시퀀스(P1~P6)는 오케스트레이터 + robot_control_node 단일 경로가 담당한다.
@@ -247,24 +275,24 @@ class HmiNode(Node):
             # pass/fail 카운트는 오케스트레이터의 /hmi/status 가 단일 source of truth.
             # 여기서 증가시키면 _status_cb 와 이중 집계되므로 history 누적만 한다.
 
+    def _store_frame(self, frame, key: str):
+        """디코딩된 프레임을 JPEG 인코딩해 캐시에 저장 (카메라 콜백 공통부)."""
+        if frame is None:
+            return
+        _, jpeg = cv2.imencode('.jpg', frame,
+                               [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
+        with self._lock:
+            self._camera_frames[key] = frame
+            self._jpeg_cache[key] = jpeg.tobytes()
+
     def _cam_cb(self, msg: CompressedImage, key: str):
         np_arr = np.frombuffer(msg.data, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if frame is not None:
-            _, jpeg = cv2.imencode('.jpg', frame,
-                                   [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
-            with self._lock:
-                self._camera_frames[key] = frame
-                self._jpeg_cache[key] = jpeg.tobytes()
+        self._store_frame(frame, key)
 
     def _cam_raw_cb(self, msg: Image, key: str):
         frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        if frame is not None:
-            _, jpeg = cv2.imencode('.jpg', frame,
-                                   [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
-            with self._lock:
-                self._camera_frames[key] = frame
-                self._jpeg_cache[key] = jpeg.tobytes()
+        self._store_frame(frame, key)
 
     # ─── 제어 명령 발행 ───
     def send_command(self, command: str):
@@ -321,7 +349,6 @@ class HmiNode(Node):
 
     # ─── ACT 모델 선택 ───
     def _act_models_cb(self, msg: String):
-        import json
         try:
             with self._lock:
                 self._act_models = json.loads(msg.data)
@@ -329,7 +356,6 @@ class HmiNode(Node):
             self.get_logger().warn(f'ACT 모델 목록 파싱 실패: {e}')
 
     def _act_current_cb(self, msg: String):
-        import json
         try:
             with self._lock:
                 self._act_current = json.loads(msg.data)
@@ -437,6 +463,7 @@ class HmiNode(Node):
         self.get_logger().info(f'데이터셋 촬영 명령: {"START" if start else "STOP"}')
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
+    # FSM_DISPLAY_STATES 참조.
     _MANUAL_TRIGGER_SAFE_STATES = frozenset({'IDLE', 'FINISHED', 'INIT'})
 
     def _manual_trigger_allowed(self) -> bool:
@@ -601,6 +628,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         ok = hmi_node.request_restart(delay=delay)
         return jsonify({'ok': bool(ok), 'restart_in': delay, 'saved': merged})
 
+    # ─── 검사 이력/통계 API ───
     @app.route('/api/inspection/history')
     def api_inspection_history():
         return jsonify(hmi_node.get_inspection_history())

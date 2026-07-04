@@ -21,8 +21,8 @@ QUVI ROBOT_CONTROL_NODE
   2. OMX Dynamixel 관절 제어 (lerobot 공식 API)
      - 홈 복귀, 자세 이동, 그리퍼 제어
   3. 리더-팔로워 텔레오퍼레이션 (lerobot OmxLeader → OmxFollower)
-  4. 레일 이동 명령 → ESP32-S3 (/motor/rail Float32 mm)
-  5. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable)
+  4. 레일 이동 명령 → ESP32-S3 (/motor/rail Int32 steps)
+  5. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable_cmd)
 
 ROS 2 인터페이스 (Subscriber):
   /camera/sidecam/compressed  sensor_msgs/CompressedImage   사이드캠 이미지
@@ -34,8 +34,7 @@ ROS 2 인터페이스 (Subscriber):
 
 ROS 2 인터페이스 (Publisher):
   /robot/joint_states         sensor_msgs/JointState        현재 관절 각도 (30 Hz)
-  /motor/rail                 std_msgs/Float32              레일 목표 위치 mm (→ ESP32)
-  /motor/turntable            std_msgs/Int32                턴테이블 목표 각도 (→ ESP32)
+  /motor/rail                 std_msgs/Int32                레일 목표 위치 steps (→ ESP32)
   /robot/status               std_msgs/String               상태 문자열
   /robot/act_done             std_msgs/Bool                 ACT 파지 완료 신호
   /robot/grasp_done           std_msgs/Bool                 파지/투하 완료 신호
@@ -48,6 +47,7 @@ ROS 2 서비스 (Server):
   /robot/close_gripper        std_srvs/Trigger              그리퍼 닫기
 """
 
+import json
 import math
 import sys
 import threading
@@ -56,6 +56,7 @@ from enum import IntEnum
 from pathlib import Path
 from typing import List, Optional
 
+import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
@@ -89,8 +90,6 @@ from lerobot.robots.omx_follower.config_omx_follower import OmxFollowerConfig
 from lerobot.teleoperators.omx_leader import OmxLeader
 from lerobot.teleoperators.omx_leader.config_omx_leader import OmxLeaderConfig
 
-import quvi_robot_control.topics as topics
-
 
 # ─────────────────────────────────────────────────────────────
 # 상수 및 열거형
@@ -121,6 +120,10 @@ class RobotState(IntEnum):
 # 그리퍼 raw 위치값 (XL330-M288T)
 GRIPPER_OPEN  = 2300
 GRIPPER_CLOSE = 1800
+
+# mm → steps 변환 계수. ESP32 Config.h(STEPPER 200×16 / 40mm)와 hmi_node.py 의
+# RAIL_STEPS_PER_MM 과 반드시 일치해야 한다.
+RAIL_STEPS_PER_MM = 80
 
 
 # 관절 이름 (ROS 2 JointState 메시지용)
@@ -383,7 +386,6 @@ class RobotControlNode(Node):
         실패 시 기존 정책을 유지하고 False 반환.
         """
         try:
-            import sys
             for _lerobot_src in ['/workspace/lerobot/src', '/physical_ai_tools/lerobot/src']:
                 if _lerobot_src not in sys.path:
                     sys.path.insert(0, _lerobot_src)
@@ -430,7 +432,6 @@ class RobotControlNode(Node):
                    output action shape == [6].
         반환: [{'name','path','step'}] (name 오름차순)
         """
-        import json
         roots = []
         if self._act_models_root:
             roots.append(Path(self._act_models_root))
@@ -485,7 +486,6 @@ class RobotControlNode(Node):
 
     def _publish_act_models(self):
         """스캔한 모델 목록을 latched 토픽으로 발행."""
-        import json
         try:
             models = self._scan_act_models()
         except Exception as e:
@@ -498,7 +498,6 @@ class RobotControlNode(Node):
 
     def _publish_act_current(self):
         """현재 모델·로드 상태를 latched 토픽으로 발행."""
-        import json
         name = ''
         for m in getattr(self, '_act_models_cache', []):
             if m['path'] == self._act_model_path:
@@ -598,12 +597,12 @@ class RobotControlNode(Node):
             self._pick_chamber_cmd_callback, 10)
 
         self._teleop_cmd_sub = self.create_subscription(
-            Bool, '/robot/teleop_command',
+            Bool, topics.TOPIC_ROBOT_TELEOP_CMD,
             self._teleop_cmd_callback, 10,
             callback_group=self._cb_group)
 
         self._estop_sub = self.create_subscription(
-            Bool, '/system/estop',
+            Bool, topics.TOPIC_ESTOP,
             self._estop_cmd_callback, 10,
             callback_group=self._cb_group)
 
@@ -614,7 +613,7 @@ class RobotControlNode(Node):
 
         # ACT 모델 선택 수신 (대시보드) → 백그라운드 재로드
         self._act_model_select_sub = self.create_subscription(
-            String, '/robot/act_model_select',
+            String, topics.TOPIC_ACT_MODEL_SELECT,
             self._on_act_model_select, 10,
             callback_group=self._cb_group)
 
@@ -630,12 +629,12 @@ class RobotControlNode(Node):
         _latched = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
                               durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self._act_models_pub = self.create_publisher(
-            String, '/robot/act_models', _latched)
+            String, topics.TOPIC_ACT_MODELS, _latched)
         self._act_current_pub = self.create_publisher(
-            String, '/robot/act_current', _latched)
+            String, topics.TOPIC_ACT_CURRENT, _latched)
 
         self._joint_state_pub = self.create_publisher(
-            JointState, '/robot/joint_states', 10)
+            JointState, topics.TOPIC_ROBOT_JOINT_STATES, 10)
 
         self._rail_pub = self.create_publisher(
             Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
@@ -650,10 +649,10 @@ class RobotControlNode(Node):
             Bool, topics.TOPIC_ROBOT_GRASP_DONE, 10)
 
         self._release_done_pub = self.create_publisher(
-            Bool, '/robot/release_done', 10)
+            Bool, topics.TOPIC_ROBOT_RELEASE_DONE, 10)
 
         self._home_done_pub = self.create_publisher(
-            Bool, '/robot/home_done', 10)
+            Bool, topics.TOPIC_ROBOT_HOME_DONE, 10)
 
         self._rail_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_RAIL_DONE, 10)
@@ -688,7 +687,6 @@ class RobotControlNode(Node):
     # 카메라 콜백
     # ─────────────────────────────────────────────
     def _sidecam_callback(self, msg: CompressedImage):
-        import cv2
         np_arr = np.frombuffer(msg.data, np.uint8)
         frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
         if frame is not None:
@@ -885,7 +883,6 @@ class RobotControlNode(Node):
 
         try:
             import torch
-            import cv2
             # P2: 이전 파지 에피소드의 낡은 액션 큐를 비운다. reset() 없이는 두 번째
             # 파지부터 직전 관측 기반의 남은 액션이 먼저 실행돼 예기치 않게 움직인다.
             self._act_policy.reset()
@@ -1031,7 +1028,7 @@ class RobotControlNode(Node):
             self._esp32_rail_done = False
 
         msg = Int32()
-        msg.data = int(target_mm * 80)
+        msg.data = int(target_mm * RAIL_STEPS_PER_MM)
         self._rail_pub.publish(msg)
 
         if self._use_real_hardware:

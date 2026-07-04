@@ -3,37 +3,57 @@
    WebSocket 실시간 업데이트 + UI 렌더링
    ═══════════════════════════════════════════ */
 
-// ─── WebSocket 연결 ───
-const socket = io();
+/* ═══════════════════════════════════════════
+   [A] 자주 수정하는 영역 — 표시 상수·라벨
+   ═══════════════════════════════════════════ */
 
-function setConnBadge(online) {
-    const badge = document.getElementById('connBadge');
-    const text = document.getElementById('connText');
-    if (!badge || !text) return;
-    badge.className = 'conn-badge ' + (online ? 'online' : 'offline');
-    text.textContent = online ? '서버 연결됨' : '서버 연결 끊김';
-}
+// ─── 진행 단계 라벨 ───
+// SSoT: 발원지 main_orchestrator_node.py FsmState — 변경 시 hmi_node.py FSM_DISPLAY_STATES·dashboard.html fsm_* 노드와 동시 수정
+const STAGE_LABELS = {
+    'INIT':       '시스템 초기화 중',
+    'IDLE':       '대기 중',
+    'GRASPING':   'ACT 파지 진행 중',
+    'INSPECTING': '품질 검사 중',
+    'SORTING':    '분류 이동 중',
+    'RELEASING':  '출력물 투하 중',
+    'HOMING':     '홈 복귀 중',
+    'TELEOPING':  '텔레오퍼레이션 동작 중',
+    'FINISHED':   '작업 완료',
+    'DONE':       '작업 완료',
+    'ERROR':      '오류 발생 — 확인 필요',
+    'ESTOP':      '비상 정지 — E-STOP 활성',
+};
 
-socket.on('connect', () => {
-    console.log('[QUVI] WebSocket 연결됨');
-    setConnBadge(true);
-});
+// ─── FSM Flow 노드 목록 ───
+// SSoT: 발원지 main_orchestrator_node.py FsmState — 변경 시 hmi_node.py FSM_DISPLAY_STATES·dashboard.html fsm_* 노드와 동시 수정
+const FSM_NODES = [
+    'INIT', 'IDLE', 'GRASPING', 'INSPECTING',
+    'SORTING', 'RELEASING', 'HOMING', 'TELEOPING', 'FINISHED',
+    'ERROR', 'ESTOP',
+];
 
-socket.on('disconnect', () => {
-    console.log('[QUVI] WebSocket 연결 끊김');
-    setConnBadge(false);
-});
+// ─── SSIM 검사 각도 및 판정 임계값 ───
+const SSIM_ANGLES = [0, 90, 180, 270];
+const SSIM_THRESHOLD = 0.85;
+const SSIM_WARN = 0.90;
 
-// ─── 실시간 업데이트 수신 ───
-socket.on('status_update', (data) => {
-    updateStatus(data.status);
-    updateStats(data.stats);
-    if (data.latest_inspection) {
-        updateLatestInspection(data.latest_inspection);
-    }
-    // 수동 제어 패널 UI 실시간 갱신
-    updateManualControlPanel(data.status);
-});
+// ─── 검사 판정 기준값 ───
+// SSoT: 검사 노드 판정 기준 표시용 — dashboard.html 기준표 텍스트와 일치
+const THRESHOLDS = {
+    solidity: [0.85, 1.0],
+    areaRatio: [0.90, 1.10],
+    holeCount: [0, 2],
+    holeAreaRatio: [0, 0.05],
+    textureMax: 500,
+};
+
+// ─── 그리퍼 개폐 기준값 (ticks) ───
+// SSoT: robot_control_node.py GRIPPER_OPEN/CLOSE 와 일치
+const GRIPPER = { close: 1800, open: 2300, closedHint: 1850, openHint: 2250 };
+
+/* ═══════════════════════════════════════════
+   [B] 콘텐츠 렌더링·제어 로직
+   ═══════════════════════════════════════════ */
 
 // ─── 시스템 상태 업데이트 ───
 function updateStatus(status) {
@@ -90,25 +110,25 @@ function updateStatusTab(status) {
     if (status.joint_positions && Array.isArray(status.joint_positions)) {
         status.joint_positions.forEach((rad, idx) => {
             if (idx >= 6) return;
-            
+
             const valEl = document.getElementById(`j${idx}_val`);
             const barEl = document.getElementById(`j${idx}_bar`);
             if (!valEl || !barEl) return;
-            
+
             if (idx === 5) {
                 // 그리퍼 (ID 6, 1800 ~ 2300 ticks)
                 const ticks = Math.round((rad * 4095.0) / (2 * Math.PI));
                 valEl.textContent = `${ticks} ticks`;
-                
+
                 // 퍼센트 계산
-                let pct = ((ticks - 1800) / (2300 - 1800)) * 100;
+                let pct = ((ticks - GRIPPER.close) / (GRIPPER.open - GRIPPER.close)) * 100;
                 pct = Math.max(0, Math.min(100, pct));
                 barEl.style.width = `${pct}%`;
-                
+
                 // 그리퍼 상태 색상 힌트
-                if (ticks <= 1850) {
+                if (ticks <= GRIPPER.closedHint) {
                     barEl.className = "joint-bar-fill gripper-bar closed";
-                } else if (ticks >= 2250) {
+                } else if (ticks >= GRIPPER.openHint) {
                     barEl.className = "joint-bar-fill gripper-bar open";
                 } else {
                     barEl.className = "joint-bar-fill gripper-bar";
@@ -119,13 +139,13 @@ function updateStatusTab(status) {
                 // 주기화 (-180 ~ 180 범위로 안착)
                 while (deg < -180) deg += 360;
                 while (deg > 180) deg -= 360;
-                
+
                 valEl.textContent = `${deg.toFixed(1)}°`;
                 const pct = ((deg + 180) / 360) * 100;
                 barEl.style.width = `${pct}%`;
             }
         });
-        
+
         // 동기화 시간 업데이트
         const syncTimeEl = document.getElementById('jointSyncTime');
         if (syncTimeEl) {
@@ -136,32 +156,33 @@ function updateStatusTab(status) {
 
     // 2. 리니어 레일 위치 (Linear Rail - API 응답의 rail_station_map 기반 동적화)
     if (status.rail_position !== undefined) {
-        const railPos = parseInt(status.rail_position);
+        const railPos = parseFloat(status.rail_position);
+        // SSoT: hmi_node.py RAIL_STATION_MAP 과 일치
         const stationMap = status.rail_station_map || [
-            { name: 'INSPECT (A)', steps: 1000 },
-            { name: 'PASS (B)',    steps: 2000 },
-            { name: 'FAIL (C)',    steps: 10000 },
-            { name: 'BED (D)',      steps: 30500 },
+            { name: 'INSPECT (A)', mm: 12.5 },
+            { name: 'PASS (B)',    mm: 25.0 },
+            { name: 'FAIL (C)',    mm: 125.0 },
+            { name: 'BED (D)',      mm: 381.25 },
         ];
-        const maxSteps = Math.max(...stationMap.map(s => s.steps)) || 30500;
+        const maxMm = Math.max(...stationMap.map(s => s.mm)) || 381.25;
 
-        // railPos(실제 스텝 값)과 가장 가까운 스테이션 탐색 (허용 오차 100 스텝)
-        let station = stationMap.find(s => Math.abs(s.steps - railPos) < 100);
+        // railPos(마지막 명령 목표값, mm)과 가장 가까운 스테이션 탐색 (부동소수 오차 허용 0.25mm)
+        let station = stationMap.find(s => Math.abs(s.mm - railPos) < 0.25);
         if (!station) {
-            station = { name: '이동 중...', steps: railPos };
+            station = { name: '이동 중...', mm: railPos };
         }
 
         // Carriage 위치 계산
         const carriage = document.getElementById('railCarriage');
         if (carriage) {
-            const pct = (station.steps / maxSteps) * 85 + 7.5;
+            const pct = (station.mm / maxMm) * 85 + 7.5;
             carriage.style.left = `${pct}%`;
         }
 
         // 역 정보 텍스트 표시
         const infoEl = document.getElementById('railStepsText');
         if (infoEl) {
-            infoEl.innerHTML = `<strong>${station.name}</strong> (${station.steps} steps)`;
+            infoEl.innerHTML = `<strong>${station.name}</strong> (${station.mm} mm)`;
         }
 
         // 구역 표시핀 하이라이트 및 스텝 값 동적 반영
@@ -174,7 +195,7 @@ function updateStatusTab(status) {
                 // 스텝 숫자 동적 갱신
                 const stepEl = el.querySelector('.station-step');
                 if (stepEl && stationMap[idx]) {
-                    stepEl.textContent = stationMap[idx].steps;
+                    stepEl.textContent = `${stationMap[idx].mm} mm`;
                 }
             }
         });
@@ -183,12 +204,12 @@ function updateStatusTab(status) {
     // 3. 턴테이블 회전 각도 (Turntable)
     if (status.turntable_angle !== undefined) {
         const angle = parseInt(status.turntable_angle);
-        
+
         const dial = document.getElementById('turntableDial');
         if (dial) {
             dial.style.transform = `rotate(${angle}deg)`;
         }
-        
+
         const textEl = document.getElementById('turntableAngleText');
         if (textEl) {
             textEl.textContent = `${angle}°`;
@@ -198,29 +219,24 @@ function updateStatusTab(status) {
     // 4. FSM Flow 하이라이트 (ERROR / ESTOP 포함)
     if (status.current_state) {
         const state = status.current_state;
-        const fsmNodes = [
-            'INIT', 'IDLE', 'GRASPING', 'INSPECTING',
-            'SORTING', 'RELEASING', 'HOMING', 'TELEOPING', 'FINISHED',
-            'ERROR', 'ESTOP',
-        ];
 
         let activeNode = null;
         // ESTOP 여부 검사 (ERROR 상태이면서 에러 메시지에 ESTOP/비상정지 포함 시)
         if (state === 'ERROR' && status.error_message && /ESTOP|비상정지/i.test(status.error_message)) {
             activeNode = 'fsm_ESTOP';
         } else {
-            for (const node of fsmNodes) {
+            for (const node of FSM_NODES) {
                 if (state === node || state.startsWith(node)) {
                     activeNode = `fsm_${node}`;
                     break;
                 }
             }
         }
-        
+
         if (state === 'DONE') activeNode = 'fsm_FINISHED';
-        
+
         // FSM 노드들의 active 클래스 토글
-        fsmNodes.forEach(node => {
+        FSM_NODES.forEach(node => {
             const nodeId = `fsm_${node}`;
             const el = document.getElementById(nodeId);
             if (el) {
@@ -229,22 +245,6 @@ function updateStatusTab(status) {
         });
     }
 }
-
-// ─── 진행 단계 라벨 ───
-const STAGE_LABELS = {
-    'INIT':       '시스템 초기화 중',
-    'IDLE':       '대기 중',
-    'GRASPING':   'ACT 파지 진행 중',
-    'INSPECTING': '품질 검사 중',
-    'SORTING':    '분류 이동 중',
-    'RELEASING':  '출력물 투하 중',
-    'HOMING':     '홈 복귀 중',
-    'TELEOPING':  '텔레오퍼레이션 동작 중',
-    'FINISHED':   '작업 완료',
-    'DONE':       '작업 완료',
-    'ERROR':      '오류 발생 — 확인 필요',
-    'ESTOP':      '비상 정지 — E-STOP 활성',
-};
 
 function updateStageLabel(state) {
     const el = document.getElementById('stageText');
@@ -317,11 +317,11 @@ function updateLatestInspection(result) {
         badge.className = 'result-badge fail';
     }
 
-    setMetric('mSolidity', result.solidity, 0.85, 1.0);
-    setMetric('mAreaRatio', result.area_ratio, 0.90, 1.10);
-    setMetricInt('mHoleCount', result.hole_count, 0, 2);
-    setMetric('mHoleArea', result.hole_area_ratio, 0, 0.05);
-    setMetricInverse('mTexture', result.texture_variance, 500);
+    setMetric('mSolidity', result.solidity, THRESHOLDS.solidity[0], THRESHOLDS.solidity[1]);
+    setMetric('mAreaRatio', result.area_ratio, THRESHOLDS.areaRatio[0], THRESHOLDS.areaRatio[1]);
+    setMetricInt('mHoleCount', result.hole_count, THRESHOLDS.holeCount[0], THRESHOLDS.holeCount[1]);
+    setMetric('mHoleArea', result.hole_area_ratio, THRESHOLDS.holeAreaRatio[0], THRESHOLDS.holeAreaRatio[1]);
+    setMetricInverse('mTexture', result.texture_variance, THRESHOLDS.textureMax);
     document.getElementById('mTime').textContent = result.inspection_time_sec.toFixed(2) + 's';
 
     renderSsimBars(result.ssim_scores);
@@ -363,18 +363,18 @@ function updateInspectionDetailTab(result) {
     function fillTableRow(valId, evalId, val, min, max, isInt = false, isInverse = false) {
         const valEl = document.getElementById(valId);
         const evalEl = document.getElementById(evalId);
-        
+
         let formattedVal = isInt ? val : parseFloat(val).toFixed(3);
         if (valId === 'detTexture') formattedVal = parseFloat(val).toFixed(1);
         valEl.textContent = formattedVal;
-        
+
         let passed = false;
         if (isInverse) {
             passed = val <= max; // max is used as threshold here
         } else {
             passed = val >= min && val <= max;
         }
-        
+
         if (passed) {
             evalEl.innerHTML = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
             valEl.style.color = 'var(--text-primary)';
@@ -383,28 +383,27 @@ function updateInspectionDetailTab(result) {
             valEl.style.color = 'var(--accent-red)';
         }
     }
-    fillTableRow('detSolidity', 'detSolidityEval', result.solidity, 0.85, 1.0);
-    fillTableRow('detAreaRatio', 'detAreaRatioEval', result.area_ratio, 0.90, 1.10);
-    fillTableRow('detHoleCount', 'detHoleCountEval', result.hole_count, 0, 2, true);
-    fillTableRow('detHoleArea', 'detHoleAreaEval', result.hole_area_ratio, 0, 0.05);
-    fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, 500, false, true);
-    
+    fillTableRow('detSolidity', 'detSolidityEval', result.solidity, THRESHOLDS.solidity[0], THRESHOLDS.solidity[1]);
+    fillTableRow('detAreaRatio', 'detAreaRatioEval', result.area_ratio, THRESHOLDS.areaRatio[0], THRESHOLDS.areaRatio[1]);
+    fillTableRow('detHoleCount', 'detHoleCountEval', result.hole_count, THRESHOLDS.holeCount[0], THRESHOLDS.holeCount[1], true);
+    fillTableRow('detHoleArea', 'detHoleAreaEval', result.hole_area_ratio, THRESHOLDS.holeAreaRatio[0], THRESHOLDS.holeAreaRatio[1]);
+    fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, THRESHOLDS.textureMax, false, true);
+
     // SSIM
     const ssimContainer = document.getElementById('detailSsimBars');
-    const angles = [0, 90, 180, 270];
-    const threshold = 0.85;
+    const angles = SSIM_ANGLES;
     let html = '';
     for (let i = 0; i < angles.length; i++) {
         const score = result.ssim_scores[i] || 0;
         const pct = Math.min(score * 100, 100);
         let cls = 'ok';
         let evalText = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
-        if (score < threshold) {
+        if (score < SSIM_THRESHOLD) {
             cls = 'bad';
             evalText = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
         }
-        else if (score < 0.90) cls = 'warn';
-        
+        else if (score < SSIM_WARN) cls = 'warn';
+
         html += `
         <div class="ssim-bar-row" style="margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
             <span class="ssim-angle" style="width: 60px;">${angles[i]}°</span>
@@ -443,13 +442,12 @@ function setMetricInverse(id, value, threshold) {
 // ─── SSIM 바 렌더링 ───
 function renderSsimBars(scores) {
     const container = document.getElementById('ssimBars');
-    const angles = [0, 90, 180, 270];
-    const threshold = 0.85;
+    const angles = SSIM_ANGLES;
     let html = '';
     for (let i = 0; i < angles.length; i++) {
         const score = scores[i] || 0;
         const pct = Math.min(score * 100, 100);
-        let cls = score < threshold ? 'bad' : (score < 0.90 ? 'warn' : 'ok');
+        let cls = score < SSIM_THRESHOLD ? 'bad' : (score < SSIM_WARN ? 'warn' : 'ok');
         const scoreColor = cls === 'ok' ? 'green' : (cls === 'warn' ? 'yellow' : 'red');
         html += `
         <div class="ssim-bar-row">
@@ -553,72 +551,16 @@ async function triggerInspection() {
     }
 }
 
-// ─── 시계 ───
-function updateClock() {
-    const now = new Date();
-    const timeStr = now.toLocaleTimeString('ko-KR', { hour12: false });
-    const dateStr = now.toLocaleDateString('ko-KR', {
-        year: 'numeric', month: '2-digit', day: '2-digit'
-    });
-    document.getElementById('clock').textContent = `${dateStr} ${timeStr}`;
-}
-setInterval(updateClock, 1000);
-updateClock();
-
-// ─── 초기 데이터 로드 ───
-async function loadInitialData() {
-    try {
-        const [statusRes, historyRes, statsRes] = await Promise.all([
-            fetch('/api/status'),
-            fetch('/api/inspection/history'),
-            fetch('/api/inspection/stats'),
-        ]);
-        const status = await statusRes.json();
-        const history = await historyRes.json();
-        const stats = await statsRes.json();
-
-        updateStatus(status);
-        // pass/fail 통계는 오케스트레이터 카운트 단일 출처 (#6)
-        updateStats(stats);
-
-        if (history.length > 0) {
-            historyData = history.reverse().slice(0, 50);
-            updateLatestInspection(historyData[0]);
-        }
-    } catch (e) {
-        console.log('[QUVI] 초기 데이터 로드 실패 (서버 대기 중)');
-    }
-}
-
-loadInitialData();
-drawDonut(0, 0);
-
-// ─── 탭 전환 (?tab= 파라미터로 초기 탭 딥링크 가능) ───
-function switchTab(tabName) {
-    // 탭 판넬 전환
-    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
-    const targetTab = document.getElementById(`tab-${tabName}`);
-    if (targetTab) targetTab.classList.add('active');
-
-    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-    const targetMenu = document.getElementById(`menu-${tabName}`);
-    if (targetMenu) targetMenu.classList.add('active');
-}
-
-const _initialTab = new URLSearchParams(location.search).get('tab');
-// 존재하는 탭일 때만 전환 — 잘못된 값이면 기본 탭 유지 (빈 화면 방지)
-if (_initialTab && document.getElementById(`tab-${_initialTab}`)) switchTab(_initialTab);
-
 // ─── 텔레오퍼레이션 토글 API 호출 ───
 async function toggleTeleop(enable) {
     const action = enable ? 'on' : 'off';
     console.log(`[QUVI] 텔레오퍼레이션 요청: ${action}`);
-    
+
     try {
         const res = await fetch(`/api/teleop/${action}`, { method: 'POST' });
         const data = await res.json();
         console.log(`[QUVI] 텔레오퍼레이션 응답:`, data);
-        
+
         // UI 즉시 업데이트 (배지 색상 변경) — 이후 status_update가 최종 동기화
         setTeleopBadge(enable ? 'on' : 'off');
     } catch (e) {
@@ -789,7 +731,7 @@ async function startRefCapture() {
         const res  = await fetch('/api/capture/reference/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ angles: [0, 90, 180, 270], delay_sec: delay }),
+            body: JSON.stringify({ angles: SSIM_ANGLES, delay_sec: delay }),
         });
         const data = await res.json();
         if (data.ok) {
@@ -839,7 +781,7 @@ async function startDatasetCapture() {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                angles: [0, 90, 180, 270],
+                angles: SSIM_ANGLES,
                 settle_sec: settleSec,
                 post_capture_sec: postSec,
             }),
@@ -877,9 +819,6 @@ async function stopDatasetCapture() {
 
 // ─── ACT 모델 선택 ───
 let _actModelUserTouched = false;
-document.addEventListener('change', (e) => {
-    if (e.target && e.target.id === 'actModelSelect') _actModelUserTouched = true;
-});
 
 async function refreshActModels() {
     try {
@@ -961,9 +900,6 @@ async function loadActModel() {
         if (msgEl) { msgEl.textContent = '네트워크 오류'; msgEl.style.color = 'var(--accent-red)'; }
     }
 }
-
-refreshActModels();
-setInterval(refreshActModels, 5000);
 
 // ─── 장치 설정 (카메라/로봇/ESP USB) ───
 function _shortDev(path) {
@@ -1061,5 +997,106 @@ async function applyDeviceConfig() {
         if (btn) btn.disabled = false;
     }
 }
+
+/* ═══════════════════════════════════════════
+   [C] 고정 셸 — WebSocket 연결·시계·탭 전환·부트스트랩
+   ═══════════════════════════════════════════ */
+
+// ─── WebSocket 연결 ───
+const socket = io();
+
+function setConnBadge(online) {
+    const badge = document.getElementById('connBadge');
+    const text = document.getElementById('connText');
+    if (!badge || !text) return;
+    badge.className = 'conn-badge ' + (online ? 'online' : 'offline');
+    text.textContent = online ? '서버 연결됨' : '서버 연결 끊김';
+}
+
+socket.on('connect', () => {
+    console.log('[QUVI] WebSocket 연결됨');
+    setConnBadge(true);
+});
+
+socket.on('disconnect', () => {
+    console.log('[QUVI] WebSocket 연결 끊김');
+    setConnBadge(false);
+});
+
+// ─── 실시간 업데이트 수신 ───
+socket.on('status_update', (data) => {
+    updateStatus(data.status);
+    updateStats(data.stats);
+    if (data.latest_inspection) {
+        updateLatestInspection(data.latest_inspection);
+    }
+    // 수동 제어 패널 UI 실시간 갱신
+    updateManualControlPanel(data.status);
+});
+
+// ─── 시계 ───
+function updateClock() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('ko-KR', { hour12: false });
+    const dateStr = now.toLocaleDateString('ko-KR', {
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    document.getElementById('clock').textContent = `${dateStr} ${timeStr}`;
+}
+
+// ─── 초기 데이터 로드 ───
+async function loadInitialData() {
+    try {
+        const [statusRes, historyRes, statsRes] = await Promise.all([
+            fetch('/api/status'),
+            fetch('/api/inspection/history'),
+            fetch('/api/inspection/stats'),
+        ]);
+        const status = await statusRes.json();
+        const history = await historyRes.json();
+        const stats = await statsRes.json();
+
+        updateStatus(status);
+        // pass/fail 통계는 오케스트레이터 카운트 단일 출처 (#6)
+        updateStats(stats);
+
+        if (history.length > 0) {
+            historyData = history.reverse().slice(0, 50);
+            updateLatestInspection(historyData[0]);
+        }
+    } catch (e) {
+        console.log('[QUVI] 초기 데이터 로드 실패 (서버 대기 중)');
+    }
+}
+
+// ─── 탭 전환 (?tab= 파라미터로 초기 탭 딥링크 가능) ───
+function switchTab(tabName) {
+    // 탭 판넬 전환
+    document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+    const targetTab = document.getElementById(`tab-${tabName}`);
+    if (targetTab) targetTab.classList.add('active');
+
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const targetMenu = document.getElementById(`menu-${tabName}`);
+    if (targetMenu) targetMenu.classList.add('active');
+}
+
+// ─── 부트스트랩 ───
+setInterval(updateClock, 1000);
+updateClock();
+
+loadInitialData();
+drawDonut(0, 0);
+
+const _initialTab = new URLSearchParams(location.search).get('tab');
+// 존재하는 탭일 때만 전환 — 잘못된 값이면 기본 탭 유지 (빈 화면 방지)
+if (_initialTab && document.getElementById(`tab-${_initialTab}`)) switchTab(_initialTab);
+
+document.addEventListener('change', (e) => {
+    if (e.target && e.target.id === 'actModelSelect') _actModelUserTouched = true;
+});
+
+refreshActModels();
+setInterval(refreshActModels, 5000);
 
 refreshDevices();

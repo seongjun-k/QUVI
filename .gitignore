@@ -41,6 +41,8 @@ data/datasets/inspection/images/
 *.onnx
 *.engine
 claude.md
+CLAUDE.md
+CLAUDE.local.md
 
 # Runtime-generated (소스 아님)
 data/inspection_logs/
