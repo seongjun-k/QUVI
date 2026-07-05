@@ -16,6 +16,7 @@ services:
       - ../src:/workspace/src
       - ../data:/workspace/data
       - ../scripts:/workspace/scripts
+      - ../tests:/workspace/tests
       - ../lerobot:/workspace/lerobot
       - ../firmware:/workspace/firmware
       - /dev:/dev
