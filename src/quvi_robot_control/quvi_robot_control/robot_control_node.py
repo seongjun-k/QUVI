@@ -211,6 +211,21 @@ RAW_SAFE_RANGE = {
     'wrist_flex':    (0, 4095),
 }
 
+# ── ACT rad↔raw 변환 상수 (학습 데이터셋 단위 — lerobot 정규화와 별개) ─────────
+DXL_TICKS_PER_REV = 4096.0   # XL430/XL330 1회전 틱 수 (변환 분모)
+DXL_TICK_CENTER   = 2048.0   # 중립(0 rad) 틱
+DXL_RAW_MAX       = 4095     # Goal_Position 클램프 상한
+
+
+def raw_to_rad(raw: float) -> float:
+    """raw Dynamixel 위치값 → 라디안 (ACT 학습 데이터셋 단위)."""
+    return (raw - DXL_TICK_CENTER) * (2.0 * math.pi) / DXL_TICKS_PER_REV
+
+
+def rad_to_raw(rad: float) -> float:
+    """라디안(ACT 정책 출력) → raw Dynamixel 위치값."""
+    return DXL_TICK_CENTER + rad * DXL_TICKS_PER_REV / (2.0 * math.pi)
+
 
 # ─────────────────────────────────────────────────────────────
 # RobotControlNode
@@ -747,6 +762,19 @@ class RobotControlNode(Node):
         except Exception as e:
             self.get_logger().warn(f'소프트 정지 실패: {e}')
 
+    def _act_check_abort(self, estop_msg: str) -> bool:
+        """ACT 파지 루프 내 ESTOP/소프트 STOP 중단 여부 확인 (청크·스텝 루프 공용)."""
+        if self._get_state() == RobotState.ERROR:
+            self.get_logger().error(estop_msg)
+            self._safe_estop_cleanup()
+            return True
+        if self._abort_event.is_set():   # 소프트 STOP (#1)
+            self.get_logger().warn('STOP 감지 — ACT 파지 중단 (토크 유지)')
+            self._soft_stop()
+            self._set_state(RobotState.IDLE)
+            return True
+        return False
+
     # ─────────────────────────────────────────────
     # 명령 콜백 (토픽 기반 — 비동기)
     # ─────────────────────────────────────────────
@@ -848,38 +876,78 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # 실행 함수 — ACT 파지
     # ─────────────────────────────────────────────
+    def _execute_rule_based_grasp(self) -> bool:
+        """ACT 미사용/미로드 시 룰베이스(티칭 기반) 파지."""
+        self.get_logger().info('ACT 미사용 또는 로드 안됨 — 룰베이스(티칭 기반) 파지를 실행합니다.')
+        self._publish_status('룰베이스 파지 시작')
+
+        try:
+            # 사용자가 수동으로 물려준 상태이므로, 바로 POSE_P1(베드 위 대기)로 이동합니다.
+            self.get_logger().info('1. POSE_P1 위치로 즉시 이동 (그리퍼는 닫힘 상태 유지)')
+
+            # POSE_P1 자세로 이동하되, 그리퍼는 사용자가 물려준 물체를 쥐도록 GRIPPER_CLOSE(1800)로 덮어씌웁니다.
+            p1_pose = {k: v for k, v in POSE_P1.items()}
+            p1_pose['gripper'] = GRIPPER_CLOSE
+
+            self._write_raw_position(p1_pose)
+            self._wait_motion_done(p1_pose)
+
+            done_msg = Bool()
+            done_msg.data = True
+            self._act_done_pub.publish(done_msg)
+            self._grasp_done_pub.publish(done_msg)
+
+            self._set_state(RobotState.IDLE)
+            self._publish_status('룰베이스 파지 완료')
+            return True
+        except Exception as e:
+            self.get_logger().error(f'룰베이스 파지 중 오류: {e}')
+            self._set_state(RobotState.ERROR)
+            self._publish_status(f'ERROR: {e}')
+            return False
+
+    def _act_image_tensor(self, frame):
+        """사이드캠 BGR 프레임 → ACT 정책 입력용 정규화 이미지 텐서."""
+        import torch
+        frame_rgb = cv2.cvtColor(
+            cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2RGB)
+        img_tensor = torch.from_numpy(
+            frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
+        img_tensor = img_tensor.to(self._act_device_obj)
+        return img_tensor
+
+    def _act_send_action_step(self, action) -> None:
+        """ACT 정책 출력 1스텝을 실HW/SIM 으로 전송 (raw 변환·상대이동 캡·클램프 포함)."""
+        if self._use_real_hardware and self._dxl_ready:
+            # 정책 출력은 라디안 — raw = 2048 + rad·4096/2π 로 변환해
+            # 직접 전송한다. send_action 정규화(±100/DEGREES) 경로는
+            # 학습 단위와 불일치해 2·3축이 raw≈2048(뻗은 자세)로 발산했다.
+            goal_raw = {
+                name: int(round(rad_to_raw(float(action[j]))))
+                for j, name in enumerate(JOINT_NAMES)}
+            with self._dxl_io_lock:
+                present = self._follower.bus.sync_read('Present_Position', normalize=False)
+                # send_action 의 max_relative_target(정규화 단위) 대체 —
+                # 200 norm = 4096 틱으로 환산해 1스텝 상대이동을 캡.
+                cap = max(1, int(self._act_max_rel_target * 4096.0 / 200.0))
+                for name in goal_raw:
+                    p = present.get(name, goal_raw[name])
+                    goal_raw[name] = int(max(p - cap, min(p + cap, goal_raw[name])))
+                goal_raw = {n: int(max(0, min(4095, v))) for n, v in goal_raw.items()}
+                goal_raw = self._clip_safe_targets(goal_raw, is_raw=True)
+                self._follower.bus.sync_write('Goal_Position', goal_raw, normalize=False)
+        else:
+            goal_dict = {
+                name: int(np.clip(rad_to_raw(float(action[j])), 0, DXL_RAW_MAX))
+                for j, name in enumerate(JOINT_NAMES)}
+            self._write_raw_position(goal_dict)
+
     def _execute_act_grasp(self) -> bool:
         self._set_state(RobotState.ACT_GRASPING)
 
         # ACT를 사용하지 않거나 로드가 안된 경우 룰베이스(티칭 기반) 파지 수행
         if not self._use_act or not self._act_ready:
-            self.get_logger().info('ACT 미사용 또는 로드 안됨 — 룰베이스(티칭 기반) 파지를 실행합니다.')
-            self._publish_status('룰베이스 파지 시작')
-            
-            try:
-                # 사용자가 수동으로 물려준 상태이므로, 바로 POSE_P1(베드 위 대기)로 이동합니다.
-                self.get_logger().info('1. POSE_P1 위치로 즉시 이동 (그리퍼는 닫힘 상태 유지)')
-                
-                # POSE_P1 자세로 이동하되, 그리퍼는 사용자가 물려준 물체를 쥐도록 GRIPPER_CLOSE(1800)로 덮어씌웁니다.
-                p1_pose = {k: v for k, v in POSE_P1.items()}
-                p1_pose['gripper'] = GRIPPER_CLOSE
-                
-                self._write_raw_position(p1_pose)
-                self._wait_motion_done(p1_pose)
-
-                done_msg = Bool()
-                done_msg.data = True
-                self._act_done_pub.publish(done_msg)
-                self._grasp_done_pub.publish(done_msg)
-
-                self._set_state(RobotState.IDLE)
-                self._publish_status('룰베이스 파지 완료')
-                return True
-            except Exception as e:
-                self.get_logger().error(f'룰베이스 파지 중 오류: {e}')
-                self._set_state(RobotState.ERROR)
-                self._publish_status(f'ERROR: {e}')
-                return False
+            return self._execute_rule_based_grasp()
 
         try:
             import torch
@@ -896,14 +964,7 @@ class RobotControlNode(Node):
             chunk_count = 0
 
             while (time.time() - start) < ACT_GRASP_DURATION:
-                if self._get_state() == RobotState.ERROR:
-                    self.get_logger().error('ESTOP 감지 — ACT 청크 실행을 중단합니다.')
-                    self._safe_estop_cleanup()
-                    return False
-                if self._abort_event.is_set():   # 소프트 STOP (#1)
-                    self.get_logger().warn('STOP 감지 — ACT 파지 중단 (토크 유지)')
-                    self._soft_stop()
-                    self._set_state(RobotState.IDLE)
+                if self._act_check_abort('ESTOP 감지 — ACT 청크 실행을 중단합니다.'):
                     return False
 
                 with self._sidecam_lock:
@@ -914,17 +975,13 @@ class RobotControlNode(Node):
                     self._set_state(RobotState.IDLE)
                     return False
 
-                frame_rgb = cv2.cvtColor(
-                    cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2RGB)
-                img_tensor = torch.from_numpy(
-                    frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
-                img_tensor = img_tensor.to(self._act_device_obj)
+                img_tensor = self._act_image_tensor(frame)
 
                 acquired = self._dxl_io_lock.acquire(blocking=False)
                 if not acquired:
                     continue
                 try:
-                    norm_positions = self._follower.bus.sync_read('Present_Position', normalize=True)
+                    raw_positions = self._follower.bus.sync_read('Present_Position', normalize=False)
                 except Exception as e:
                     self.get_logger().error(f'관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
                     self._set_state(RobotState.ERROR)
@@ -933,7 +990,11 @@ class RobotControlNode(Node):
                 finally:
                     self._dxl_io_lock.release()
 
-                joint_vals = [norm_positions[name] for name in JOINT_NAMES]
+                # 학습 데이터셋(robot_type=omx_f, ROS 스택 녹화)의 state/action 은
+                # 라디안 단위 — lerobot 정규화(±100/DEGREES)가 아니다. 관측을
+                # rad = (raw-2048)·2π/4096 으로 변환해 학습 분포와 일치시킨다.
+                joint_vals = [raw_to_rad(raw_positions[name])
+                              for name in JOINT_NAMES]
                 state_tensor = torch.tensor(
                     joint_vals, dtype=torch.float32).unsqueeze(0)
                 state_tensor = state_tensor.to(self._act_device_obj)
@@ -958,32 +1019,11 @@ class RobotControlNode(Node):
                 for i, action in enumerate(action_chunk):
                     if (time.time() - start) >= ACT_GRASP_DURATION:
                         break
-                    if self._get_state() == RobotState.ERROR:
-                        self.get_logger().error(f'ESTOP 감지 — ACT 실행 중단 (청크#{chunk_count} 스텝 {i})')
-                        self._safe_estop_cleanup()
-                        return False
-                    if self._abort_event.is_set():   # 소프트 STOP (#1)
-                        self.get_logger().warn('STOP 감지 — ACT 파지 중단 (토크 유지)')
-                        self._soft_stop()
-                        self._set_state(RobotState.IDLE)
+                    if self._act_check_abort(f'ESTOP 감지 — ACT 실행 중단 (청크#{chunk_count} 스텝 {i})'):
                         return False
 
                     step_start = time.time()
-                    if self._use_real_hardware and self._dxl_ready:
-                        action_dict = {f"{name}.pos": float(action[j]) for j, name in enumerate(JOINT_NAMES)}
-                        action_dict = self._clip_safe_targets(action_dict, is_raw=False)
-                        with self._dxl_io_lock:
-                            self._follower.send_action(action_dict)
-                    else:
-                        goal_dict = {}
-                        for j, name in enumerate(JOINT_NAMES):
-                            val = float(action[j])
-                            if -100 <= val <= 100:
-                                raw = int(((val + 100.0) / 200.0) * 4095.0)
-                            else:
-                                raw = int(np.clip((val / (2 * math.pi)) * 4095, 0, 4095))
-                            goal_dict[name] = raw
-                        self._write_raw_position(goal_dict)
+                    self._act_send_action_step(action)
 
                     elapsed = time.time() - step_start
                     remaining = dt - elapsed
