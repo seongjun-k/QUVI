@@ -9,11 +9,10 @@ FSM(유한상태머신)으로 자율 조율 및 통합합니다.
 구현 규칙 준수: 이모지 금지, 한국어 주석, 간결한 핵심 논리 중심.
 """
 
-import time
 from enum import Enum
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Bool, Float32, Int32, String
+from std_msgs.msg import Bool, Int32, String
 from quvi_msgs.msg import GraspGoal, InspectionResult, ObjectArray, SystemStatus, MotorStatus
 import quvi_robot_control.topics as topics
 

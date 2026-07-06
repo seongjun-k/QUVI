@@ -15,7 +15,6 @@ from typing import Optional, Tuple
 import cv2
 import numpy as np
 from cv_bridge import CvBridge
-from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage, Image
 
 _bridge = CvBridge()

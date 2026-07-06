@@ -16,14 +16,14 @@ import os
 import time
 import math
 from datetime import datetime
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import Bool, Int32
+from std_msgs.msg import Bool
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
 from quvi_robot_control.utils import decode_compressed, decode_raw, BinaryCache, encode_bgr

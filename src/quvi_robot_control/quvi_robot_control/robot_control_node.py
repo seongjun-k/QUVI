@@ -54,7 +54,7 @@ import threading
 import time
 from enum import IntEnum
 from pathlib import Path
-from typing import List, Optional
+from typing import Optional
 
 import cv2
 import numpy as np
@@ -64,7 +64,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
 from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, JointState
-from std_msgs.msg import Bool, Float32, Int32, String
+from std_msgs.msg import Bool, Int32, String
 from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
