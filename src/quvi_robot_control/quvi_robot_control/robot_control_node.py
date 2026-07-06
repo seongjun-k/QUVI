@@ -568,6 +568,11 @@ class RobotControlNode(Node):
     # ROS 인터페이스 설정
     # ─────────────────────────────────────────────
     def _setup_ros_interfaces(self):
+        self._setup_subscribers()
+        self._setup_publishers()
+        self._setup_services()
+
+    def _setup_subscribers(self):
         # ── Subscribers ──
         if self._use_compressed:
             self._sidecam_sub = self.create_subscription(
@@ -638,6 +643,7 @@ class RobotControlNode(Node):
             self._hmi_command_callback, 10,
             callback_group=self._cb_group)
 
+    def _setup_publishers(self):
         # ── Publishers ──
         # latched(TRANSIENT_LOCAL): 늦게 붙는 HMI 구독자도 최신 상태를 즉시 받는다.
         from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
@@ -681,6 +687,7 @@ class RobotControlNode(Node):
         self._pick_chamber_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_DONE, 10)
 
+    def _setup_services(self):
         # ── Services ──
         self._act_grasp_srv = self.create_service(
             Trigger, '/robot/act_grasp', self._act_grasp_service,

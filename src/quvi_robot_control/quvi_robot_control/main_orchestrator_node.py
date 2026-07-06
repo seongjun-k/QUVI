@@ -13,7 +13,7 @@ from enum import Enum
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Int32, String
-from quvi_msgs.msg import GraspGoal, InspectionResult, ObjectArray, SystemStatus, MotorStatus
+from quvi_msgs.msg import GraspGoal, InspectionResult, SystemStatus, MotorStatus
 import quvi_robot_control.topics as topics
 
 
@@ -250,13 +250,6 @@ class MainOrchestratorNode(Node):
             self.get_logger().error('시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 천이합니다.')
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
-
-    def _detection_objects_cb(self, msg: ObjectArray):
-        if self._state.value.startswith("DETECTING_"):
-            self.get_logger().info(f'객체 수집 완료: {msg.total_count}개 발견')
-            self._detected_objects = msg.objects
-            self._total_objects = msg.total_count
-            self._current_object_idx = 0
 
     def _robot_act_done_cb(self, msg: Bool):
         if msg.data and self._state == FsmState.GRASPING_WAIT:

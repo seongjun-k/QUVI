@@ -106,7 +106,14 @@ function updateStatus(status) {
 
 // ─── 시스템 상태 탭 상세 업데이트 ───
 function updateStatusTab(status) {
-    // 1. 관절 상태 (Joint States)
+    _updateJointStates(status);
+    _updateRailPosition(status);
+    _updateTurntableAngle(status);
+    _updateFsmHighlight(status);
+}
+
+// 1. 관절 상태 (Joint States)
+function _updateJointStates(status) {
     if (status.joint_positions && Array.isArray(status.joint_positions)) {
         status.joint_positions.forEach((rad, idx) => {
             if (idx >= 6) return;
@@ -153,8 +160,10 @@ function updateStatusTab(status) {
             syncTimeEl.style.color = 'var(--accent-green)';
         }
     }
+}
 
-    // 2. 리니어 레일 위치 (Linear Rail - API 응답의 rail_station_map 기반 동적화)
+// 2. 리니어 레일 위치 (Linear Rail - API 응답의 rail_station_map 기반 동적화)
+function _updateRailPosition(status) {
     if (status.rail_position !== undefined) {
         const railPos = parseFloat(status.rail_position);
         // SSoT: hmi_node.py RAIL_STATION_MAP 과 일치
@@ -200,8 +209,10 @@ function updateStatusTab(status) {
             }
         });
     }
+}
 
-    // 3. 턴테이블 회전 각도 (Turntable)
+// 3. 턴테이블 회전 각도 (Turntable)
+function _updateTurntableAngle(status) {
     if (status.turntable_angle !== undefined) {
         const angle = parseInt(status.turntable_angle);
 
@@ -215,8 +226,10 @@ function updateStatusTab(status) {
             textEl.textContent = `${angle}°`;
         }
     }
+}
 
-    // 4. FSM Flow 하이라이트 (ERROR / ESTOP 포함)
+// 4. FSM Flow 하이라이트 (ERROR / ESTOP 포함)
+function _updateFsmHighlight(status) {
     if (status.current_state) {
         const state = status.current_state;
 
@@ -359,42 +372,51 @@ function updateInspectionDetailTab(result) {
         failReason.style.background = 'rgba(248,81,73,0.1)';
         failReason.style.borderColor = 'rgba(248,81,73,0.2)';
     }
-    // 테이블 값 채우기 및 판정
-    function fillTableRow(valId, evalId, val, min, max, isInt = false, isInverse = false) {
-        const valEl = document.getElementById(valId);
-        const evalEl = document.getElementById(evalId);
+    _fillDetailTable(result);
+    _renderDetailSsimBars(result.ssim_scores);
+}
 
-        let formattedVal = isInt ? val : parseFloat(val).toFixed(3);
-        if (valId === 'detTexture') formattedVal = parseFloat(val).toFixed(1);
-        valEl.textContent = formattedVal;
+// 테이블 값 채우기 및 판정 (단일 행)
+function _fillTableRow(valId, evalId, val, min, max, isInt = false, isInverse = false) {
+    const valEl = document.getElementById(valId);
+    const evalEl = document.getElementById(evalId);
 
-        let passed = false;
-        if (isInverse) {
-            passed = val <= max; // max is used as threshold here
-        } else {
-            passed = val >= min && val <= max;
-        }
+    let formattedVal = isInt ? val : parseFloat(val).toFixed(3);
+    if (valId === 'detTexture') formattedVal = parseFloat(val).toFixed(1);
+    valEl.textContent = formattedVal;
 
-        if (passed) {
-            evalEl.innerHTML = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
-            valEl.style.color = 'var(--text-primary)';
-        } else {
-            evalEl.innerHTML = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
-            valEl.style.color = 'var(--accent-red)';
-        }
+    let passed = false;
+    if (isInverse) {
+        passed = val <= max; // max is used as threshold here
+    } else {
+        passed = val >= min && val <= max;
     }
-    fillTableRow('detSolidity', 'detSolidityEval', result.solidity, THRESHOLDS.solidity[0], THRESHOLDS.solidity[1]);
-    fillTableRow('detAreaRatio', 'detAreaRatioEval', result.area_ratio, THRESHOLDS.areaRatio[0], THRESHOLDS.areaRatio[1]);
-    fillTableRow('detHoleCount', 'detHoleCountEval', result.hole_count, THRESHOLDS.holeCount[0], THRESHOLDS.holeCount[1], true);
-    fillTableRow('detHoleArea', 'detHoleAreaEval', result.hole_area_ratio, THRESHOLDS.holeAreaRatio[0], THRESHOLDS.holeAreaRatio[1]);
-    fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, THRESHOLDS.textureMax, false, true);
 
-    // SSIM
+    if (passed) {
+        evalEl.innerHTML = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
+        valEl.style.color = 'var(--text-primary)';
+    } else {
+        evalEl.innerHTML = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
+        valEl.style.color = 'var(--accent-red)';
+    }
+}
+
+// 검사 상세 테이블 전체 채우기
+function _fillDetailTable(result) {
+    _fillTableRow('detSolidity', 'detSolidityEval', result.solidity, THRESHOLDS.solidity[0], THRESHOLDS.solidity[1]);
+    _fillTableRow('detAreaRatio', 'detAreaRatioEval', result.area_ratio, THRESHOLDS.areaRatio[0], THRESHOLDS.areaRatio[1]);
+    _fillTableRow('detHoleCount', 'detHoleCountEval', result.hole_count, THRESHOLDS.holeCount[0], THRESHOLDS.holeCount[1], true);
+    _fillTableRow('detHoleArea', 'detHoleAreaEval', result.hole_area_ratio, THRESHOLDS.holeAreaRatio[0], THRESHOLDS.holeAreaRatio[1]);
+    _fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, THRESHOLDS.textureMax, false, true);
+}
+
+// SSIM 바 렌더링
+function _renderDetailSsimBars(ssimScores) {
     const ssimContainer = document.getElementById('detailSsimBars');
     const angles = SSIM_ANGLES;
     let html = '';
     for (let i = 0; i < angles.length; i++) {
-        const score = result.ssim_scores[i] || 0;
+        const score = ssimScores[i] || 0;
         const pct = Math.min(score * 100, 100);
         let cls = 'ok';
         let evalText = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
@@ -716,29 +738,24 @@ function updateManualControlPanel(status) {
     }
 }
 
-// ─── 기준 이미지 캡쳐 ───
-async function startRefCapture() {
-    const delay = parseFloat(document.getElementById('refCaptureDelay')?.value || 1.5);
-    const statusEl = document.getElementById('refCaptureStatus');
-    const startBtn = document.getElementById('refCaptureStartBtn');
-    const stopBtn  = document.getElementById('refCaptureStopBtn');
+// ─── 캡쳐/촬영 시퀀스 공통 헬퍼 (기준 이미지 캡쳐 · 데이터셋 촬영 공유) ───
+async function _startCaptureSequence({ url, body, statusElId, startBtnId, progressText, completeText, totalMs, errorLogPrefix }) {
+    const statusEl = document.getElementById(statusElId);
+    const startBtn = document.getElementById(startBtnId);
 
-    if (statusEl) statusEl.textContent = '캡쳐 진행 중... (0° → 90° → 180° → 270°)';
-    if (statusEl) statusEl.style.color = 'var(--accent-green)';
+    if (statusEl) { statusEl.textContent = progressText; statusEl.style.color = 'var(--accent-green)'; }
     if (startBtn) startBtn.disabled = true;
 
     try {
-        const res  = await fetch('/api/capture/reference/start', {
+        const res  = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ angles: SSIM_ANGLES, delay_sec: delay }),
+            body: JSON.stringify(body),
         });
         const data = await res.json();
         if (data.ok) {
-            // delay × 4각도 후 완료로 표시
-            const totalMs = delay * 4 * 1000 + 1000;
             setTimeout(() => {
-                if (statusEl) { statusEl.textContent = '캡쳐 완료 ✓'; statusEl.style.color = 'var(--accent-green)'; }
+                if (statusEl) { statusEl.textContent = completeText; statusEl.style.color = 'var(--accent-green)'; }
                 if (startBtn) startBtn.disabled = false;
             }, totalMs);
         } else {
@@ -746,75 +763,77 @@ async function startRefCapture() {
             if (startBtn) startBtn.disabled = false;
         }
     } catch (e) {
-        console.error('[QUVI] 기준 캡쳐 시작 실패:', e);
+        console.error(errorLogPrefix, e);
         if (statusEl) { statusEl.textContent = '네트워크 오류'; statusEl.style.color = 'var(--accent-red)'; }
         if (startBtn) startBtn.disabled = false;
     }
 }
 
-async function stopRefCapture() {
-    const statusEl = document.getElementById('refCaptureStatus');
-    const startBtn = document.getElementById('refCaptureStartBtn');
+async function _stopCaptureSequence({ url, statusElId, startBtnId, stopText, errorLogPrefix }) {
+    const statusEl = document.getElementById(statusElId);
+    const startBtn = document.getElementById(startBtnId);
     try {
-        await fetch('/api/capture/reference/stop', { method: 'POST' });
-        if (statusEl) { statusEl.textContent = '캡쳐 중단됨'; statusEl.style.color = 'var(--text-muted)'; }
+        await fetch(url, { method: 'POST' });
+        if (statusEl) { statusEl.textContent = stopText; statusEl.style.color = 'var(--text-muted)'; }
         if (startBtn) startBtn.disabled = false;
     } catch (e) {
-        console.error('[QUVI] 기준 캡쳐 중단 실패:', e);
+        console.error(errorLogPrefix, e);
     }
+}
+
+// ─── 기준 이미지 캡쳐 ───
+async function startRefCapture() {
+    const delay = parseFloat(document.getElementById('refCaptureDelay')?.value || 1.5);
+    // delay × 4각도 후 완료로 표시
+    const totalMs = delay * 4 * 1000 + 1000;
+    await _startCaptureSequence({
+        url: '/api/capture/reference/start',
+        body: { angles: SSIM_ANGLES, delay_sec: delay },
+        statusElId: 'refCaptureStatus',
+        startBtnId: 'refCaptureStartBtn',
+        progressText: '캡쳐 진행 중... (0° → 90° → 180° → 270°)',
+        completeText: '캡쳐 완료 ✓',
+        totalMs,
+        errorLogPrefix: '[QUVI] 기준 캡쳐 시작 실패:',
+    });
+}
+
+async function stopRefCapture() {
+    await _stopCaptureSequence({
+        url: '/api/capture/reference/stop',
+        statusElId: 'refCaptureStatus',
+        startBtnId: 'refCaptureStartBtn',
+        stopText: '캡쳐 중단됨',
+        errorLogPrefix: '[QUVI] 기준 캡쳐 중단 실패:',
+    });
 }
 
 // ─── 데이터셋 촬영 (ML 정상품 수집) ───
 async function startDatasetCapture() {
     const settleSec = parseFloat(document.getElementById('dsCaptureSettle')?.value || 2.0);
     const postSec = 1.0;
-    const statusEl = document.getElementById('dsCaptureStatus');
-    const startBtn = document.getElementById('dsCaptureStartBtn');
-    const stopBtn  = document.getElementById('dsCaptureStopBtn');
-
-    if (statusEl) statusEl.textContent = '촬영 진행 중... (0° → 90° → 180° → 270°)';
-    if (statusEl) statusEl.style.color = 'var(--accent-green)';
-    if (startBtn) startBtn.disabled = true;
-
-    try {
-        const res = await fetch('/api/capture/dataset/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                angles: SSIM_ANGLES,
-                settle_sec: settleSec,
-                post_capture_sec: postSec,
-            }),
-        });
-        const data = await res.json();
-        if (data.ok) {
-            // (settle+post) × 4각도 후 완료로 표시
-            const totalMs = (settleSec + postSec) * 4 * 1000 + 1000;
-            setTimeout(() => {
-                if (statusEl) { statusEl.textContent = '촬영 완료 ✓'; statusEl.style.color = 'var(--accent-green)'; }
-                if (startBtn) startBtn.disabled = false;
-            }, totalMs);
-        } else {
-            if (statusEl) { statusEl.textContent = '오류: ' + (data.error || '알 수 없음'); statusEl.style.color = 'var(--accent-red)'; }
-            if (startBtn) startBtn.disabled = false;
-        }
-    } catch (e) {
-        console.error('[QUVI] 데이터셋 촬영 시작 실패:', e);
-        if (statusEl) { statusEl.textContent = '네트워크 오류'; statusEl.style.color = 'var(--accent-red)'; }
-        if (startBtn) startBtn.disabled = false;
-    }
+    // (settle+post) × 4각도 후 완료로 표시
+    const totalMs = (settleSec + postSec) * 4 * 1000 + 1000;
+    await _startCaptureSequence({
+        url: '/api/capture/dataset/start',
+        body: { angles: SSIM_ANGLES, settle_sec: settleSec, post_capture_sec: postSec },
+        statusElId: 'dsCaptureStatus',
+        startBtnId: 'dsCaptureStartBtn',
+        progressText: '촬영 진행 중... (0° → 90° → 180° → 270°)',
+        completeText: '촬영 완료 ✓',
+        totalMs,
+        errorLogPrefix: '[QUVI] 데이터셋 촬영 시작 실패:',
+    });
 }
 
 async function stopDatasetCapture() {
-    const statusEl = document.getElementById('dsCaptureStatus');
-    const startBtn = document.getElementById('dsCaptureStartBtn');
-    try {
-        await fetch('/api/capture/dataset/stop', { method: 'POST' });
-        if (statusEl) { statusEl.textContent = '촬영 중단됨'; statusEl.style.color = 'var(--text-muted)'; }
-        if (startBtn) startBtn.disabled = false;
-    } catch (e) {
-        console.error('[QUVI] 데이터셋 촬영 중단 실패:', e);
-    }
+    await _stopCaptureSequence({
+        url: '/api/capture/dataset/stop',
+        statusElId: 'dsCaptureStatus',
+        startBtnId: 'dsCaptureStartBtn',
+        stopText: '촬영 중단됨',
+        errorLogPrefix: '[QUVI] 데이터셋 촬영 중단 실패:',
+    });
 }
 
 // ─── ACT 모델 선택 ───

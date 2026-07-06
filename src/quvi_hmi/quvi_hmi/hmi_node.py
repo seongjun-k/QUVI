@@ -523,6 +523,22 @@ class HmiNode(Node):
 # Flask 앱
 # ═══════════════════════════════════════════════
 
+def _run_turntable_sequence(hmi_node, angles, wait_timeout, post_wait_sec=0.0, timeout_label=''):
+    """턴테이블을 angles 순서로 회전시키며 각 회전마다 turntable_done을 대기한다.
+
+    기준 이미지 캡쳐/데이터셋 촬영 시퀀스가 공유하는 회전-대기 루프.
+    """
+    for angle in angles:
+        hmi_node._ref_turntable_done_event.clear()
+        hmi_node.send_turntable_command(angle)
+        # ESP32의 실제 turntable_done 신호를 기다림 (시간 기반 추측 제거)
+        done = hmi_node._ref_turntable_done_event.wait(timeout=wait_timeout)
+        if not done:
+            hmi_node.get_logger().warn(f'{timeout_label}: {angle}° turntable_done 타임아웃')
+        if post_wait_sec:
+            time.sleep(post_wait_sec)
+
+
 def create_flask_app(hmi_node: HmiNode) -> tuple:
     """Flask 앱 + SocketIO 생성."""
     from ament_index_python.packages import get_package_share_directory
@@ -772,13 +788,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             import time as _time
             hmi_node.send_capture_reference_command(True)
             _time.sleep(0.3)
-            for angle in angles:
-                hmi_node._ref_turntable_done_event.clear()
-                hmi_node.send_turntable_command(angle)
-                # ESP32의 실제 turntable_done 신호를 기다림 (시간 기반 추측 제거)
-                done = hmi_node._ref_turntable_done_event.wait(timeout=delay + 5.0)
-                if not done:
-                    hmi_node.get_logger().warn(f'기준 캡처: {angle}° turntable_done 타임아웃')
+            _run_turntable_sequence(hmi_node, angles, delay + 5.0, timeout_label='기준 캡처')
             hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
 
         t = threading.Thread(target=_run_capture_sequence, daemon=True)
@@ -811,16 +821,10 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             import time as _time
             hmi_node.send_capture_dataset_command(True)
             _time.sleep(0.3)
-            for angle in angles:
-                hmi_node._ref_turntable_done_event.clear()
-                hmi_node.send_turntable_command(angle)
-                # ESP32의 실제 turntable_done 신호를 기다림 (시간 기반 추측 제거)
-                done = hmi_node._ref_turntable_done_event.wait(
-                    timeout=settle_sec + post_capture_sec + 5.0)
-                if not done:
-                    hmi_node.get_logger().warn(f'데이터셋 캡처: {angle}° turntable_done 타임아웃')
-                # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
-                _time.sleep(settle_sec + post_capture_sec)
+            # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
+            _run_turntable_sequence(
+                hmi_node, angles, settle_sec + post_capture_sec + 5.0,
+                post_wait_sec=settle_sec + post_capture_sec, timeout_label='데이터셋 캡처')
             hmi_node.get_logger().info(f'데이터셋 촬영 순환 완료: {angles}')
 
         t = threading.Thread(target=_run_dataset_sequence, daemon=True)
