@@ -47,6 +47,7 @@ TOPIC_ACT_CURRENT         = '/robot/act_current'
 TOPIC_ACT_MODEL_SELECT    = '/robot/act_model_select'
 TOPIC_INSPECTION_RESULT   = '/inspection/result'
 TOPIC_INSPECTION_TRIGGER  = '/inspection/trigger'
+TOPIC_INSPECTION_CAPTURE_NOW = '/inspection/capture_now'
 TOPIC_CAPTURE_REFERENCE   = '/inspection/capture_reference'
 TOPIC_CAPTURE_DATASET     = '/inspection/capture_dataset'
 TOPIC_ROBOT_JOINT_STATES  = '/robot/joint_states'
@@ -214,12 +215,17 @@ class HmiNode(Node):
         self._turntable_pub = self.create_publisher(Int32,  TOPIC_MOTOR_TURNTABLE_CMD, 10)
         self._ref_capture_pub = self.create_publisher(Bool, TOPIC_CAPTURE_REFERENCE, 10)
         self._ds_capture_pub = self.create_publisher(Bool, TOPIC_CAPTURE_DATASET, 10)
+        self._capture_now_pub = self.create_publisher(Bool, TOPIC_INSPECTION_CAPTURE_NOW, 10)
 
         # ─── 기준 이미지 캡처 턴테이블 동기화 ───
         self._ref_turntable_done_event = threading.Event()
         self.create_subscription(
             Bool, TOPIC_MOTOR_TURNTABLE_DONE,
             self._ref_turntable_done_cb, 10)
+
+        # ─── 검사 단독 테스트(로봇/FSM 없이 검사 사이클만 실행) 동기화 ───
+        self._inspection_test_active = False
+        self._inspection_result_event = threading.Event()
 
         # 자율 시퀀스(P1~P6)는 오케스트레이터 + robot_control_node 단일 경로가 담당한다.
         # HMI는 모터를 직접 제어하지 않는다 (이중 제어 제거: docs/act_sequence_fix_plan.md P0).
@@ -274,11 +280,14 @@ class HmiNode(Node):
                 self._inspection_history.pop(0)
             # pass/fail 카운트는 오케스트레이터의 /hmi/status 가 단일 source of truth.
             # 여기서 증가시키면 _status_cb 와 이중 집계되므로 history 누적만 한다.
+        self._inspection_result_event.set()  # 검사 단독 테스트 결과 대기 해제
 
     def _store_frame(self, frame, key: str):
         """디코딩된 프레임을 JPEG 인코딩해 캐시에 저장 (카메라 콜백 공통부)."""
         if frame is None:
             return
+        if key == 'camera2':
+            frame = cv2.flip(frame, 0)  # 검사캠이 거꾸로 장착되어 위아래 반전 (2026-07-06)
         _, jpeg = cv2.imencode('.jpg', frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         with self._lock:
@@ -483,6 +492,16 @@ class HmiNode(Node):
         msg.data = enable
         self._inspect_trigger_pub.publish(msg)
         return True
+
+    def send_capture_now_command(self):
+        """검사 캡처를 즉시 명령 (/inspection/capture_now).
+
+        turntable_done 신호 누락(0도->0도 무이동 등) 대비 — 검사 단독 테스트에서
+        각 각도 회전 완료 후 명시적으로 발행해 캡처를 보장한다.
+        """
+        msg = Bool()
+        msg.data = True
+        self._capture_now_pub.publish(msg)
 
     # ─── 데이터 접근 ───
     def get_status(self) -> dict:
@@ -816,15 +835,24 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         angles = data.get('angles', [0, 90, 180, 270])
         settle_sec = float(data.get('settle_sec', 2.0))
         post_capture_sec = float(data.get('post_capture_sec', 1.0))
+        rounds = int(data.get('rounds', 1))
+        rounds = max(1, min(50, rounds))
+
+        hmi_node._dataset_capture_abort = False
 
         def _run_dataset_sequence():
             import time as _time
-            hmi_node.send_capture_dataset_command(True)
-            _time.sleep(0.3)
-            # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
-            _run_turntable_sequence(
-                hmi_node, angles, settle_sec + post_capture_sec + 5.0,
-                post_wait_sec=settle_sec + post_capture_sec, timeout_label='데이터셋 캡처')
+            for i in range(rounds):
+                if hmi_node._dataset_capture_abort:
+                    break
+                # inspect_node가 한 바퀴(4장) 저장 후 모드를 스스로 끄므로 매 바퀴 재활성화 필요
+                hmi_node.send_capture_dataset_command(True)
+                _time.sleep(0.3)
+                # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
+                _run_turntable_sequence(
+                    hmi_node, angles, settle_sec + post_capture_sec + 5.0,
+                    post_wait_sec=settle_sec + post_capture_sec, timeout_label='데이터셋 캡처')
+                hmi_node.get_logger().info(f'데이터셋 촬영 {i + 1}/{rounds}바퀴 완료')
             hmi_node.get_logger().info(f'데이터셋 촬영 순환 완료: {angles}')
 
         t = threading.Thread(target=_run_dataset_sequence, daemon=True)
@@ -832,13 +860,65 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         return jsonify({
             'ok': True, 'angles': angles,
             'settle_sec': settle_sec, 'post_capture_sec': post_capture_sec,
+            'rounds': rounds,
         })
 
     @app.route('/api/capture/dataset/stop', methods=['POST'])
     def api_capture_dataset_stop():
         """데이터셋 촬영을 중단한다."""
+        hmi_node._dataset_capture_abort = True
         hmi_node.send_capture_dataset_command(False)
         return jsonify({'ok': True})
+
+    # ─── 검사 단독 테스트 API (로봇/FSM 없이 검사 사이클만 실행) ───
+    @app.route('/api/inspection/test', methods=['POST'])
+    def api_inspection_test():
+        """물체를 턴테이블에 올려둔 상태에서 검사 사이클(LED→회전→캡처→판정)만 단독 실행한다.
+
+        오케스트레이터/로봇 없이 HMI가 직접 LED·턴테이블·capture_now를 순서대로
+        발행해 inspect_node의 검사 모드를 흉내낸다. 결과는 기존 /inspection/result
+        구독 경로(_inspection_cb)로 검사 이력에 누적되어 UI에 자연 반영된다.
+        """
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 검사 단독 테스트를 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
+        if hmi_node._inspection_test_active:
+            return jsonify({'ok': False, 'error': '검사 테스트가 이미 진행 중입니다.'}), 409
+
+        data = request.get_json(silent=True) or {}
+        angles = data.get('angles', [0, 90, 180, 270])
+
+        def _run_inspection_test():
+            import time as _time
+            hmi_node._inspection_test_active = True
+            hmi_node._inspection_result_event.clear()
+            try:
+                hmi_node.send_led_command(True)
+                _time.sleep(5.0)  # 노출 안정화 (오케스트레이터와 동일)
+                hmi_node.trigger_inspection(True)
+                for angle in angles:
+                    hmi_node._ref_turntable_done_event.clear()
+                    hmi_node.send_turntable_command(angle)
+                    done = hmi_node._ref_turntable_done_event.wait(timeout=5.0)
+                    if not done:
+                        hmi_node.get_logger().warn(f'검사 테스트: {angle}° turntable_done 타임아웃')
+                    hmi_node.send_capture_now_command()
+                    _time.sleep(2.5)  # 안정화 + 캡처 여유
+                result_ready = hmi_node._inspection_result_event.wait(timeout=20.0)
+                if not result_ready:
+                    hmi_node.get_logger().warn('검사 테스트: /inspection/result 대기 타임아웃')
+                hmi_node.get_logger().info(f'검사 단독 테스트 완료: {angles}')
+            finally:
+                hmi_node.trigger_inspection(False)
+                hmi_node.send_led_command(False)
+                hmi_node._inspection_test_active = False
+
+        t = threading.Thread(target=_run_inspection_test, daemon=True)
+        t.start()
+        return jsonify({'ok': True, 'angles': angles})
 
     # ─── MJPEG 스트리밍 ───
     # No Signal 프레임은 정적이므로 앱 초기화 시 한 번만 인코딩해 캐싱한다

@@ -191,13 +191,6 @@
                                     <div class="metric-value" id="mTime">—</div>
                                 </div>
                             </div>
-
-                            <div class="ssim-bar-container" style="margin-top:16px;">
-                                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
-                                    SSIM (4방향) — 임계값 0.85
-                                </div>
-                                <div id="ssimBars"></div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -267,7 +260,6 @@
                                     <th>#</th>
                                     <th>시간</th>
                                     <th>판정</th>
-                                    <th>SSIM (평균)</th>
                                     <th>Solidity</th>
                                     <th>구멍</th>
                                     <th>텍스처</th>
@@ -277,7 +269,7 @@
                             </thead>
                             <tbody id="historyBody">
                                 <tr>
-                                    <td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">
+                                    <td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">
                                         검사 기록이 없습니다
                                     </td>
                                 </tr>
@@ -317,11 +309,15 @@
                                 </label>
                             </div>
 
+                            <button class="btn btn-estop" style="width:100%;margin-top:12px;padding:12px 0;font-size:15px;" onclick="sendCommand('estop')">
+                                ⊘ E-STOP (비상 정지)
+                            </button>
+
                             <div class="warning-box">
                                 <strong><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>안전 조작 및 주의사항</strong>
                                 <ul>
                                     <li><strong>충돌 조심</strong>: 팔로워 로봇이 리더 로봇의 급격한 동작을 그대로 따라 하므로, 조작 반경 내 장애물을 사전에 확인해 주세요.</li>
-                                    <li><strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 화면 상단 또는 컨트롤러의 <strong>E-STOP</strong> 버튼을 클릭하십시오.</li>
+                                    <li><strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 위의 빨간 E-STOP 버튼(또는 화면 상단 E-STOP)을 클릭하십시오.</li>
                                     <li><strong>안전 종료</strong>: 텔레옵 비활성화 시 리더 암의 토크가 다시 강하게 켜지며 고정됩니다. 툭 떨어지지 않게 손으로 가볍게 잡은 채 OFF 버튼을 눌러주십시오.</li>
                                 </ul>
                             </div>
@@ -699,6 +695,10 @@
                                     <input type="number" id="dsCaptureSettle" class="manual-input"
                                         min="0.5" max="10" step="0.5" value="2.0"
                                         style="width:70px;" oninput="clampInput(this, 0.5, 10)">
+                                    <label style="font-size:11px;color:var(--text-muted);">반복(바퀴)</label>
+                                    <input type="number" id="dataset_rounds" class="manual-input"
+                                        min="1" max="50" step="1" value="1"
+                                        style="width:70px;" oninput="clampInput(this, 1, 50)">
                                     <button class="btn manual-exec-btn" id="dsCaptureStartBtn"
                                             onclick="startDatasetCapture()"
                                             style="background:var(--accent-green);">
@@ -713,6 +713,26 @@
                                     </button>
                                 </div>
                                 <div id="dsCaptureStatus" class="manual-ctrl-hint" style="color:var(--text-muted);">대기 중</div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- 검사 단독 테스트 (로봇/FSM 없이 검사 사이클만 실행) -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg>
+                                    검사 단독 테스트
+                                </div>
+                                <div class="manual-ctrl-hint">물체를 턴테이블에 올린 후 시작하세요 (로봇/FSM 없이 검사만 실행)</div>
+                                <div class="manual-ctrl-row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <button class="btn manual-exec-btn" id="btn_inspect_test"
+                                            onclick="startInspectionTest()"
+                                            style="background:var(--accent-green);">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        검사 테스트
+                                    </button>
+                                </div>
+                                <div id="inspectTestStatus" class="manual-ctrl-hint" style="color:var(--text-muted);">대기 중</div>
                             </div>
 
                         </div>
@@ -868,10 +888,6 @@
                                     </tr>
                                 </tbody>
                             </table>
-                            
-                            <h3 style="color: var(--text-primary); margin-top: 24px; margin-bottom: 12px; font-size: 14px;">외곽선 유사도 (SSIM - 4방향)</h3>
-                            <div id="detailSsimBars" class="ssim-bar-container"></div>
-                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">* 임계값 0.85 이상 시 정상</div>
                         </div>
                     </div>
                 </div>

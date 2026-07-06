@@ -32,10 +32,8 @@ const FSM_NODES = [
     'ERROR', 'ESTOP',
 ];
 
-// ─── SSIM 검사 각도 및 판정 임계값 ───
-const SSIM_ANGLES = [0, 90, 180, 270];
-const SSIM_THRESHOLD = 0.85;
-const SSIM_WARN = 0.90;
+// ─── 촬영 각도 (턴테이블 캡처 공통) ───
+const CAPTURE_ANGLES = [0, 90, 180, 270];
 
 // ─── 검사 판정 기준값 ───
 // SSoT: 검사 노드 판정 기준 표시용 — dashboard.html 기준표 텍스트와 일치
@@ -337,7 +335,6 @@ function updateLatestInspection(result) {
     setMetricInverse('mTexture', result.texture_variance, THRESHOLDS.textureMax);
     document.getElementById('mTime').textContent = result.inspection_time_sec.toFixed(2) + 's';
 
-    renderSsimBars(result.ssim_scores);
     addHistoryRow(result);
     // 검사 상세 탭 업데이트
     updateInspectionDetailTab(result);
@@ -373,7 +370,6 @@ function updateInspectionDetailTab(result) {
         failReason.style.borderColor = 'rgba(248,81,73,0.2)';
     }
     _fillDetailTable(result);
-    _renderDetailSsimBars(result.ssim_scores);
 }
 
 // 테이블 값 채우기 및 판정 (단일 행)
@@ -410,35 +406,6 @@ function _fillDetailTable(result) {
     _fillTableRow('detTexture', 'detTextureEval', result.texture_variance, 0, THRESHOLDS.textureMax, false, true);
 }
 
-// SSIM 바 렌더링
-function _renderDetailSsimBars(ssimScores) {
-    const ssimContainer = document.getElementById('detailSsimBars');
-    const angles = SSIM_ANGLES;
-    let html = '';
-    for (let i = 0; i < angles.length; i++) {
-        const score = ssimScores[i] || 0;
-        const pct = Math.min(score * 100, 100);
-        let cls = 'ok';
-        let evalText = '<span style="color: var(--accent-green); font-weight: bold;">OK</span>';
-        if (score < SSIM_THRESHOLD) {
-            cls = 'bad';
-            evalText = '<span style="color: var(--accent-red); font-weight: bold;">FAIL</span>';
-        }
-        else if (score < SSIM_WARN) cls = 'warn';
-
-        html += `
-        <div class="ssim-bar-row" style="margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-            <span class="ssim-angle" style="width: 60px;">${angles[i]}°</span>
-            <div class="ssim-bar-track" style="flex: 1; margin: 0 10px;">
-                <div class="ssim-bar-fill ${cls}" style="width:${pct}%"></div>
-            </div>
-            <span class="ssim-value" style="color:var(--accent-${cls === 'ok' ? 'green' : cls === 'warn' ? 'yellow' : 'red'}); width: 60px; text-align: right; margin-right: 15px;">${score.toFixed(3)}</span>
-            <span style="width: 40px; text-align: center;">${evalText}</span>
-        </div>`;
-    }
-    ssimContainer.innerHTML = html;
-}
-
 function setMetric(id, value, min, max) {
     const el = document.getElementById(id);
     const v = parseFloat(value);
@@ -461,28 +428,6 @@ function setMetricInverse(id, value, threshold) {
     el.className = 'metric-value ' + (v <= threshold ? 'ok' : 'bad');
 }
 
-// ─── SSIM 바 렌더링 ───
-function renderSsimBars(scores) {
-    const container = document.getElementById('ssimBars');
-    const angles = SSIM_ANGLES;
-    let html = '';
-    for (let i = 0; i < angles.length; i++) {
-        const score = scores[i] || 0;
-        const pct = Math.min(score * 100, 100);
-        let cls = score < SSIM_THRESHOLD ? 'bad' : (score < SSIM_WARN ? 'warn' : 'ok');
-        const scoreColor = cls === 'ok' ? 'green' : (cls === 'warn' ? 'yellow' : 'red');
-        html += `
-        <div class="ssim-bar-row">
-            <span class="ssim-angle">${angles[i]}°</span>
-            <div class="ssim-bar-track">
-                <div class="ssim-bar-fill ${cls}" style="width:${pct}%"></div>
-            </div>
-            <span class="ssim-value" style="color:var(--accent-${scoreColor})">${score.toFixed(3)}</span>
-        </div>`;
-    }
-    container.innerHTML = html;
-}
-
 // ─── 히스토리 테이블 ───
 let historyData = [];
 
@@ -494,9 +439,6 @@ function addHistoryRow(result) {
     const tbody = document.getElementById('historyBody');
     let rows = '';
     historyData.forEach((r) => {
-        const avg = r.ssim_scores.length > 0
-            ? (r.ssim_scores.reduce((a, b) => a + b, 0) / r.ssim_scores.length)
-            : 0;
         const badgeCls = r.passed ? 'pass' : 'fail';
         const badgeText = r.passed ? 'PASS' : 'FAIL';
         const time = r.timestamp ? new Date(r.timestamp).toLocaleTimeString('ko-KR') : '-';
@@ -504,7 +446,6 @@ function addHistoryRow(result) {
             <td>${r.object_index}</td>
             <td class="time-cell">${time}</td>
             <td><span class="result-badge ${badgeCls}">${badgeText}</span></td>
-            <td style="font-family:var(--font-mono)">${avg.toFixed(3)}</td>
             <td style="font-family:var(--font-mono)">${r.solidity.toFixed(3)}</td>
             <td style="font-family:var(--font-mono)">${r.hole_count}</td>
             <td style="font-family:var(--font-mono)">${r.texture_variance.toFixed(1)}</td>
@@ -788,7 +729,7 @@ async function startRefCapture() {
     const totalMs = delay * 4 * 1000 + 1000;
     await _startCaptureSequence({
         url: '/api/capture/reference/start',
-        body: { angles: SSIM_ANGLES, delay_sec: delay },
+        body: { angles: CAPTURE_ANGLES, delay_sec: delay },
         statusElId: 'refCaptureStatus',
         startBtnId: 'refCaptureStartBtn',
         progressText: '캡쳐 진행 중... (0° → 90° → 180° → 270°)',
@@ -812,14 +753,16 @@ async function stopRefCapture() {
 async function startDatasetCapture() {
     const settleSec = parseFloat(document.getElementById('dsCaptureSettle')?.value || 2.0);
     const postSec = 1.0;
-    // (settle+post) × 4각도 후 완료로 표시
-    const totalMs = (settleSec + postSec) * 4 * 1000 + 1000;
+    let rounds = parseInt(document.getElementById('dataset_rounds')?.value, 10);
+    if (!Number.isInteger(rounds) || rounds < 1 || rounds > 50) rounds = 1;
+    // (settle+post) × 4각도 × rounds바퀴 후 완료로 표시
+    const totalMs = (settleSec + postSec) * 4 * rounds * 1000 + 1000;
     await _startCaptureSequence({
         url: '/api/capture/dataset/start',
-        body: { angles: SSIM_ANGLES, settle_sec: settleSec, post_capture_sec: postSec },
+        body: { angles: CAPTURE_ANGLES, settle_sec: settleSec, post_capture_sec: postSec, rounds },
         statusElId: 'dsCaptureStatus',
         startBtnId: 'dsCaptureStartBtn',
-        progressText: '촬영 진행 중... (0° → 90° → 180° → 270°)',
+        progressText: `촬영 진행 중... (0° → 90° → 180° → 270°) × ${rounds}바퀴`,
         completeText: '촬영 완료 ✓',
         totalMs,
         errorLogPrefix: '[QUVI] 데이터셋 촬영 시작 실패:',
@@ -833,6 +776,22 @@ async function stopDatasetCapture() {
         startBtnId: 'dsCaptureStartBtn',
         stopText: '촬영 중단됨',
         errorLogPrefix: '[QUVI] 데이터셋 촬영 중단 실패:',
+    });
+}
+
+// ─── 검사 단독 테스트 (로봇/FSM 없이 검사 사이클만 실행) ───
+async function startInspectionTest() {
+    // LED 안정화 5초 + (턴테이블 대기 최대 5초 + 캡처 여유 2.5초) × 4각도 + 여유
+    const totalMs = 5000 + 4 * 7500 + 1000;
+    await _startCaptureSequence({
+        url: '/api/inspection/test',
+        body: { angles: CAPTURE_ANGLES },
+        statusElId: 'inspectTestStatus',
+        startBtnId: 'btn_inspect_test',
+        progressText: '검사 테스트 진행 중... (0° → 90° → 180° → 270°)',
+        completeText: '검사 테스트 완료 ✓',
+        totalMs,
+        errorLogPrefix: '[QUVI] 검사 단독 테스트 시작 실패:',
     });
 }
 

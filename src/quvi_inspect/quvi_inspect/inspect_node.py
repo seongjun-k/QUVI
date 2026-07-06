@@ -60,6 +60,12 @@ class InspectNode(Node):
             Bool, '/inspection/trigger',
             self._trigger_callback, 10)
 
+        # turntable_done 누락(0도->0도 무이동 등) 시 검사 모드 캡처가 밀리는 문제를
+        # 방지하기 위해 오케스트레이터가 각도별로 명시 발행하는 캡처 명령.
+        self._capture_now_sub = self.create_subscription(
+            Bool, '/inspection/capture_now',
+            self._capture_now_callback, 10)
+
         self._ref_capture_sub = self.create_subscription(
             Bool, '/inspection/capture_reference',
             self._ref_capture_trigger_callback, 10)
@@ -135,7 +141,8 @@ class InspectNode(Node):
             # ─── 턴테이블 / 전처리 ───
             ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
             ('capture_settle_sec',      0.4,                                '_capture_settle'),
-            ('inspection_finalize_sec', 12.0,                               '_finalize_sec'),
+            # 한 바퀴 캡처 ≈ 20s(각도당 ~5s) + LED 안정화 5s + 여유 — 12s는 270° 캡처 전에 판정을 강행했다
+            ('inspection_finalize_sec', 45.0,                               '_finalize_sec'),
             ('roi_margin',              20,                                 '_roi_margin'),
             ('gaussian_blur_ksize',     5,                                  '_blur_k'),
             ('binary_threshold',        127,                                '_bin_thresh'),
@@ -200,19 +207,26 @@ class InspectNode(Node):
     def _image_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
         if frame is not None:
-            self._latest_frame = frame
+            # 검사캠이 거꾸로 장착되어 위아래 반전 (2026-07-06)
+            self._latest_frame = cv2.flip(frame, 0)
 
     def _image_callback_raw(self, msg: Image):
         frame = decode_raw(msg)
         if frame is not None:
-            self._latest_frame = frame
+            # 검사캠이 거꾸로 장착되어 위아래 반전 (2026-07-06)
+            self._latest_frame = cv2.flip(frame, 0)
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
         self._current_object_index = msg.object_index
         self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
 
     def _turntable_done_callback(self, msg: Bool):
-        """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약 (T4)."""
+        """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약 (T4).
+
+        검사 모드(_inspection_active) 캡처는 capture_now 콜백으로 이관됨 —
+        0도->0도 무이동 시 done 미발행으로 캡처가 밀리는 문제 방지 목적.
+        기준 이미지/데이터셋 촬영 모드는 오케스트레이터 경로 밖이라 기존대로 done 기반 유지.
+        """
         if not msg.data:
             return
         if self._dataset_capture_active:
@@ -221,12 +235,23 @@ class InspectNode(Node):
                 return
             self._ds_settle_timer.reset()   # dataset_capture_settle_sec 후 _on_dataset_settle_elapsed 발화
             return
-        if not (self._ref_capture_active or self._inspection_active):
+        if not self._ref_capture_active:
             return
         # 이미 안정화 대기 중이면 중복 done 무시 (done 재발행 방어).
         if not self._settle_timer.is_canceled():
             return
-        self._pending_ref = self._ref_capture_active
+        self._pending_ref = True
+        self._settle_timer.reset()   # capture_settle_sec 후 _on_settle_elapsed 발화
+
+    def _capture_now_callback(self, msg: Bool):
+        """오케스트레이터의 명시 캡처 명령 수신 (검사 모드 전용, T4 이관분)."""
+        if not msg.data:
+            return
+        if not self._inspection_active:
+            return
+        if not self._settle_timer.is_canceled():
+            return
+        self._pending_ref = False
         self._settle_timer.reset()   # capture_settle_sec 후 _on_settle_elapsed 발화
 
     def _on_settle_elapsed(self):
@@ -454,6 +479,19 @@ class InspectNode(Node):
             gray  = self._preprocess(captured)
             cache = BinaryCache(gray, self._bin_thresh)  # 이진화 1회
 
+            # ── 면적비: 정렬(크롭·확대) 전 전체 프레임끼리 비교 ──
+            # 기준 이미지는 전체 프레임으로 저장되므로, 캡처도 정렬 전 면적을
+            # 써야 조건이 일치한다. 정렬된 ROI 면적으로 비교하면 크롭 배율만큼
+            # 비율이 부풀어 항상 FAIL 이 난다.
+            ref = self._reference_images.get(angle)
+            if ref is not None:
+                ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
+                ref_area = BinaryCache(ref_resized, self._bin_thresh).largest_external_area()
+                cap_area = cache.largest_external_area()
+                a_ratio  = cap_area / ref_area if ref_area > 0 else 0.0
+            else:
+                a_ratio = float('nan')
+
             # ── 소프트웨어 정렬 (정렬된 이미지로 표면 분석) ──
             if self._align_enabled:
                 aligned = cache.get_aligned_roi(
@@ -464,15 +502,6 @@ class InspectNode(Node):
                     cache = BinaryCache(aligned, self._bin_thresh)
 
             solidity = cache.solidity()
-
-            ref = self._reference_images.get(angle)
-            if ref is not None:
-                ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
-                ref_area = BinaryCache(ref_resized, self._bin_thresh).largest_external_area()
-                cap_area = cache.largest_external_area()
-                a_ratio  = cap_area / ref_area if ref_area > 0 else 0.0
-            else:
-                a_ratio = float('nan')
 
             h_count, h_area_ratio = cache.holes(self._min_hole_px)
 
