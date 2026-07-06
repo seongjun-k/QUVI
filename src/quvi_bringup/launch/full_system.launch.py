@@ -171,6 +171,10 @@ def generate_launch_description():
             LaunchConfiguration('micro_ros_baud'),
         ],
         output='screen',
+        # HMI 리셋 시 오케스트레이터가 agent 를 종료 → ESP32 하드 리셋 순으로
+        # USB 링크를 재수립한다. 종료된 agent 는 여기서 자동 재기동된다.
+        respawn=True,
+        respawn_delay=2.0,
     )
 
     # ESP32 는 agent 재기동에 재협상하지 못하므로, agent 기동 전에 DTR/RTS로

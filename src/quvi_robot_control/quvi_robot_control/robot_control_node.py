@@ -132,32 +132,19 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 
 # 사전 정의 자세 — raw Dynamixel 위치값 (0~4095 = 0~360°)
 # dict 형태로 lerobot bus에 직접 전달 (normalize=False)
-POSE_HOME = {
-    'shoulder_pan': 2048, 'shoulder_lift': 1800, 'elbow_flex': 1200,
-    'wrist_flex': 2048, 'wrist_roll': 2048, 'gripper': 2048,
-}
-
-POSE_LIFT_ARM = {
-    'shoulder_lift': 1800, 'elbow_flex': 1200, 'wrist_flex': 2048, 'wrist_roll': 2048,
-}
-
-POSE_PLACE_CHAMBER = {
-    'shoulder_lift': 1400, 'elbow_flex': 900, 'wrist_flex': 1800,
-}
-
-POSE_CHAMBER_PRE_PICK = {
-    'shoulder_pan': 0, 'shoulder_lift': 1400, 'elbow_flex': 900, 'wrist_flex': 1800, 'gripper': GRIPPER_OPEN,
-}
 
 # ── 티칭 웨이포인트 (teach_pendant.py 로 기록 후 여기에 붙여넣기) ──────────────
 # scripts/teach_pendant.py 실행 → 원하는 자세로 이동 → 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
-POSE_P1 = {'shoulder_pan': 2054, 'shoulder_lift': 1258, 'elbow_flex': 2800, 'wrist_flex': 2981, 'wrist_roll': 2035, 'gripper': 2150}  # 베드 위 대기
-POSE_P2 = {'shoulder_pan':   12, 'shoulder_lift': 1843, 'elbow_flex': 2165, 'wrist_flex': 3123, 'wrist_roll': 2095, 'gripper': 2150}  # 180도 회전
-POSE_P3 = {'shoulder_pan':   16, 'shoulder_lift': 1736, 'elbow_flex': 2413, 'wrist_flex': 3018, 'wrist_roll': 2087, 'gripper': 2150}  # 턴테이블 진입점
-POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1841, 'elbow_flex': 2522, 'wrist_flex': 2759, 'wrist_roll': 2085, 'gripper': 2150}  # 턴테이블 놓기 지점
-POSE_P5 = {'shoulder_pan': 2047, 'shoulder_lift': 1854, 'elbow_flex': 2460, 'wrist_flex': 2909, 'wrist_roll': 2050, 'gripper': 2150}  # 180도 반대 회전 (경유)
-POSE_P6 = {'shoulder_pan': 2039, 'shoulder_lift': 1076, 'elbow_flex': 2884, 'wrist_flex': 3094, 'wrist_roll': 1993, 'gripper': 2150}  # 분류장 위치
+POSE_P1 = {'shoulder_pan': 2074, 'shoulder_lift':  970, 'elbow_flex': 3092, 'wrist_flex': 2972, 'wrist_roll': 2035, 'gripper': 2100}  # 베드 위 대기
+POSE_P2 = {'shoulder_pan':   10, 'shoulder_lift': 1137, 'elbow_flex': 2583, 'wrist_flex': 3070, 'wrist_roll': 2034, 'gripper': 2100}  # 180도 회전
+POSE_P3 = {'shoulder_pan':   10, 'shoulder_lift': 1754, 'elbow_flex': 2287, 'wrist_flex': 3068, 'wrist_roll': 2035, 'gripper': 2100}  # 턴테이블 진입점
+POSE_P4 = {'shoulder_pan':   10, 'shoulder_lift': 1773, 'elbow_flex': 2558, 'wrist_flex': 2785, 'wrist_roll': 2023, 'gripper': 2100}  # 턴테이블 놓기 지점
+POSE_P5 = {'shoulder_pan': 2016, 'shoulder_lift': 1104, 'elbow_flex': 3001, 'wrist_flex': 3044, 'wrist_roll': 1929, 'gripper': 2100}  # 180도 반대 회전 (경유)
+POSE_P6 = {'shoulder_pan': 2105, 'shoulder_lift': 1434, 'elbow_flex': 2969, 'wrist_flex': 2684, 'wrist_roll': 2018, 'gripper': 2100}  # 분류장 위치
+
+# 홈 자세는 P1과 동일 — 2026-07-06 사용자 지정
+POSE_HOME = dict(POSE_P1)
 
 # ── Dynamixel 프로파일 (⚠️ 시간기반 프로파일 모드) ───────────────────────────
 # omx_follower.configure() 가 Drive_Mode Bit2(시간기반 프로파일)를 설정하므로
@@ -1166,20 +1153,32 @@ class RobotControlNode(Node):
         self._publish_status('검사장 안착 시퀀스 시작')
         self.get_logger().info('검사장 안착 시퀀스 시작')
 
-        self._write_raw_position(POSE_LIFT_ARM)
-        self._wait_motion_done(POSE_LIFT_ARM)
+        # 그리퍼는 물체를 쥔 채라 pose 의 gripper 값(2100)에 도달하지 못한다 —
+        # 포함하면 _wait_motion_done 이 매 이동 10초 풀타임아웃하고 파지력도
+        # 느슨해지므로, 팔 관절만 이동시키고 그리퍼는 명시 명령으로만 제어한다.
+        def _arm_only(pose):
+            return {k: v for k, v in pose.items() if k != 'gripper'}
 
-        self._write_raw_position({'shoulder_pan': 0})
-        self._wait_motion_done({'shoulder_pan': 0})
+        self._write_raw_position(_arm_only(POSE_P1))
+        self._wait_motion_done(_arm_only(POSE_P1))
 
-        self._write_raw_position(POSE_PLACE_CHAMBER)
-        self._wait_motion_done(POSE_PLACE_CHAMBER)
+        time.sleep(2.0)  # 대기
+
+        self._write_raw_position(_arm_only(POSE_P2))
+        self._wait_motion_done(_arm_only(POSE_P2))
+
+        self._write_raw_position(_arm_only(POSE_P3))
+        self._wait_motion_done(_arm_only(POSE_P3))
+
+        self._write_raw_position(_arm_only(POSE_P4))
+        self._wait_motion_done(_arm_only(POSE_P4))
 
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         self._wait_gripper()
 
-        success = self._write_raw_position(POSE_HOME)
-        self._wait_motion_done(POSE_HOME)
+        # 검사 동안 팔은 P3에서 후퇴 대기
+        success = self._write_raw_position(_arm_only(POSE_P3))
+        self._wait_motion_done(_arm_only(POSE_P3))
 
         done_msg = Bool()
         done_msg.data = True
@@ -1194,17 +1193,26 @@ class RobotControlNode(Node):
         self._publish_status('검사장 재파지 시퀀스 시작')
         self.get_logger().info('검사장 재파지 시퀀스 시작')
 
-        self._write_raw_position(POSE_CHAMBER_PRE_PICK)
-        self._wait_motion_done(POSE_CHAMBER_PRE_PICK)
+        # 그리퍼는 pose 값 대신 명시 명령으로만 제어 (물체 파지 시 pose 의
+        # gripper 값에 도달하지 못해 _wait_motion_done 이 풀타임아웃한다).
+        def _arm_only(pose):
+            return {k: v for k, v in pose.items() if k != 'gripper'}
+
+        # P3에서 완전 개방 후 팔 관절만 P4로 접근
+        self._write_raw_position({'gripper': GRIPPER_OPEN})
+        self._wait_gripper()
+
+        self._write_raw_position(_arm_only(POSE_P4))
+        self._wait_motion_done(_arm_only(POSE_P4))
 
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
         self._wait_gripper()
 
-        self._write_raw_position(POSE_LIFT_ARM)
-        self._wait_motion_done(POSE_LIFT_ARM)
+        self._write_raw_position(_arm_only(POSE_P3))
+        self._wait_motion_done(_arm_only(POSE_P3))
 
-        success = self._write_raw_position({'shoulder_pan': 2048})
-        self._wait_motion_done({'shoulder_pan': 2048})  # 180° 복귀 완료 확인 후 done 발행
+        success = self._write_raw_position(_arm_only(POSE_P5))
+        self._wait_motion_done(_arm_only(POSE_P5))  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
 
         done_msg = Bool()
         done_msg.data = True
@@ -1261,11 +1269,12 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # 모터 이동 완료 폴링
     # ─────────────────────────────────────────────
-    def _wait_motion_done(self, goal: dict, timeout: float = 10.0, tol: int = 20):
+    def _wait_motion_done(self, goal: dict, timeout: float = 10.0, tol: int = 40):
         """Present_Position 폴링으로 목표 위치 도달을 확인.
 
         goal: _write_raw_position에 넘긴 것과 동일한 {joint: raw_value} 딕셔너리.
-        tol:  허용 오차 (raw 단위, 20 ≈ 1.75°).
+        tol:  허용 오차 (raw 단위, 40 ≈ 3.5°). 경유 자세는 정밀 도달이 불필요하고,
+              부하 자세에서 I게인 0으로 정상상태 오차가 20틱을 넘을 수 있다.
 
         주의: 그리퍼(전류기반 위치제어)는 물체를 쥐면 목표에 도달하지 못하므로
         이 함수로 대기하면 안 된다. 그리퍼는 _wait_gripper() 를 사용할 것 (#2).
@@ -1286,7 +1295,12 @@ class RobotControlNode(Node):
                 time.sleep(0.1)  # 기계 안정화
                 return
             time.sleep(0.05)
-        self.get_logger().warn(f'[_wait_motion_done] {timeout}s 타임아웃 — 강제 진행')
+        # 어긋난 관절 진단 — 어느 축이 수렴하지 못했는지 특정
+        positions = self._read_raw_positions() or {}
+        off = {j: int(positions.get(j, 0) - v) for j, v in goal.items()
+               if abs(positions.get(j, 0) - v) > tol}
+        self.get_logger().warn(
+            f'[_wait_motion_done] {timeout}s 타임아웃 — 강제 진행 | 오차 초과 관절(현재-목표): {off}')
 
     def _wait_gripper(self, settle: float = GRIPPER_SETTLE_SEC):
         """그리퍼 개폐 완료 대기 — 고정 지연 (#2).
@@ -1445,9 +1459,9 @@ class RobotControlNode(Node):
         P1~P6 웨이포인트 저속 실행 (시간기반 프로파일 PROFILE_VELOCITY_SEQ=2000ms).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
-        순서 (test_sequence.py 기반):
-          P1 → P2 → P3 → P4(놓기) → P3(후퇴) → P4(재집기)
-          → P3(올리기) → P5(반대 회전) → P1(경유) → P6(최종 놓기)
+        순서: P1(경유) → P6(분류장) → 그리퍼 열기
+        (P1→P4 안착/재파지 구간은 _execute_place_in_chamber /
+        _execute_pick_from_chamber 로 이전돼 중복 제거)
         """
         def move_arm(pose: dict, label: str) -> bool:
             if self._should_abort():   # STOP/ESTOP 시 새 목표 발행 안 함 (#1/#3)
@@ -1485,27 +1499,7 @@ class RobotControlNode(Node):
             )
             self._wait_gripper()
 
-        # P1 → P2 → P3 → P4 → 놓기
-        for pose, label in [(POSE_P1, 'P1: 베드 위 대기'),
-                            (POSE_P2, 'P2: 180도 회전'),
-                            (POSE_P3, 'P3: 턴테이블 진입점'),
-                            (POSE_P4, 'P4: 턴테이블 놓기 지점')]:
-            if not move_arm(pose, label):
-                return False
-        grip_open()
-
-        # P3으로 후퇴 후 P4로 재진입 (집기 준비 — 검사는 오케스트레이터가 이미 완료)
-        if not move_arm(POSE_P3, 'P3: 후퇴'):
-            return False
-        if not move_arm(POSE_P4, 'P4: 재집기 지점'):
-            return False
-        grip_close()
-
-        # P3 올리기 → P5 반대 회전 → P1 경유 → P6 최종 놓기
-        if not move_arm(POSE_P3, 'P3: 들어올리기'):
-            return False
-        if not move_arm(POSE_P5, 'P5: 180도 반대 회전'):
-            return False
+        # P1 경유 → P6 분류장 → 그리퍼 열기
         if not move_arm(POSE_P1, 'P1: 경유'):
             return False
         if not move_arm(POSE_P6, 'P6: 분류장 위치'):

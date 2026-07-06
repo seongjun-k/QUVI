@@ -73,6 +73,10 @@ class MainOrchestratorNode(Node):
         self.declare_parameter('rail_timeout_sec', 25.0)
         self.declare_parameter('inspect_timeout_sec', 15.0)
         self.declare_parameter('detecting_timeout_sec', 10.0)
+        # 검사장 안착/재파지 시퀀스 대기 — P계열 6이동+대기로 나면 20초로는 부족
+        self.declare_parameter('chamber_timeout_sec', 40.0)
+        # RESET 명령 시 ESP32 하드 리셋(DTR/RTS 펄스)에 쓰는 시리얼 포트
+        self.declare_parameter('esp32_reset_port', '/dev/ttyESP32')
 
         # ─── 파라미터 로드 ───
         self._use_act = self.get_parameter('use_act').value
@@ -84,6 +88,7 @@ class MainOrchestratorNode(Node):
         self._step_delay = self.get_parameter('step_delay_sec').value
         self._loop_rate = self.get_parameter('loop_rate_hz').value
         self._grasp_timeout = self.get_parameter('grasp_timeout_sec').value
+        self._chamber_timeout = self.get_parameter('chamber_timeout_sec').value
         self._release_timeout = self.get_parameter('release_timeout_sec').value
         self._home_timeout = self.get_parameter('home_timeout_sec').value
         self._rail_timeout = self.get_parameter('rail_timeout_sec').value
@@ -151,6 +156,7 @@ class MainOrchestratorNode(Node):
 
         # 하위 노드 트리거 발행
         self._inspect_trigger_pub = self.create_publisher(Bool, topics.TOPIC_INSPECTION_TRIGGER, 10)
+        self._inspect_capture_now_pub = self.create_publisher(Bool, topics.TOPIC_INSPECTION_CAPTURE_NOW, 10)
 
         # LED 제어 (검사 중 ON, 검사 완료 후 OFF)
         self._led_pub = self.create_publisher(Bool, topics.TOPIC_MOTOR_LED, 10)
@@ -237,6 +243,11 @@ class MainOrchestratorNode(Node):
             reset_msg.data = True
             self._robot_reset_pub.publish(reset_msg)
 
+            # ESP32 하드 리셋 — ESTOP 후 펌웨어(isEmergencyStopped)가 복귀 로직이
+            # 없어 재부팅해야만 정상화된다. FSM 루프를 막지 않게 별도 스레드로 수행.
+            import threading
+            threading.Thread(target=self._hard_reset_esp32, daemon=True).start()
+
             self._state = FsmState.INIT
             self._error_msg = ""
             self._processed_count = 0
@@ -244,6 +255,40 @@ class MainOrchestratorNode(Node):
             self._fail_count = 0
             self._act_ready = False
             self._motor_homed = False
+
+    def _hard_reset_esp32(self):
+        """ESP32 USB 링크 재수립 — agent 종료 → DTR/RTS 하드 리셋.
+
+        펌웨어는 부팅 시에만 agent 접속을 재시도하고, 구동 중인 agent 도
+        ESP32 재부팅 후 세션을 재협상하지 못한다. 따라서 부팅 플로우와
+        동일하게 agent 를 먼저 종료하고(launch respawn 이 2초 후 재기동)
+        ESP32 를 리셋해 프레시 부팅이 새 agent 를 잡게 한다. best-effort:
+        실패해도 FSM 리셋 흐름은 계속된다.
+        """
+        import subprocess
+        import time as _time
+        port = self.get_parameter('esp32_reset_port').value
+        try:
+            subprocess.run(['pkill', '-f', 'micro_ros_agent'],
+                           check=False, timeout=5)
+            self.get_logger().info('micro-ROS agent 종료 — launch respawn 대기')
+            _time.sleep(1.0)
+        except Exception as exc:
+            self.get_logger().warn(f'micro-ROS agent 종료 실패: {exc} — 리셋은 계속 진행')
+        try:
+            import serial
+            ser = serial.Serial(port)
+            # esptool hard_reset 순서 — DTR(IO0) 먼저 HIGH 확보 후 RTS(EN)만
+            # 펄스해야 부트로더 모드 진입을 피한다.
+            ser.dtr = False   # IO0 = HIGH (정상 부팅 모드)
+            ser.rts = True    # EN = LOW (리셋)
+            _time.sleep(0.1)
+            ser.rts = False   # EN = HIGH (부팅 시작)
+            ser.close()
+            self.get_logger().info(
+                f'ESP32 하드 리셋 완료 ({port}) — agent 재접속 후 시작 시 호밍이 재수행됩니다.')
+        except Exception as exc:
+            self.get_logger().warn(f'ESP32 하드 리셋 실패 ({port}): {exc} — 수동 전원 리셋이 필요할 수 있습니다.')
 
     def _estop_system_cb(self, msg: Bool):
         if msg.data:
@@ -454,7 +499,7 @@ class MainOrchestratorNode(Node):
             if self._place_chamber_done:
                 self.get_logger().info('검사장 안착 완료. 품질 검사 단계로 진입')
                 self._state = FsmState.INSPECTING_TRIGGER
-            elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
+            elif self._state_timer_counter > int(self._chamber_timeout * self._loop_rate):
                 self.get_logger().error('검사장 안착 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'PLACE_CHAMBER_TIMEOUT'
                 self._state = FsmState.ERROR
@@ -465,13 +510,15 @@ class MainOrchestratorNode(Node):
             led_on = Bool()
             led_on.data = True
             self._led_pub.publish(led_on)
-            self.get_logger().info('조명 ON — 카메라 노출 안정화 대기 3초')
+            self.get_logger().info('조명 ON — 카메라 노출 안정화 대기 5초')
             self._state_timer_counter = 0
             self._state = FsmState.INSPECTING_LED_STABILIZE
 
         elif self._state == FsmState.INSPECTING_LED_STABILIZE:
             self._state_timer_counter += 1
-            if self._state_timer_counter >= int(3.0 * self._loop_rate):
+            # 안착 done은 P3 후퇴 완료 직후 발행되므로, 이 대기가 곧
+            # '진입점 도착 후 5초' 안정화 대기에 해당한다.
+            if self._state_timer_counter >= int(5.0 * self._loop_rate):
                 # 검사 노드 활성화 및 턴테이블 회전 진입
                 inspect_trigger = Bool()
                 inspect_trigger.data = True
@@ -497,6 +544,11 @@ class MainOrchestratorNode(Node):
             if self._turntable_done:
                 self.get_logger().info(f'턴테이블 {self._inspect_angles[self._inspect_angle_idx]}도 회전 완료 확인')
                 self._state_timer_counter = 0
+                # done 기반 캡처는 0도->0도 무이동 시 done 미발행으로 밀릴 수 있어,
+                # 명시적 캡처 명령으로 각도별 캡처 시점을 오케스트레이터가 직접 지정한다.
+                capture_now = Bool()
+                capture_now.data = True
+                self._inspect_capture_now_pub.publish(capture_now)
                 self._state = FsmState.INSPECTING_CAPTURE
             elif self._state_timer_counter > int(self._step_delay * self._loop_rate * 2):
                 self.get_logger().warn(
@@ -504,6 +556,9 @@ class MainOrchestratorNode(Node):
                     f'{self._inspect_angles[self._inspect_angle_idx]}도 회전이 늦어지고 있습니다. '
                     f'그래도 다음 단계로 진행합니다.')
                 self._state_timer_counter = 0
+                capture_now = Bool()
+                capture_now.data = True
+                self._inspect_capture_now_pub.publish(capture_now)
                 self._state = FsmState.INSPECTING_CAPTURE
 
         elif self._state == FsmState.INSPECTING_CAPTURE:
@@ -547,7 +602,7 @@ class MainOrchestratorNode(Node):
             if self._pick_chamber_done:
                 self.get_logger().info('검사장 재파지 완료. 분류 이송 단계로 진입')
                 self._state = FsmState.SORTING_TRIGGER
-            elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
+            elif self._state_timer_counter > int(self._chamber_timeout * self._loop_rate):
                 self.get_logger().error('검사장 재파지 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'PICK_CHAMBER_TIMEOUT'
                 self._state = FsmState.ERROR
