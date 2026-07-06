@@ -98,8 +98,8 @@ def generate_launch_description():
         namespace='camera1',
         parameters=[{
             'video_device': LaunchConfiguration('fixed_cam_device'),
-            'image_width': 1920,
-            'image_height': 1080,
+            'image_width': 640,
+            'image_height': 480,
             'pixel_format': 'mjpeg2rgb',
             'framerate': 30.0,
             'camera_name': 'sidecam',
