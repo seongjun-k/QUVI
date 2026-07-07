@@ -93,6 +93,10 @@ def generate_launch_description():
         'micro_ros_baud', default_value='115200',
         description='micro-ROS agent 보 레이트')
 
+    anomaly_enabled_arg = DeclareLaunchArgument(
+        'anomaly_enabled', default_value='true',
+        description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
+
     # ─── Vision Pipeline 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -105,6 +109,7 @@ def generate_launch_description():
             'sidecam_exposure': LaunchConfiguration('sidecam_exposure'),
             'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),
             'fixed_cam_exposure': LaunchConfiguration('fixed_cam_exposure'),
+            'anomaly_enabled': LaunchConfiguration('anomaly_enabled'),
         }.items(),
     )
 
@@ -152,7 +157,8 @@ def generate_launch_description():
         parameters=[{
             'use_act': LaunchConfiguration('use_act'),
             'target_z': 15.0,
-            'step_delay_sec': 2.0,
+            # 검사 settle 2.0s 캡처와 다음 회전 명령 레이스 방지 (계획서 Phase 2 페이싱)
+            'step_delay_sec': 3.0,
             'loop_rate_hz': 10.0,
         }],
         output='screen',
@@ -198,6 +204,7 @@ def generate_launch_description():
         fixed_cam_exposure_arg,
         micro_ros_port_arg,
         micro_ros_baud_arg,
+        anomaly_enabled_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),

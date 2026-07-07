@@ -88,6 +88,10 @@ def generate_launch_description():
         'fixed_cam_exposure', default_value='150',
         description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
 
+    anomaly_enabled_arg = DeclareLaunchArgument(
+        'anomaly_enabled', default_value='true',
+        description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
+
     # ─── 카메라 1: 사이드캠 (Zone 1 - 베드 위 출력물 촬영) ───
     # ─── 카메라 1: 사이드캠 (Zone 1 - 픽업 영역) ───
     # fixed_cam_device → camera1 토픽 (사이드캠 위치 교체)
@@ -146,6 +150,9 @@ def generate_launch_description():
                 'camera_topic': LaunchConfiguration('inspect_topic'),
                 'reference_image_dir': LaunchConfiguration('reference_image_dir'),
                 'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
+                'anomaly_enabled': ParameterValue(LaunchConfiguration('anomaly_enabled'), value_type=bool),
+                'anomaly_model_dir': [LaunchConfiguration('data_dir'), '/models'],
+                'anomaly_device': 'cuda',
             }
         ],
         output='screen',
@@ -165,6 +172,7 @@ def generate_launch_description():
         sidecam_exposure_arg,
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
+        anomaly_enabled_arg,
 
         # 로그
         LogInfo(msg='====== QUVI Vision Pipeline 시작 ======'),

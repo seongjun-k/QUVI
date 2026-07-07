@@ -15,6 +15,7 @@ QUVI INSPECT_NODE
 import os
 import time
 import math
+import json
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -27,6 +28,7 @@ from std_msgs.msg import Bool
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
 from quvi_robot_control.utils import decode_compressed, decode_raw, BinaryCache, encode_bgr
+from quvi_inspect.ml_preprocess import preprocess_for_ml
 
 
 class InspectNode(Node):
@@ -41,6 +43,11 @@ class InspectNode(Node):
         # ─── 기준 이미지 로드 ───
         self._reference_images: Dict[int, np.ndarray] = {}
         self._load_reference_images()
+
+        # ─── ML 이상탐지 (섀도우 모드, Phase 2/3) ───
+        self._anomaly_detectors: Dict[int, object] = {}
+        self._anomaly_thresholds: Dict[int, float] = {}
+        self._init_anomaly()
 
         # ─── ROS 통신 ───
         if self._use_compressed:
@@ -139,7 +146,8 @@ class InspectNode(Node):
             ('min_hole_area_px',        50,                                 '_min_hole_px'),
             # ─── 턴테이블 / 전처리 ───
             ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
-            ('capture_settle_sec',      0.4,                                '_capture_settle'),
+            # 데이터셋 촬영(2.0s 노출 안정)과 실검사 노출 조건 정합 — train/infer skew 방지 (계획서 Phase 2)
+            ('capture_settle_sec',      2.0,                                '_capture_settle'),
             # 한 바퀴 캡처 ≈ 20s(각도당 ~5s) + LED 안정화 5s + 여유 — 12s는 270° 캡처 전에 판정을 강행했다
             ('inspection_finalize_sec', 45.0,                               '_finalize_sec'),
             ('roi_margin',              20,                                 '_roi_margin'),
@@ -157,6 +165,10 @@ class InspectNode(Node):
             # ─── 데이터셋 촬영 모드 (ML 정상품 수집) ───
             ('dataset_capture_settle_sec', 2.0,                             '_ds_settle_sec'),
             ('dataset_capture_dir',     '/workspace/data/anomaly_dataset/raw', '_ds_dir'),
+            # ─── ML 이상탐지 (섀도우 모드 — passed 판정에는 반영하지 않음) ───
+            ('anomaly_enabled',         False,                              '_anomaly_enabled'),
+            ('anomaly_model_dir',       '/workspace/data/models',           '_anomaly_model_dir'),
+            ('anomaly_device',          'cuda',                             '_anomaly_device'),
         ]
 
         for name, default, attr_name in params:
@@ -199,6 +211,50 @@ class InspectNode(Node):
                 f'기준 이미지가 불완전합니다! '
                 f'누락된 각도: {missing}. '
                 f'검사 결과의 신뢰도가 떨어집니다.')
+
+    # ─────────────────────────────────────────────
+    # ML 이상탐지 초기화 (섀도우 모드, Phase 2)
+    # ─────────────────────────────────────────────
+    def _init_anomaly(self):
+        """각도별 PatchCore 뱅크를 로드한다. 실패해도 노드는 계속 동작한다(자동 비활성)."""
+        if not self._anomaly_enabled:
+            self.get_logger().info('ML 이상탐지 비활성화(anomaly_enabled=False) — 룰 판정만 사용')
+            return
+
+        try:
+            # torch 는 이 모듈 내부에서만 import 되므로 비활성 시 로드 비용이 없다.
+            from quvi_inspect.anomaly_detector import PatchCoreDetector
+
+            thresholds_path = os.path.join(self._anomaly_model_dir, 'thresholds.json')
+            with open(thresholds_path, encoding='utf-8') as f:
+                thresholds = json.load(f)
+
+            backbone_path = os.path.join(self._anomaly_model_dir, 'wide_resnet50.pth')
+            shared_backbone = None  # 첫 로드에서 채워 이후 각도는 백본을 재사용(GPU 메모리 절약)
+
+            for angle in self._angles:
+                bank_path = os.path.join(self._anomaly_model_dir, f'bank_{angle}.pt')
+                if not os.path.isfile(bank_path):
+                    continue
+                detector = PatchCoreDetector.load(
+                    bank_path,
+                    device=self._anomaly_device,
+                    backbone_weights_path=backbone_path,
+                    backbone=shared_backbone)
+                if shared_backbone is None:
+                    shared_backbone = detector.backbone
+                self._anomaly_detectors[angle] = detector
+                self._anomaly_thresholds[angle] = float(thresholds[str(angle)]['threshold'])
+
+            if self._anomaly_detectors:
+                self.get_logger().info(
+                    f'ML 이상탐지 로드 완료 | 각도: {sorted(self._anomaly_detectors.keys())} | '
+                    f'디바이스: {self._anomaly_device} | 임계값: {self._anomaly_thresholds}')
+            else:
+                self.get_logger().warn('ML 이상탐지: 뱅크 파일 없음 — 비활성 상태로 진행')
+        except Exception as exc:  # noqa: BLE001 — 로드 실패는 절대 노드를 죽이지 않는다
+            self.get_logger().warn(f'ML 이상탐지 로드 실패({exc}) — 자동 비활성, 룰 판정만 사용')
+            self._anomaly_detectors = {}
 
     # ─────────────────────────────────────────────
     # 콜백
@@ -440,6 +496,19 @@ class InspectNode(Node):
             f'  Solidity: {surface_results["solidity"]:.3f} | '
             f'구멍: {surface_results["hole_count"]}개 | '
             f'텍스처: {surface_results["texture_variance"]:.1f}')
+
+        # ── 섀도우 모드 로그: ML 은 참고용, passed 에는 반영되지 않음 ──
+        ml_passed = surface_results['ml_passed']
+        worst = surface_results['anomaly_score_worst']
+        if ml_passed is None:
+            ml_str, worst_str, agree = 'N/A', 'N/A', 'N/A'
+        else:
+            ml_str = 'PASS' if ml_passed else 'FAIL'
+            worst_str = f'{worst:.2f}'
+            agree = '일치' if ml_passed == final_pass else '불일치'
+        rule_str = 'PASS' if final_pass else 'FAIL'
+        self.get_logger().info(
+            f'[섀도우] 룰={rule_str} | ML={ml_str} (worst={worst_str}) | {agree}')
         self.get_logger().info('=' * 50)
 
         if self._pub_debug:
@@ -506,12 +575,23 @@ class InspectNode(Node):
             lap     = cv2.Laplacian(gray, cv2.CV_64F)
             tex_var = float(lap.var())
 
+            # ── ML 이상탐지 (섀도우 모드 — passed 판정에는 반영하지 않음) ──
+            a_score = None
+            detector = self._anomaly_detectors.get(angle)
+            if detector is not None:
+                try:
+                    ml_input = preprocess_for_ml(captured, self._bin_thresh)
+                    a_score = detector.score(ml_input)
+                except Exception as exc:  # noqa: BLE001 — ML 실패가 검사 전체를 막지 않음
+                    self.get_logger().warn(f'{angle}° ML 점수 계산 실패: {exc}')
+
             angle_features[angle] = {
                 'solidity':        solidity,
                 'area_ratio':      a_ratio,
                 'hole_count':      h_count,
                 'hole_area_ratio': h_area_ratio,
                 'texture_variance': tex_var,
+                'anomaly_score':   a_score,
             }
 
         all_pass    = True
@@ -552,14 +632,32 @@ class InspectNode(Node):
         valid_areas = [a for a in all_area if not math.isnan(a)]
         worst_area = max(valid_areas, key=lambda a: abs(1.0 - a)) if valid_areas else float('nan')
 
+        # ── ML 이상탐지 집계 (섀도우 모드 — passed 에는 절대 반영하지 않음) ──
+        ml_scores = {a: f['anomaly_score'] for a, f in angle_features.items()
+                     if f['anomaly_score'] is not None}
+        anomaly_score_worst = max(ml_scores.values()) if ml_scores else None
+        ml_passed = None
+        ml_over: List[str] = []
+        if ml_scores:
+            ml_passed = True
+            for angle, score in ml_scores.items():
+                threshold = self._anomaly_thresholds.get(angle)
+                if threshold is not None and score > threshold:
+                    ml_passed = False
+                    ml_over.append(f'{angle}°={score:.2f}(임계{threshold:.2f})')
+        ml_detail = '; '.join(ml_over)
+
         return {
-            'passed':           all_pass,
-            'solidity':         min(all_sol)     if all_sol     else 1.0,
-            'area_ratio':       worst_area,
-            'hole_count':       max(all_holes)   if all_holes   else 0,
-            'hole_area_ratio':  max(all_hole_ar) if all_hole_ar else 0.0,
-            'texture_variance': max(all_tex)     if all_tex     else 0.0,
-            'fail_detail':      '; '.join(fail_details) if fail_details else '',
+            'passed':              all_pass,
+            'solidity':            min(all_sol)     if all_sol     else 1.0,
+            'area_ratio':          worst_area,
+            'hole_count':          max(all_holes)   if all_holes   else 0,
+            'hole_area_ratio':     max(all_hole_ar) if all_hole_ar else 0.0,
+            'texture_variance':    max(all_tex)     if all_tex     else 0.0,
+            'fail_detail':         '; '.join(fail_details) if fail_details else '',
+            'anomaly_score_worst': anomaly_score_worst,
+            'ml_passed':           ml_passed,
+            'ml_detail':           ml_detail,
         }
 
     # ─────────────────────────────────────────────
@@ -622,6 +720,14 @@ class InspectNode(Node):
             f.write(f'구멍수: {surface["hole_count"]}\n')
             f.write(f'구멍면적비: {surface["hole_area_ratio"]:.4f}\n')
             f.write(f'텍스처분산: {surface["texture_variance"]:.2f}\n')
+
+            ml_passed = surface['ml_passed']
+            worst = surface['anomaly_score_worst']
+            ml_str = 'N/A' if ml_passed is None else ('PASS' if ml_passed else 'FAIL')
+            worst_str = 'N/A' if worst is None else f'{worst:.4f}'
+            f.write(f'ML판정: {ml_str}\n')
+            f.write(f'ML점수(worst): {worst_str}\n')
+            f.write(f'ML상세: {surface["ml_detail"]}\n')
 
         self.get_logger().info(f'검사 로그 저장: {log_subdir}')
 

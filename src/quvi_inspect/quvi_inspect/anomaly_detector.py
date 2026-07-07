@@ -59,6 +59,7 @@ class PatchCoreDetector:
         self,
         device: str = 'cuda',
         backbone_weights_path: Optional[str] = None,
+        backbone: Optional[nn.Module] = None,
     ) -> None:
         """백본을 로드한다.
 
@@ -69,10 +70,16 @@ class PatchCoreDetector:
                 파일이 있으면 그대로 로드(오프라인 재현). 없으면 torchvision
                 기본 ImageNet 가중치를 다운로드한 뒤 이 경로에 state_dict 를
                 저장해 이후 실행에서 재사용(영속화)한다. None 이면 매번 다운로드.
+            backbone: 이미 로드된 백본을 재사용하고 싶을 때 전달(각도별 뱅크
+                4개를 로드하며 백본을 4번 새로 만드는 GPU 메모리 낭비 방지용).
+                전달되면 backbone_weights_path 는 무시된다.
         """
         self.device = _resolve_device(device)
         self.backbone_weights_path = backbone_weights_path
-        self.backbone = self._load_backbone(backbone_weights_path).to(self.device)
+        if backbone is not None:
+            self.backbone = backbone.to(self.device)
+        else:
+            self.backbone = self._load_backbone(backbone_weights_path).to(self.device)
         self.backbone.eval()
         self.backbone.requires_grad_(False)
 
@@ -260,6 +267,7 @@ class PatchCoreDetector:
         path: str,
         device: str = 'cuda',
         backbone_weights_path: Optional[str] = None,
+        backbone: Optional[nn.Module] = None,
     ) -> 'PatchCoreDetector':
         """저장된 뱅크를 로드해 즉시 score() 가능한 인스턴스를 만든다.
 
@@ -267,8 +275,12 @@ class PatchCoreDetector:
             path: save() 로 저장된 뱅크 파일 경로.
             device: 추론에 사용할 디바이스.
             backbone_weights_path: 백본 가중치 경로 (없으면 재다운로드).
+            backbone: 이미 로드된 백본을 재사용(각도별 4회 로드 시 백본 공유용).
         """
-        instance = cls(device=device, backbone_weights_path=backbone_weights_path)
+        instance = cls(
+            device=device,
+            backbone_weights_path=backbone_weights_path,
+            backbone=backbone)
         data = torch.load(path, map_location='cpu')
         instance.bank = data['bank'].to(instance.device)
         instance.coreset_ratio = data.get('coreset_ratio')
