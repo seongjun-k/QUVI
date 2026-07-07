@@ -51,7 +51,7 @@ def generate_launch_description():
     reference_dir_arg = DeclareLaunchArgument(
         'reference_image_dir',
         default_value=[LaunchConfiguration('data_dir'), '/reference_images'],
-        description='기준 이미지(STL 렌더링) 디렉토리')
+        description='기준 이미지 디렉토리')
 
     inspection_log_dir_arg = DeclareLaunchArgument(
         'inspection_log_dir',
@@ -92,7 +92,6 @@ def generate_launch_description():
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
-    # ─── 카메라 1: 사이드캠 (Zone 1 - 베드 위 출력물 촬영) ───
     # ─── 카메라 1: 사이드캠 (Zone 1 - 픽업 영역) ───
     # fixed_cam_device → camera1 토픽 (사이드캠 위치 교체)
     camera1_node = Node(

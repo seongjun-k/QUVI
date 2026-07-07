@@ -1,5 +1,8 @@
 #!/bin/bash
 # QUVI ACT Grasp Dataset Recording Helper
+# LeRobot record.py 로 그리핑 시연 데이터셋을 녹화한다.
+# 실행 위치: 호스트 또는 quvi-dev 컨테이너 (스크립트가 /.dockerenv 로 자동 판별).
+# 사용법: ./scripts/act_record.sh [HF_USER] [EPISODES] [EPISODE_TIME]
 
 HF_USER=${1:-"ksj"}
 EPISODES=${2:-50}

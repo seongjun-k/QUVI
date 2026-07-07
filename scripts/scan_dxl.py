@@ -1,3 +1,7 @@
+"""Dynamixel 버스 ID 스캔 스크립트 — follower/leader 포트에 연결된 모터 ID를 확인한다.
+실행 위치: quvi-dev 컨테이너 (/dev/ttyFollower, /dev/ttyLeader 접근).
+사용법: python3 scripts/scan_dxl.py
+"""
 import sys
 from dynamixel_sdk import *
 

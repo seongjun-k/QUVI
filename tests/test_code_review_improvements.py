@@ -1,3 +1,7 @@
+"""RESET 커맨드 경로 회귀 테스트: RobotControlNode 리셋 핸들러 및
+MainOrchestratorNode 의 HMI RESET 커맨드 → /robot/reset_command 발행 확인.
+실행: cd <repo> && pytest tests/test_code_review_improvements.py (ROS 2 rclpy 필요)
+"""
 import time
 import threading
 import pytest

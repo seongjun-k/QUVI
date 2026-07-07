@@ -650,11 +650,9 @@ function _applyLedUi(on) {
     if (!indicator) return;
     if (on) {
         indicator.classList.add('on');
-        // [fix] ledStateText null 체크
         if (stateText) stateText.textContent = 'ON';
     } else {
         indicator.classList.remove('on');
-        // [fix] ledStateText null 체크
         if (stateText) stateText.textContent = 'OFF';
     }
     if (toggle) toggle.checked = !!on;
@@ -1035,7 +1033,7 @@ async function loadInitialData() {
         const stats = await statsRes.json();
 
         updateStatus(status);
-        // pass/fail 통계는 오케스트레이터 카운트 단일 출처 (#6)
+        // pass/fail 통계는 오케스트레이터 카운트 단일 출처
         updateStats(stats);
 
         if (history.length > 0) {

@@ -1,3 +1,10 @@
+"""손목(wrist_roll) 모터 하드웨어 진단 스크립트.
+
+follower(ID 15)/leader(ID 5) wrist_roll 모터의 동작모드·토크·하드웨어 에러·
+전압·온도를 읽어 출력한다. dynamixel_sdk 로 시리얼 포트를 직접 연다.
+실행 위치: quvi-dev 컨테이너 (/dev/ttyFollower, /dev/ttyLeader 접근).
+사용법: python3 scripts/diagnose_wrist.py
+"""
 import sys
 from dynamixel_sdk import *
 

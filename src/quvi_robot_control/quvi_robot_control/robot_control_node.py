@@ -24,21 +24,36 @@ QUVI ROBOT_CONTROL_NODE
   4. 레일 이동 명령 → ESP32-S3 (/motor/rail Int32 steps)
   5. 턴테이블 회전 명령 → ESP32-S3 (/motor/turntable_cmd)
 
-ROS 2 인터페이스 (Subscriber):
-  /camera/sidecam/compressed  sensor_msgs/CompressedImage   사이드캠 이미지
-  /robot/grasp_command        quvi_msgs/GraspGoal           파지 트리거 + 목표 좌표
-  /robot/rail_command         std_msgs/Int32                레일 목표 위치 코드 (0=D,1=A,2=B,3=C)
-  /robot/rotate_command       std_msgs/Bool                 베이스 180° 회전 (true=뒤, false=앞)
-  /robot/release_command      std_msgs/Bool                 출력물 투하
-  /robot/home_command         std_msgs/Bool                 홈 복귀
+ROS 2 인터페이스 (Subscriber, 토픽명은 topics.py SSoT — 일부 예외는 quvi_hmi/hmi_node.py 자체 상수):
+  <sidecam_topic 파라미터>   sensor_msgs/(Compressed)Image  사이드캠 이미지 (기본 /camera1/image_raw/compressed)
+  /robot/grasp_command       quvi_msgs/GraspGoal            파지 트리거 (좌표는 참고용, ACT는 이미지로 추론)
+  /robot/rail_command        std_msgs/Int32                 레일 목표 위치 코드 (0=BED,1=INSPECT,2=PASS,3=FAIL)
+  /motor/rail_done           std_msgs/Bool                  ESP32 레일 이동 완료 (MOVING_RAIL 중에만 수락)
+  /robot/rotate_command      std_msgs/Bool                  베이스 180° 회전 (true=뒤, false=앞)
+  /robot/release_command     std_msgs/Bool                  웨이포인트 시퀀스(P1~P6) 실행
+  /robot/home_command        std_msgs/Bool                  홈 복귀
+  /robot/place_in_chamber    std_msgs/Bool                  검사장 안착 시퀀스
+  /robot/pick_in_chamber     std_msgs/Bool                  검사장 재파지 시퀀스
+  /robot/teleop_command      std_msgs/Bool                  텔레옵 시작/종료
+  /system/estop              std_msgs/Bool                  비상 정지 → 토크 차단 + ERROR 천이
+  /robot/reset_command       std_msgs/Bool                  리셋 + Dynamixel 포트 재연결
+  /robot/act_model_select    std_msgs/String                ACT 모델 경로 선택(대시보드) → 백그라운드 재로드
+  /hmi/command               std_msgs/String                STOP/ESTOP/START/RESET → 소프트 중단 제어
 
 ROS 2 인터페이스 (Publisher):
-  /robot/joint_states         sensor_msgs/JointState        현재 관절 각도 (30 Hz)
-  /motor/rail                 std_msgs/Int32                레일 목표 위치 steps (→ ESP32)
-  /robot/status               std_msgs/String               상태 문자열
-  /robot/act_done             std_msgs/Bool                 ACT 파지 완료 신호
-  /robot/grasp_done           std_msgs/Bool                 파지/투하 완료 신호
-  /robot/rail_done            std_msgs/Bool                 레일 이동 완료 신호
+  /robot/joint_states           sensor_msgs/JointState       현재 관절 각도 (10 Hz)
+  /motor/rail                   std_msgs/Int32               레일 목표 위치 steps (→ ESP32)
+  /robot/status                 std_msgs/String              상태 문자열 (1 Hz 주기 브로드캐스트 포함)
+  /robot/act_done               std_msgs/Bool                ACT/룰베이스 파지 완료 신호
+  /robot/grasp_done             std_msgs/Bool                파지 완료 신호
+  /robot/release_done           std_msgs/Bool                웨이포인트 시퀀스 완료 신호
+  /robot/home_done              std_msgs/Bool                홈 복귀 완료 신호
+  /robot/rail_done              std_msgs/Bool                레일 이동 완료 신호
+  /robot/rotate_done            std_msgs/Bool                베이스 회전 완료 신호
+  /robot/place_in_chamber_done  std_msgs/Bool                검사장 안착 완료 신호
+  /robot/pick_in_chamber_done   std_msgs/Bool                검사장 재파지 완료 신호
+  /robot/act_models             std_msgs/String              스캔된 ACT 모델 목록 (latched)
+  /robot/act_current            std_msgs/String              현재 ACT 모델·로드 상태 (latched)
 
 ROS 2 서비스 (Server):
   /robot/act_grasp            std_srvs/Trigger              ACT 파지 실행 (동기)

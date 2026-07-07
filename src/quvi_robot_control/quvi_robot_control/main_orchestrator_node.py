@@ -18,6 +18,9 @@ import quvi_robot_control.topics as topics
 
 
 class FsmState(Enum):
+    """FSM 상태 정의. HMI 표시 상태의 발원지(SSoT)다 — 상태 추가·변경 시
+    hmi_node.py(FSM_DISPLAY_STATES) + dashboard.js(FSM_NODES·STAGE_LABELS) +
+    dashboard.html(fsm_* id) 3파일도 함께 수정해야 한다."""
     INIT = "INIT"
     IDLE = "IDLE"
     STARTUP_RAIL_HOME_TRIGGER  = "STARTUP_RAIL_HOME_TRIGGER"   # 시작: 레일 0mm 홈이동
@@ -651,7 +654,7 @@ class MainOrchestratorNode(Node):
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.HOMING_ARM_TRIGGER:
-            self._robot_home_done = False  # arm home done flag
+            self._robot_home_done = False
             self._state_timer_counter = 0
             # 로봇팔 홈 복귀 실행
             home_cmd = Bool()

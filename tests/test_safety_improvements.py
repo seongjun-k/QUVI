@@ -1,3 +1,6 @@
+"""RobotControlNode 안전 관련 회귀 테스트 (release/home 완료 토픽 분리, E-STOP 상태 전이).
+실행: cd <repo> && pytest tests/test_safety_improvements.py (ROS 2 rclpy 필요)
+"""
 import time
 import threading
 import pytest

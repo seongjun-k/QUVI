@@ -2,6 +2,8 @@
 """
 QUVI Teach Pendant — 로봇 웨이포인트 티칭 도구
 
+실행 위치: quvi-dev 컨테이너 (dynamixel_sdk 로 /dev/ttyFollower 직접 제어).
+
 사용법:
   python3 scripts/teach_pendant.py
 

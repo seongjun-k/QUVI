@@ -202,9 +202,8 @@ class HmiNode(Node):
         self._inspect_trigger_pub = self.create_publisher(Bool, TOPIC_INSPECTION_TRIGGER, 10)
         self._teleop_pub = self.create_publisher(Bool, TOPIC_ROBOT_TELEOP_CMD, 10)
         self._estop_pub = self.create_publisher(Bool, TOPIC_ESTOP, 10)
-        # [fix] /motor/rail 퍼블리셔 타입: Float32 → Int32
-        # ESP32 rail_subscription_callback이 std_msgs/Int32로 수신하므로 타입을 일치시킴.
-        # send_rail_command()에서 mm → steps 변환 후 발행한다.
+        # /motor/rail 은 Int32(steps) — ESP32 rail_subscription_callback이 std_msgs/Int32로
+        # 수신한다. send_rail_command()에서 mm → steps 변환 후 발행한다.
         self._rail_pub      = self.create_publisher(Int32,  TOPIC_MOTOR_RAIL, 10)
         self._led_pub       = self.create_publisher(Bool,   TOPIC_MOTOR_TURNTABLE_LED, 10)
         self._turntable_pub = self.create_publisher(Int32,  TOPIC_MOTOR_TURNTABLE_CMD, 10)
@@ -279,7 +278,7 @@ class HmiNode(Node):
         if frame is None:
             return
         if key == 'camera2':
-            frame = cv2.flip(frame, 0)  # 검사캠이 거꾸로 장착되어 위아래 반전 (2026-07-06)
+            frame = cv2.flip(frame, 0)  # 검사캠이 거꾸로 장착되어 위아래 반전
         _, jpeg = cv2.imencode('.jpg', frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         with self._lock:
@@ -306,10 +305,9 @@ class HmiNode(Node):
     def send_rail_command(self, mm: float):
         """레일 목표 위치 발행 (Int32, steps 단위).
 
-        [fix] 기존 Float32(mm) 발행을 Int32(steps) 발행으로 변경.
-        ESP32 rail_subscription_callback은 std_msgs/Int32를 수신하므로
-        타입 불일치로 콜백이 호출되지 않던 버그를 수정한다.
-        mm → steps 변환: RAIL_STEPS_PER_MM(80.0) 곱셈 후 RAIL_MAX_LIMIT 클램핑.
+        ESP32 rail_subscription_callback은 std_msgs/Int32만 수신하므로 Float32(mm)로
+        발행하면 콜백이 호출되지 않는다. mm → steps 변환: RAIL_STEPS_PER_MM(80.0)
+        곱셈 후 RAIL_MAX_LIMIT 클램핑.
         """
         steps = int(round(mm * RAIL_STEPS_PER_MM))
         steps = max(0, min(RAIL_MAX_STEPS, steps))
@@ -506,7 +504,7 @@ class HmiNode(Node):
             return self._inspection_history.copy()
 
     def compute_stats(self) -> dict:
-        """검사 통계 (#6). pass/fail/total 은 오케스트레이터 카운트를 단일 출처로
+        """검사 통계. pass/fail/total 은 오케스트레이터 카운트를 단일 출처로
         사용하고(= /hmi/status), 평균 검사시간만 history 에서 구한다.
         history 길이로 pass/fail 를 재집계하면 오케스트레이터 카운트와 어긋난다.
         """
@@ -945,7 +943,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             try:
                 status = hmi_node.get_status()
                 history = hmi_node.get_inspection_history()
-                # pass/fail 는 오케스트레이터 카운트 단일 출처 (#6)
+                # pass/fail 는 오케스트레이터 카운트 단일 출처
                 stats = hmi_node.compute_stats()
 
                 socketio.emit('status_update', {

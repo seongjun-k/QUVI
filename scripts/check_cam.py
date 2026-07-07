@@ -1,3 +1,8 @@
+"""카메라 토픽(/camera1, /camera2) 수신·디코딩 확인용 1회성 ROS 노드.
+5초 타임아웃 내에 두 카메라 모두에서 압축 프레임을 받아 디코딩되는지 확인한다.
+실행 위치: quvi-dev 컨테이너 (ROS 2 노드 — colcon 빌드 후 rclpy 필요).
+사용법: python3 scripts/check_cam.py
+"""
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import CompressedImage

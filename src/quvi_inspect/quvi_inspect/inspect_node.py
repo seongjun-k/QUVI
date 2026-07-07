@@ -179,7 +179,7 @@ class InspectNode(Node):
     # 기준 이미지 로드
     # ─────────────────────────────────────────────
     def _load_reference_images(self):
-        """기준 이미지(STL 렌더링 결과)를 로드한다.
+        """기준 이미지(HMI에서 정상품을 챔버에 올려두고 캡처한 결과)를 로드한다.
         파일 네이밍: ref_0.png, ref_90.png, ref_180.png, ref_270.png
         """
         if not os.path.isdir(self._ref_dir):

@@ -56,6 +56,8 @@
 #define RAIL_PULLEY_TEETH     20    // 20T Pulley
 #define RAIL_BELT_PITCH       2.0f  // GT2 Belt Pitch (2mm)
 #define RAIL_MM_PER_REV       (RAIL_PULLEY_TEETH * RAIL_BELT_PITCH) // 40.0mm per rev
+// SSoT: 이 값(80.0)의 근거 — hmi_node.py 의 RAIL_STEPS_PER_MM 이 이 값을 그대로
+// 참조하므로, 위 스텝퍼/풀리/벨트 상수를 바꾸면 hmi_node.py 도 함께 수정한다.
 #define RAIL_STEPS_PER_MM     ((float)(STEPPER_STEPS_PER_REV * RAIL_MICROSTEPPING) / RAIL_MM_PER_REV) // 80.0 steps/mm
 
 // 2. Turntable Configuration

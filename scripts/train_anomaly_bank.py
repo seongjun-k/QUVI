@@ -21,6 +21,8 @@ QUVI 이상탐지 메모리뱅크 학습 (Phase 1)
 sys.path 에 quvi_inspect / quvi_robot_control 소스 경로를 직접 추가해
 colcon 빌드 없이 동작한다.
 
+실행 위치: quvi-dev 컨테이너 (기본 --device cuda, GPU 필요).
+
 사용법:
   python3 train_anomaly_bank.py \
     --dataset-dir /workspace/data/anomaly_dataset/raw \

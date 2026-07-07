@@ -1,3 +1,9 @@
+"""ESP32 물리 시리얼 포트를 컨테이너 내부 PTY(/workspace/ttyV0)로 중계하는 브리지.
+호스트에서 컨테이너로 시리얼 장치를 직접 마운트하기 어려운 환경에서, micro-ROS
+agent 가 컨테이너 내부 PTY 를 통해 ESP32 와 통신하도록 우회 경로를 만든다.
+실행 위치: quvi-dev 컨테이너 (/dev/ttyESP32 접근 필요).
+사용법: python3 scripts/serial_in_container_bridge.py
+"""
 import os
 import sys
 import time

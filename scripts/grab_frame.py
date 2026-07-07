@@ -1,3 +1,7 @@
+"""HMI 사이드캠 MJPEG 스트림(/stream/sidecam)에서 프레임 1장을 캡처해 저장하는 확인용 스크립트.
+실행 위치: quvi-dev 컨테이너 (HMI Flask 서버가 127.0.0.1:5000 으로 떠 있어야 함).
+사용법: python3 scripts/grab_frame.py
+"""
 import urllib.request
 import re
 

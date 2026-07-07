@@ -22,6 +22,10 @@ import os
 def _load_device_config():
     """대시보드에서 저장한 장치 매핑을 읽어 기본값으로 사용한다.
     파일이 없거나 손상되면 빈 dict → 기존 하드코딩 기본값을 사용한다.
+
+    아래 launch arg 기본값(sidecam_device 등)은 quvi_hmi/hmi_node.py 의
+    DEVICE_DEFAULTS 와 동일한 장치 키 집합을 가정한다 — 한쪽만 고치면 하드코딩
+    기본값과 대시보드 표시값이 어긋난다.
     """
     import json
     for path in ('/workspace/data/device_config.json',

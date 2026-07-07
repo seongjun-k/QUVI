@@ -1,7 +1,7 @@
 """
 QUVI ML 전처리 (공유 모듈)
 ──────────────────────
-학습 스크립트(scripts/train_anomaly_bank.py)와 (미래의) inspect_node ML 추론이
+학습 스크립트(scripts/train_anomaly_bank.py)와 inspect_node ML 추론(섀도우 모드)이
 **동일한 함수**를 공유하여 train/infer skew 를 방지하기 위한 모듈.
 
 주의:
@@ -31,7 +31,7 @@ def preprocess_for_ml(
 ) -> np.ndarray:
     """검사 원본(BGR 컬러)을 이상탐지 백본 입력용 256×256 RGB로 변환한다.
 
-    학습 스크립트(train_anomaly_bank.py)와 추론(inspect_node ML 경로, Phase 2)이
+    학습 스크립트(train_anomaly_bank.py)와 추론(inspect_node ML 경로)이
     이 함수 하나를 공유해야 한다 — 서로 다른 전처리를 쓰면 학습/추론 분포가
     어긋나 이상탐지 오탐의 최대 원인이 된다.
 

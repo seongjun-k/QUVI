@@ -2,6 +2,10 @@
 """
 웨이포인트 시퀀스 단독 테스트 스크립트 (판정 알고리즘 없이)
 소프트웨어 보간(interpolation)으로 천천히 단계적 이동
+
+dynamixel_sdk 로 /dev/ttyFollower 를 직접 제어 — ROS 노드를 거치지 않는다.
+실행 위치: quvi-dev 컨테이너 (privileged 로 시리얼 포트 접근).
+사용법: python3 scripts/test_sequence.py [--step]
 """
 
 import sys
@@ -48,9 +52,9 @@ PROFILE_ACCEL_GRIP     = 5
 # 현재 → 목표 위치 사이를 INTERP_STEPS개로 나눠서 전송
 # INTERP_STEPS * INTERP_DELAY = 총 이동 시간
 INTERP_STEPS         = 200       # 중간 목표 개수 (많을수록 부드럽게)
-INTERP_DELAY         = 0.005      # 각 스텝 사이 대기 (초) → 총 50*0.3 = 15초
+INTERP_DELAY         = 0.005      # 각 스텝 사이 대기 (초) → 총 200*0.005 = 1.0초
 INTERP_STEPS_GRIP    = 3       # 그리퍼 보간 스텝 수
-INTERP_DELAY_GRIP    = 0.001     # 그리퍼 스텝 간 대기 → 총 20*0.15 = 3초
+INTERP_DELAY_GRIP    = 0.001     # 그리퍼 스텝 간 대기 → 총 3*0.001 = 0.003초
 
 SETTLE               = 0.3
 INSPECT_WAIT         = 3.0

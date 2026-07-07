@@ -1,5 +1,8 @@
 #!/bin/bash
 # QUVI ACT Grasp Model Training Helper
+# act_record.sh 로 녹화한 데이터셋으로 ACT 정책을 학습한다.
+# 실행 위치: 호스트 또는 quvi-dev 컨테이너 (스크립트가 /.dockerenv 로 자동 판별).
+# 사용법: ./scripts/act_train.sh [HF_USER]
 
 HF_USER=${1:-"ksj"}
 REPO_ID="${HF_USER}/quvi_act_grasp"

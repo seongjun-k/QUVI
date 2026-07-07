@@ -1,3 +1,7 @@
+"""InspectNode(기준 이미지 부재 시 NaN 폴백, capture_now 순차 캡처)와
+MainOrchestratorNode(INSPECTING_WAIT_TURNTABLE 상태 전이) 회귀 테스트.
+실행: cd <repo> && pytest tests/test_reliability_improvements.py (ROS 2 rclpy 필요)
+"""
 import time
 import math
 import threading
