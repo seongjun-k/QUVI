@@ -58,10 +58,6 @@ def generate_launch_description():
         default_value=[LaunchConfiguration('data_dir'), '/inspection_logs'],
         description='검사 로그 저장 디렉토리')
 
-    sidecam_topic_arg = DeclareLaunchArgument(
-        'sidecam_topic', default_value='/camera1/image_raw/compressed',
-        description='로봇이 구독할 사이드캠 압축 이미지 토픽')
-
     inspect_topic_arg = DeclareLaunchArgument(
         'inspect_topic', default_value='/camera2/image_raw/compressed',
         description='검사 노드가 구독할 검사챔버 압축 이미지 토픽')
@@ -164,7 +160,6 @@ def generate_launch_description():
         data_dir_arg,
         reference_dir_arg,
         inspection_log_dir_arg,
-        sidecam_topic_arg,
         inspect_topic_arg,
         inspect_config_arg,
         sidecam_autoexposure_arg,

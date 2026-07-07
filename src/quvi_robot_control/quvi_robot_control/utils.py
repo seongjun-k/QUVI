@@ -27,8 +27,7 @@ _bridge = CvBridge()
 def decode_compressed(msg: CompressedImage) -> Optional[np.ndarray]:
     """CompressedImage → BGR numpy array. 실패 시 None 반환."""
     np_arr = np.frombuffer(msg.data, np.uint8)
-    frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-    return frame if frame is not None else None
+    return cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
 
 def decode_raw(msg: Image) -> Optional[np.ndarray]:

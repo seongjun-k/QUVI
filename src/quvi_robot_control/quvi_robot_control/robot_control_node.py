@@ -1503,17 +1503,6 @@ class RobotControlNode(Node):
             )
             self._wait_gripper()
 
-        def grip_close():
-            if self._should_abort():
-                return
-            self.get_logger().info('그리퍼 닫기')
-            self._write_raw_position(
-                {'gripper': GRIPPER_CLOSE},
-                grip_velocity=PROFILE_VELOCITY_GRIP,
-                grip_accel=PROFILE_ACCEL_GRIP,
-            )
-            self._wait_gripper()
-
         # P1 경유 → P6 분류장 → 그리퍼 열기
         if not move_arm(POSE_P1, 'P1: 경유'):
             return False
