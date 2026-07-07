@@ -235,24 +235,3 @@ def test_cache_consistency():
     assert r1 is not None and r2 is not None, "get_aligned_roi() 가 None 반환"
     assert np.array_equal(r1, r2), "결과가 다름"
 
-
-def test_rotation_info():
-    """get_aligned_roi() 후 get_rotation_info() 가 유효한 값 반환"""
-    angle_in = 12.0
-    img = make_rotated_rect(480, 640, 200, 200, angle_in)
-    bc = BinaryCache(img, thresh=127)
-    aligned = bc.get_aligned_roi(min_area=100)
-    assert aligned is not None, "get_aligned_roi() 가 None 반환"
-
-    info = bc.get_rotation_info()
-    assert info is not None, "get_rotation_info() 가 None 반환"
-
-    angle, (cx, cy), (w, h) = info
-    ok = (
-        isinstance(angle, float)
-        and isinstance(cx, float) and isinstance(cy, float)
-        and isinstance(w, float) and isinstance(h, float)
-        and w > 0 and h > 0
-    )
-    assert ok, f"angle={angle:.2f}°, center=({cx:.0f},{cy:.0f}), size=({w:.0f}×{h:.0f})"
-

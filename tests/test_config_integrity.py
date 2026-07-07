@@ -74,18 +74,18 @@ def test_vision_launch_uses_data_dir_arg():
 # ─────────────────────────────────────────────
 # 항목 3: micro-ROS 보드레이트 일관성
 # ─────────────────────────────────────────────
-def test_microros_baudrate_consistent_921600():
+def test_microros_baudrate_consistent_115200():
     config_h = _read(os.path.join(FIRMWARE, 'Config.h'))
     m = re.search(r'#define\s+MICRO_ROS_BAUDRATE\s+(\d+)', config_h)
     assert m, 'Config.h 에 MICRO_ROS_BAUDRATE 정의 없음'
-    assert m.group(1) == '921600'
+    assert m.group(1) == '115200'
 
     readme = _read(os.path.join(FIRMWARE, 'README.md'))
-    assert '-b 921600' in readme, 'firmware README agent 명령 보드레이트 불일치'
+    assert '-b 115200' in readme, 'firmware README agent 명령 보드레이트 불일치'
 
     agent_script = os.path.join(REPO_ROOT, 'scripts', 'run_microros_agent.sh')
     assert os.path.isfile(agent_script), 'micro-ROS agent 실행 스크립트 누락'
-    assert '921600' in _read(agent_script)
+    assert '115200' in _read(agent_script)
 
 
 # ─────────────────────────────────────────────

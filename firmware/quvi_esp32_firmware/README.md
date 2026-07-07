@@ -103,10 +103,10 @@ When micro-ROS mode is active, the board acts as a native ROS 2 publisher/subscr
 
 1. **Launch the micro-ROS Agent on the Ubuntu Host (Docker Container):**
    ```bash
-   ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 921600
+   ros2 run micro_ros_agent micro_ros_agent serial --dev /dev/ttyACM0 -b 115200
    ```
    *(Replace `/dev/ttyACM0` with the actual device port of your LOLIN S3. The
-   baudrate `921600` must match `MICRO_ROS_BAUDRATE` in `Config.h`. A helper
+   baudrate `115200` must match `MICRO_ROS_BAUDRATE` in `Config.h`. A helper
    script is provided: `scripts/run_microros_agent.sh`.)*
 
 2. **Verify topics are visible in ROS 2:**

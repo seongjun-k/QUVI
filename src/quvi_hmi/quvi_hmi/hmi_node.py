@@ -145,11 +145,6 @@ class HmiNode(Node):
             'led_state': False,          # LED(턴테이블 링 조명) 현재 상태
         }
         self._inspection_history = []  # 최근 100건
-        self._camera_frames = {
-            'sidecam': None,
-            'camera2': None,
-            'inspect_debug': None,
-        }
         self._jpeg_cache = {
             'sidecam': None,
             'camera2': None,
@@ -291,7 +286,6 @@ class HmiNode(Node):
         _, jpeg = cv2.imencode('.jpg', frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         with self._lock:
-            self._camera_frames[key] = frame
             self._jpeg_cache[key] = jpeg.tobytes()
 
     def _cam_cb(self, msg: CompressedImage, key: str):

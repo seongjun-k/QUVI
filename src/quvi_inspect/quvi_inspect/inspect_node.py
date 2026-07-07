@@ -91,7 +91,6 @@ class InspectNode(Node):
         self._ref_capture_active = False
         self._dataset_capture_active = False
         self._current_object_index = 0
-        self._last_align_info: Dict[int, Dict] = {}
 
         # ─── 캡처 안정화 타이머 (T4) ───
         # 턴테이블 done 직후 기구 진동·카메라 노출이 안정될 때까지 잠깐 대기 후 캡처한다.
@@ -411,7 +410,6 @@ class InspectNode(Node):
         start_time = time.time()
         self.get_logger().info('=' * 50)
         self.get_logger().info('양불 판정 시작 (표면 특징 분석)')
-        self._last_align_info.clear()
 
         surface_results = self._surface_analysis()
         final_pass      = surface_results['passed']

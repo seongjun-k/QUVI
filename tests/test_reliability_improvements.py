@@ -14,10 +14,10 @@ def test_reliability_improvements():
 
     # 1. Test inspect_node NaN area_ratio fallback and load validation
     inspect_node = InspectNode()
-    # Explicitly bypass reference image load by setting dummy empty reference images dir
-    inspect_node.set_parameters([
-        rclpy.parameter.Parameter('reference_image_dir', rclpy.Parameter.Type.STRING, '/tmp/non_existent_ref_dir')
-    ])
+    # 기준 이미지 미존재 상황 재현: _load_reference_images 는 self._ref_dir 속성을
+    # 읽고 기존 dict 를 clear 하지 않으므로, 속성 직접 변경 + 초기화가 필요하다.
+    inspect_node._ref_dir = '/tmp/non_existent_ref_dir'
+    inspect_node._reference_images.clear()
     inspect_node._load_reference_images()
     
     # Assert reference images are empty
@@ -37,16 +37,19 @@ def test_reliability_improvements():
     inspect_node._inspection_active = True
     inspect_node._latest_frame = dummy_captured
     
-    # First done message triggers capture of the first angle (0)
+    # 검사 모드 캡처는 capture_now 콜백 → settle 타이머 발화 경로 (T4 이관분).
+    # 타이머 발화는 _on_settle_elapsed 직접 호출로 시뮬레이션한다.
     msg_done = Bool()
     msg_done.data = True
-    inspect_node._turntable_done_callback(msg_done)
-    
+    inspect_node._capture_now_callback(msg_done)
+    inspect_node._on_settle_elapsed()
+
     assert 0 in inspect_node._captured_images
     assert len(inspect_node._captured_images) == 1
-    
-    # Second done message triggers capture of the second angle (90)
-    inspect_node._turntable_done_callback(msg_done)
+
+    # 두 번째 capture_now 는 다음 미캡처 각도(90)를 채운다
+    inspect_node._capture_now_callback(msg_done)
+    inspect_node._on_settle_elapsed()
     assert 90 in inspect_node._captured_images
     assert len(inspect_node._captured_images) == 2
 

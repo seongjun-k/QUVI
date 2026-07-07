@@ -65,7 +65,7 @@ class BinaryCache:
     """
 
     __slots__ = ('gray', 'binary', 'contours_external', 'contours_tree',
-                 'hierarchy', '_aligned_cache', '_rotation_info')
+                 'hierarchy', '_aligned_cache')
 
     def __init__(self, gray: np.ndarray, thresh: int) -> None:
         self.gray = gray
@@ -81,7 +81,6 @@ class BinaryCache:
 
         # 정렬 결과 캐시 (get_aligned_roi 호출 시 lazy 초기화)
         self._aligned_cache = None
-        self._rotation_info = None
 
     # ── 편의 메서드 ──────────────────────────────
 
@@ -176,9 +175,6 @@ class BinaryCache:
         if angle > 45:
             angle -= 90
 
-        self._rotation_info = (
-            float(angle), (float(cx), float(cy)), (float(w), float(h)))
-
         # ── 원본 그레이스케일에 역회전 ──
         img_h, img_w = self.gray.shape[:2]
         M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
@@ -210,15 +206,3 @@ class BinaryCache:
 
         self._aligned_cache = aligned
         return self._aligned_cache
-
-    def get_rotation_info(
-        self,
-    ) -> Optional[Tuple[float, Tuple[float, float], Tuple[float, float]]]:
-        """보정 각도, 중심 좌표, (w, h) 를 반환한다.
-
-        ``get_aligned_roi()`` 가 먼저 호출되어야 값이 존재한다.
-
-        Returns:
-            ``(angle, (cx, cy), (w, h))`` 또는 ``None``.
-        """
-        return self._rotation_info

@@ -151,10 +151,6 @@ def generate_launch_description():
         name='main_orchestrator_node',
         parameters=[{
             'use_act': LaunchConfiguration('use_act'),
-            'px_to_mm_x': 0.5,
-            'px_to_mm_y': 0.5,
-            'offset_x': 100.0,
-            'offset_y': 100.0,
             'target_z': 15.0,
             'step_delay_sec': 2.0,
             'loop_rate_hz': 10.0,

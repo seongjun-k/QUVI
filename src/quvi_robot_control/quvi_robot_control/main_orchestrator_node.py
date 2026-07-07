@@ -60,10 +60,6 @@ class MainOrchestratorNode(Node):
 
         # ─── 파라미터 선언 ───
         self.declare_parameter('use_act', False)
-        self.declare_parameter('px_to_mm_x', 0.5)
-        self.declare_parameter('px_to_mm_y', 0.5)
-        self.declare_parameter('offset_x', 100.0)
-        self.declare_parameter('offset_y', 100.0)
         self.declare_parameter('target_z', 15.0)
         self.declare_parameter('step_delay_sec', 2.0)
         self.declare_parameter('loop_rate_hz', 10.0)
@@ -72,7 +68,6 @@ class MainOrchestratorNode(Node):
         self.declare_parameter('home_timeout_sec', 15.0)
         self.declare_parameter('rail_timeout_sec', 25.0)
         self.declare_parameter('inspect_timeout_sec', 15.0)
-        self.declare_parameter('detecting_timeout_sec', 10.0)
         # 검사장 안착/재파지 시퀀스 대기 — P계열 6이동+대기로 나면 20초로는 부족
         self.declare_parameter('chamber_timeout_sec', 40.0)
         # RESET 명령 시 ESP32 하드 리셋(DTR/RTS 펄스)에 쓰는 시리얼 포트
@@ -80,10 +75,6 @@ class MainOrchestratorNode(Node):
 
         # ─── 파라미터 로드 ───
         self._use_act = self.get_parameter('use_act').value
-        self._px_to_mm_x = self.get_parameter('px_to_mm_x').value
-        self._px_to_mm_y = self.get_parameter('px_to_mm_y').value
-        self._offset_x = self.get_parameter('offset_x').value
-        self._offset_y = self.get_parameter('offset_y').value
         self._target_z = self.get_parameter('target_z').value
         self._step_delay = self.get_parameter('step_delay_sec').value
         self._loop_rate = self.get_parameter('loop_rate_hz').value
@@ -93,7 +84,6 @@ class MainOrchestratorNode(Node):
         self._home_timeout = self.get_parameter('home_timeout_sec').value
         self._rail_timeout = self.get_parameter('rail_timeout_sec').value
         self._inspect_timeout = self.get_parameter('inspect_timeout_sec').value
-        self._detecting_timeout = self.get_parameter('detecting_timeout_sec').value
 
         # ─── 내부 상태 변수 ───
         self._state = FsmState.INIT
@@ -101,7 +91,6 @@ class MainOrchestratorNode(Node):
         self._error_msg = ""
 
         # 작업 대상 객체 관련 데이터
-        self._detected_objects = []
         self._current_object_idx = 0
         self._total_objects = 0
         self._processed_count = 0
@@ -116,9 +105,6 @@ class MainOrchestratorNode(Node):
         self._latest_inspection_passed = False
 
         # 하위 노드 헬스 체크용 플래그
-        self._grasp_online = False
-        self._inspect_online = False
-        self._motor_online = False
         self._motor_homed = False
         self._act_ready = False
 
@@ -129,7 +115,6 @@ class MainOrchestratorNode(Node):
         self._robot_home_done = False
         self._inspect_done = False
         self._turntable_done = False
-        self._robot_rotate_done = False
         self._place_chamber_done = False
         self._pick_chamber_done = False
         self._startup_rail_done = False      # 시작 초기화 레일 done
@@ -170,7 +155,6 @@ class MainOrchestratorNode(Node):
         #       RailPosition 코드에 없는 위치를 써야 해서 robot_control 을 우회한다.
         #       done 은 ESP32 의 /motor/rail_done 을 오케스트레이터가 직접 수신(_startup_rail_done_cb).
         self._robot_rail_pub = self.create_publisher(Int32, topics.TOPIC_ROBOT_RAIL_CMD, 10)
-        self._robot_rotate_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_ROTATE_CMD, 10)
         self._robot_release_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RELEASE_CMD, 10)
         self._robot_home_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_HOME_CMD, 10)
         self._robot_reset_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_RESET_CMD, 10)
@@ -196,7 +180,6 @@ class MainOrchestratorNode(Node):
         self.create_subscription(Bool, topics.TOPIC_ROBOT_HOME_DONE, self._robot_home_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE, self._turntable_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_RAIL_DONE, self._robot_rail_done_cb, 10)
-        self.create_subscription(Bool, topics.TOPIC_ROBOT_ROTATE_DONE, self._robot_rotate_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_DONE, self._place_chamber_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_DONE, self._pick_chamber_done_cb, 10)
 
@@ -305,10 +288,6 @@ class MainOrchestratorNode(Node):
         if msg.data and self._state == FsmState.GRASPING_WAIT:
             self._robot_grasp_done = True
 
-    def _robot_rotate_done_cb(self, msg: Bool):
-        if msg.data and (self._state == FsmState.PICKING_CHAMBER_WAIT or self._state == FsmState.PLACING_CHAMBER_WAIT):
-            self._robot_rotate_done = True
-
     def _place_chamber_done_cb(self, msg: Bool):
         if msg.data and self._state == FsmState.PLACING_CHAMBER_WAIT:
             self._place_chamber_done = True
@@ -342,17 +321,12 @@ class MainOrchestratorNode(Node):
             self.get_logger().info(f'검사 결과 수신: passed={msg.passed}')
             self._latest_inspection_passed = msg.passed
             self._inspect_done = True
-        self._inspect_online = True
 
     def _robot_node_status_cb(self, msg: String):
-        # 로봇 상태 노드가 작동 중임을 기록
-        self._grasp_online = True
-        self._motor_online = True
         if "ACT_READY" in msg.data.upper():
             self._act_ready = True
 
     def _motor_status_cb(self, msg: MotorStatus):
-        self._motor_online = True
         self._motor_homed = msg.homed
 
     def _startup_rail_done_cb(self, msg: Bool):
