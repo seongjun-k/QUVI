@@ -20,7 +20,6 @@ setup(
     entry_points={
         'console_scripts': [
             'inspect_node = quvi_inspect.inspect_node:main',
-            'stl_renderer = quvi_inspect.stl_renderer:main',
         ],
     },
 )

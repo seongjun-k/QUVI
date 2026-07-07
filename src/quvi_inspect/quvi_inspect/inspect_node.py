@@ -185,7 +185,7 @@ class InspectNode(Node):
         if not os.path.isdir(self._ref_dir):
             self.get_logger().warn(
                 f'기준 이미지 디렉토리 없음: {self._ref_dir} — '
-                f'stl_renderer로 먼저 생성하세요.')
+                f'HMI 기준 이미지 캡처로 먼저 생성하세요.')
             return
 
         for angle in self._angles:
@@ -478,9 +478,6 @@ class InspectNode(Node):
         result.header.frame_id     = 'inspection_chamber'
         result.passed              = final_pass
         result.fail_reason         = fail_reason
-        result.ssim_scores         = []   # CAD 비교 미사용 — 빈 배열
-        result.area_ratios         = []   # CAD 비교 미사용 — 빈 배열
-        result.pixel_diff_ratios   = []   # CAD 비교 미사용 — 빈 배열
         result.solidity            = surface_results['solidity']
         result.area_ratio          = surface_results['area_ratio']
         result.hole_count          = surface_results['hole_count']

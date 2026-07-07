@@ -5,11 +5,6 @@ std_msgs/Header header
 bool passed                         # true=PASS, false=FAIL
 string fail_reason                  # 불량 사유 (e.g. "warping", "stringing", "hole", "layer_sep")
 
-# CAD 비교 결과 (4방향)
-float32[] ssim_scores               # 4방향 SSIM 점수 [0°, 90°, 180°, 270°]
-float32[] area_ratios               # 4방향 면적 비율
-float32[] pixel_diff_ratios         # 4방향 픽셀 차이 비율
-
 # 표면 특징 분석 결과
 float32 solidity                    # 윤곽 면적 / 컨벡스 헐 면적
 float32 area_ratio                  # 실제 면적 / 기준 면적

@@ -16,22 +16,23 @@ import re
 
 def _parse_result_txt(path):
     """result.txt 한 개를 파싱해 dict 반환 (누락 필드는 None)."""
-    info = {'rule': None, 'ml': None, 'ml_score': None}
     with open(path, encoding='utf-8') as f:
         text = f.read()
-    m = re.search(r'^판정:\s*(\S+)', text, re.MULTILINE)
-    if m:
-        info['rule'] = m.group(1)
-    m = re.search(r'^ML판정:\s*(\S+)', text, re.MULTILINE)
-    if m:
-        info['ml'] = m.group(1)
-    m = re.search(r'^ML점수\(worst\):\s*(\S+)', text, re.MULTILINE)
-    if m and m.group(1) != 'N/A':
+    fields = dict(re.findall(r'^(판정|ML판정|ML점수\(worst\)):\s*(\S+)', text, re.MULTILINE))
+    rule = fields.get('판정')
+    ml = fields.get('ML판정')
+    ml_score_raw = fields.get('ML점수(worst)')
+    ml_score = None
+    if ml_score_raw is not None and ml_score_raw != 'N/A':
         try:
-            info['ml_score'] = float(m.group(1))
+            ml_score = float(ml_score_raw)
         except ValueError:
             pass
-    return info
+    return {'rule': rule, 'ml': ml, 'ml_score': ml_score}
+
+
+def _fmt(s):
+    return f'{s:.2f}' if s is not None else 'N/A'
 
 
 def main():
@@ -45,8 +46,6 @@ def main():
     ml_recorded = 0
     agree = 0
     disagree_cases = []
-    false_accept = []   # 룰 FAIL, ML PASS
-    false_reject = []   # 룰 PASS, ML FAIL
 
     for path in result_files:
         folder = os.path.basename(os.path.dirname(path))
@@ -58,10 +57,6 @@ def main():
             agree += 1
         else:
             disagree_cases.append((folder, info['rule'], info['ml'], info['ml_score']))
-            if info['rule'] == 'FAIL' and info['ml'] == 'PASS':
-                false_accept.append((folder, info['ml_score']))
-            elif info['rule'] == 'PASS' and info['ml'] == 'FAIL':
-                false_reject.append((folder, info['ml_score']))
 
     print(f'총 검사 건수: {total}')
     print(f'ML 기록 건수: {ml_recorded}')
@@ -73,18 +68,18 @@ def main():
 
     print(f'\n불일치 목록 ({len(disagree_cases)}건):')
     for folder, rule, ml, score in disagree_cases:
-        score_str = f'{score:.2f}' if score is not None else 'N/A'
-        print(f'  {folder} | 룰={rule} ML={ml} score={score_str}')
+        print(f'  {folder} | 룰={rule} ML={ml} score={_fmt(score)}')
+
+    false_accept = [(f, s) for f, r, m, s in disagree_cases if r == 'FAIL' and m == 'PASS']
+    false_reject = [(f, s) for f, r, m, s in disagree_cases if r == 'PASS' and m == 'FAIL']
 
     print(f'\n룰FAIL·MLPASS (false-accept 후보, 컷오버 게이트 §4 대상): {len(false_accept)}건')
     for folder, score in false_accept:
-        score_str = f'{score:.2f}' if score is not None else 'N/A'
-        print(f'  {folder} | score={score_str}')
+        print(f'  {folder} | score={_fmt(score)}')
 
     print(f'\n룰PASS·MLFAIL (false-reject 후보): {len(false_reject)}건')
     for folder, score in false_reject:
-        score_str = f'{score:.2f}' if score is not None else 'N/A'
-        print(f'  {folder} | score={score_str}')
+        print(f'  {folder} | score={_fmt(score)}')
 
 
 if __name__ == '__main__':
