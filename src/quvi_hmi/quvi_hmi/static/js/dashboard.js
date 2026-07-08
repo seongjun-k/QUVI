@@ -1087,3 +1087,22 @@ refreshActModels();
 setInterval(refreshActModels, 5000);
 
 refreshDevices();
+
+// ─── ACT 추론 모니터링(rerun 웹 뷰어) ───
+// 호스트명은 하드코딩하지 않고 현재 접속 호스트 기준으로 조립 (network_mode: host, 포트 9090 고정)
+(function initRerunViewer() {
+    const frame = document.getElementById('rerunViewerFrame');
+    const fallbackMsg = document.getElementById('rerunFallbackMsg');
+    const toggleBtn = document.getElementById('rerunToggleBtn');
+    const panelBody = document.getElementById('rerunPanelBody');
+    if (!frame || !toggleBtn || !panelBody) return;
+
+    frame.src = `http://${window.location.hostname}:9090`;
+    frame.addEventListener('error', () => { fallbackMsg.style.display = 'block'; });
+
+    toggleBtn.addEventListener('click', () => {
+        const collapsed = panelBody.style.display === 'none';
+        panelBody.style.display = collapsed ? '' : 'none';
+        toggleBtn.textContent = collapsed ? '접기' : '펼치기';
+    });
+})();

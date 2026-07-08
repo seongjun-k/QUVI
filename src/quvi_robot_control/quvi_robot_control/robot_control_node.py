@@ -64,6 +64,7 @@ ROS 2 서비스 (Server):
 
 import json
 import math
+import queue
 import sys
 import threading
 import time
@@ -289,6 +290,12 @@ class RobotControlNode(Node):
         if self._use_act:
             self._load_act_policy()
 
+        # ─── 발표용 rerun 웹 뷰어 (기본 비활성) ───
+        # bounded queue — full이면 조용히 drop, ACT 추론 루프를 막지 않기 위함.
+        self._rerun_queue = queue.Queue(maxsize=2)
+        if self._rerun_enable:
+            self._init_rerun()
+
         # ─── ROS 통신 ───
         self._setup_ros_interfaces()
 
@@ -333,6 +340,8 @@ class RobotControlNode(Node):
         # 안전(P1): send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
+        # 발표용 시각화: ACT 추론 실시간 rerun 웹 뷰어 (기본 비활성 — 추론 경로 무변경)
+        self.declare_parameter('rerun_enable', False)
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
         self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
@@ -357,6 +366,7 @@ class RobotControlNode(Node):
         self._act_models_root   = self.get_parameter('act_models_root').value
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
         self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
+        self._rerun_enable      = self.get_parameter('rerun_enable').value
         self._rail_mm = {
             RailPosition.BED:     self.get_parameter('rail_mm_bed').value,
             RailPosition.INSPECT: self.get_parameter('rail_mm_inspect').value,
@@ -392,6 +402,39 @@ class RobotControlNode(Node):
         except Exception as e:
             self.get_logger().error(f'OmxFollower 초기화 실패: {e}')
             self._dxl_ready = False
+
+    # ─────────────────────────────────────────────
+    # 발표용 rerun 웹 뷰어 (ACT 추론 실시간 모니터링)
+    # ─────────────────────────────────────────────
+    def _init_rerun(self):
+        # rerun 미설치 환경에서도 노드가 죽지 않도록 try/except로 감싸고,
+        # 실패 시 rerun_enable을 강등해 이후 추론 루프도 완전히 비활성화한다.
+        try:
+            import rerun as rr
+            rr.init('quvi_act', spawn=False)
+            rr.serve_web(web_port=9090, ws_port=9877, open_browser=False)
+            self._rerun = rr
+            threading.Thread(
+                target=self._rerun_log_worker, daemon=True).start()
+            self.get_logger().info('rerun 웹 뷰어 시작 — http://<host>:9090')
+        except Exception as e:
+            self.get_logger().warn(f'rerun 초기화 실패 — 비활성화: {e}')
+            self._rerun_enable = False
+
+    def _rerun_log_worker(self):
+        # 큐에서 (프레임, 관절상태, 액션청크)를 받아 rr.log() 수행.
+        # 인코딩/로깅 비용을 ACT 추론 루프에서 분리하기 위한 전담 데몬 스레드.
+        rr = self._rerun
+        while True:
+            frame, joint_vals, action_chunk = self._rerun_queue.get()
+            try:
+                rr.log('camera/sidecam', rr.Image(frame).compress(jpeg_quality=80))
+                for i, v in enumerate(joint_vals):
+                    rr.log(f'joints/state/{JOINT_NAMES[i]}', rr.Scalar(float(v)))
+                for i, v in enumerate(action_chunk[-1] if len(action_chunk) else []):
+                    rr.log(f'joints/action/{JOINT_NAMES[i]}', rr.Scalar(float(v)))
+            except Exception as e:
+                self.get_logger().warn(f'rerun 로깅 실패(무시): {e}')
 
     # ─────────────────────────────────────────────
     # ACT 모델 로드
@@ -1025,6 +1068,12 @@ class RobotControlNode(Node):
                     f'ACT 청크#{chunk_count} 추론 완료 | 크기={len(action_chunk)} | '
                     f'추론시간={(time.time()-infer_start)*1000:.1f}ms | '
                     f'경과={time.time()-start:.1f}/{ACT_GRASP_DURATION:.0f}s')
+
+                if self._rerun_enable:
+                    try:
+                        self._rerun_queue.put_nowait((frame, joint_vals, action_chunk))
+                    except queue.Full:
+                        pass
 
                 for i, action in enumerate(action_chunk):
                     if (time.time() - start) >= ACT_GRASP_DURATION:

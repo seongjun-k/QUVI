@@ -65,7 +65,7 @@
 #define TURN_GEAR_RATIO       1.0   // 1:1 (no gear reduction)
 
 // Derived steps per full revolution of the turntable table:
-// (200 steps/rev * 16 microsteps * 3.0 ratio = 9600 steps per 360 degrees)
+// (200 steps/rev * 16 microsteps * 1.0 ratio = 3200 steps per 360 degrees)
 #define TURN_STEPS_PER_REV    (STEPPER_STEPS_PER_REV * TURN_MICROSTEPPING * TURN_GEAR_RATIO)
 #define TURN_STEPS_PER_DEGREE (TURN_STEPS_PER_REV / 360.0)
 
