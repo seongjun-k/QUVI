@@ -1100,9 +1100,10 @@ refreshDevices();
     frame.src = `http://${window.location.hostname}:9090`;
     frame.addEventListener('error', () => { fallbackMsg.style.display = 'block'; });
 
+    // 버튼이 패널 내부(camera-label)에 있으므로 iframe만 접는다 — 패널을 접으면 버튼도 사라짐
     toggleBtn.addEventListener('click', () => {
-        const collapsed = panelBody.style.display === 'none';
-        panelBody.style.display = collapsed ? '' : 'none';
+        const collapsed = frame.style.display === 'none';
+        frame.style.display = collapsed ? '' : 'none';
         toggleBtn.textContent = collapsed ? '접기' : '펼치기';
     });
 })();

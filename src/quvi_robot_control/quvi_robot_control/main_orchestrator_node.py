@@ -223,7 +223,7 @@ class MainOrchestratorNode(Node):
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
             self._state = FsmState.IDLE
         elif command == "ESTOP":
-            self.get_logger().error('비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 천이합니다.')
+            self.get_logger().error('비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.')
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
         elif command == "RESET":
@@ -281,11 +281,10 @@ class MainOrchestratorNode(Node):
 
     def _estop_system_cb(self, msg: Bool):
         if msg.data:
-            self.get_logger().error('시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 천이합니다.')
-            # 로봇에 능동적 정지 신호 발행 (#6)
-            estop_msg = Bool()
-            estop_msg.data = True
-            self._estop_pub.publish(estop_msg)
+            self.get_logger().error('시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 전환합니다.')
+            # 로봇(robot_control_node)은 이미 동일한 /system/estop을 직접 구독하므로
+            # 여기서 재발행하지 않는다 — 재발행 시 자기 구독 콜백이 다시 트리거되는
+            # 피드백 루프가 발생해 ERROR 로그가 무한 반복된다 (2026-07-08 발견).
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
 
@@ -350,7 +349,7 @@ class MainOrchestratorNode(Node):
         if msg.data and self._state == FsmState.STARTUP_TURNTABLE_WAIT:
             self._startup_turntable_done = True
 
-    # ─── FSM 루프 및 상태 천이 제어 ───
+    # ─── FSM 루프 및 상태 전환 제어 ───
     def _fsm_loop(self):
         if self._state != self._prev_state:
             self.get_logger().info(f'[FSM] 상태 변경: {self._prev_state} -> {self._state}')
@@ -437,7 +436,7 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('레일 베드 위치 이동 완료')
                 self._state = FsmState.GRASPING_TRIGGER
             elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
-                self.get_logger().error('레일 베드 이동 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('레일 베드 이동 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'START_RAIL_BED_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -465,7 +464,7 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('로봇 ACT 파지 완료. 검사장 안착 단계로 진입')
                 self._state = FsmState.PLACING_CHAMBER_TRIGGER
             elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
-                self.get_logger().error('로봇 파지 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('로봇 파지 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'GRASP_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -484,7 +483,7 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('검사장 안착 완료. 품질 검사 단계로 진입')
                 self._state = FsmState.INSPECTING_TRIGGER
             elif self._state_timer_counter > int(self._chamber_timeout * self._loop_rate):
-                self.get_logger().error('검사장 안착 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('검사장 안착 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'PLACE_CHAMBER_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -568,7 +567,7 @@ class MainOrchestratorNode(Node):
                 led_off = Bool()
                 led_off.data = False
                 self._led_pub.publish(led_off)
-                self.get_logger().error('품질 검사 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('품질 검사 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'INSPECT_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -587,7 +586,7 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('검사장 재파지 완료. 분류 이송 단계로 진입')
                 self._state = FsmState.SORTING_TRIGGER
             elif self._state_timer_counter > int(self._chamber_timeout * self._loop_rate):
-                self.get_logger().error('검사장 재파지 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('검사장 재파지 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'PICK_CHAMBER_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -615,7 +614,7 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('레일 분류 목적지 이동 완료')
                 self._state = FsmState.RELEASING_TRIGGER
             elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
-                self.get_logger().error('레일 이송 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('레일 이송 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'RAIL_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -636,7 +635,7 @@ class MainOrchestratorNode(Node):
                 self._current_object_idx += 1
                 self._state = FsmState.HOMING_RAIL_TRIGGER
             elif self._state_timer_counter > int(self._release_timeout * self._loop_rate):
-                self.get_logger().error('그리퍼 해제 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('그리퍼 해제 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'RELEASE_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -656,7 +655,7 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('레일 홈 복귀 완료')
                 self._state = FsmState.HOMING_ARM_TRIGGER
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
-                self.get_logger().error('레일 홈 복귀 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('레일 홈 복귀 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'HOME_RAIL_TIMEOUT'
                 self._state = FsmState.ERROR
 
@@ -678,7 +677,7 @@ class MainOrchestratorNode(Node):
                 # 설정돼 순회 재진입 분기가 도달 불가였다 (죽은 코드 제거, 2026-07-08 리뷰 #5)
                 self._state = FsmState.FINISHED
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
-                self.get_logger().error('로봇팔 홈 복귀 대기 타임아웃! ERROR 상태로 천이')
+                self.get_logger().error('로봇팔 홈 복귀 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'HOME_ARM_TIMEOUT'
                 self._state = FsmState.ERROR
 

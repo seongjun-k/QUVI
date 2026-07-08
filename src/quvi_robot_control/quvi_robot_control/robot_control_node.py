@@ -35,7 +35,7 @@ ROS 2 인터페이스 (Subscriber, 토픽명은 topics.py SSoT — 일부 예외
   /robot/place_in_chamber    std_msgs/Bool                  검사장 안착 시퀀스
   /robot/pick_in_chamber     std_msgs/Bool                  검사장 재파지 시퀀스
   /robot/teleop_command      std_msgs/Bool                  텔레옵 시작/종료
-  /system/estop              std_msgs/Bool                  비상 정지 → 토크 차단 + ERROR 천이
+  /system/estop              std_msgs/Bool                  비상 정지 → 토크 차단 + ERROR 전환
   /robot/reset_command       std_msgs/Bool                  리셋 + Dynamixel 포트 재연결
   /robot/act_model_select    std_msgs/String                ACT 모델 경로 선택(대시보드) → 백그라운드 재로드
   /hmi/command               std_msgs/String                STOP/ESTOP/START/RESET → 소프트 중단 제어
@@ -887,7 +887,7 @@ class RobotControlNode(Node):
 
     def _estop_cmd_callback(self, msg: Bool):
         if msg.data:
-            self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 천이')
+            self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 전환')
             self._abort_event.set()   # _should_abort가 보는 이벤트 — state==ERROR만으로 커버 안 되는 가드 보강 (#7)
             self._safe_estop_cleanup()
 
@@ -1601,7 +1601,7 @@ class RobotControlNode(Node):
             if self._state != RobotState.IDLE:
                 self.get_logger().warn('텔레옵 무시: 현재 로봇이 IDLE 상태가 아님')
                 return False
-            self._state = RobotState.TELEOPING   # 체크와 천이를 락 안에서 원자적으로 (동시 진입 선점 방지)
+            self._state = RobotState.TELEOPING   # 체크와 전환을 락 안에서 원자적으로 (동시 진입 선점 방지)
 
         self._publish_status('텔레오퍼레이션 활성화')
         self.get_logger().info('텔레오퍼레이션 시작 중...')
