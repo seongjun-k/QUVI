@@ -1097,7 +1097,9 @@ refreshDevices();
     const panelBody = document.getElementById('rerunPanelBody');
     if (!frame || !toggleBtn || !panelBody) return;
 
-    frame.src = `http://${window.location.hostname}:9090`;
+    // ?url= 없이 열면 뷰어가 데이터 소스(ws 9877)에 자동 연결하지 않고 웰컴 화면만 표시
+    const wsUrl = encodeURIComponent(`ws://${window.location.hostname}:9877`);
+    frame.src = `http://${window.location.hostname}:9090/?url=${wsUrl}`;
     frame.addEventListener('error', () => { fallbackMsg.style.display = 'block'; });
 
     // 버튼이 패널 내부(camera-label)에 있으므로 iframe만 접는다 — 패널을 접으면 버튼도 사라짐

@@ -340,8 +340,8 @@ class RobotControlNode(Node):
         # 안전(P1): send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
-        # 발표용 시각화: ACT 추론 실시간 rerun 웹 뷰어 (기본 비활성 — 추론 경로 무변경)
-        self.declare_parameter('rerun_enable', False)
+        # 발표용 시각화: ACT 추론 실시간 rerun 웹 뷰어 (실패 시 자동 강등)
+        self.declare_parameter('rerun_enable', True)
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
         self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
@@ -428,7 +428,9 @@ class RobotControlNode(Node):
         while True:
             frame, joint_vals, action_chunk = self._rerun_queue.get()
             try:
-                rr.log('camera/sidecam', rr.Image(frame).compress(jpeg_quality=80))
+                # frame은 BGR 원본 — rerun은 RGB 해석이라 여기(전담 스레드)서 변환
+                rr.log('camera/sidecam', rr.Image(
+                    cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)).compress(jpeg_quality=80))
                 for i, v in enumerate(joint_vals):
                     rr.log(f'joints/state/{JOINT_NAMES[i]}', rr.Scalar(float(v)))
                 for i, v in enumerate(action_chunk[-1] if len(action_chunk) else []):

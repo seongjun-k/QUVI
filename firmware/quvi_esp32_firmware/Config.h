@@ -83,7 +83,7 @@
 #define RAIL_HOMING_DIR       LOW    // Direction value to move towards the motor (LOW or HIGH)
 #define RAIL_RUNNING_DIR      HIGH   // Direction value to move away from motor (positive step increment)
 
-#define RAIL_HOME_COARSE_SPD  800.0  // Rapid search speed (steps/sec)
+#define RAIL_HOME_COARSE_SPD  4000.0 // Rapid search speed (steps/sec, 50mm/s) — fine 단계가 정밀도 담보
 #define RAIL_HOME_FINE_SPD    200.0  // High-precision slow search speed (steps/sec)
 #define RAIL_HOME_BACKOFF     150    // Back-off steps to clear limit switch before fine homing
 

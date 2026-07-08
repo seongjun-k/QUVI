@@ -152,8 +152,8 @@
                         <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 판정 결과</div>
                     </div>
                     <!-- ACT 추론 실시간 모니터링(rerun 웹 뷰어) — 발표용, robot_control_node의 rerun_enable=true일 때만 데이터 표시 -->
-                    <div class="camera-feed" id="rerunPanelBody">
-                        <iframe id="rerunViewerFrame" src="about:blank" style="width:100%;height:100%;min-height:300px;border:0;" title="rerun 뷰어"></iframe>
+                    <div class="camera-feed" id="rerunPanelBody" style="grid-column:1 / -1;">
+                        <iframe id="rerunViewerFrame" src="about:blank" style="width:100%;height:100%;min-height:640px;border:0;" title="rerun 뷰어"></iframe>
                         <div class="camera-label">ACT 추론 모니터링 (rerun) <button id="rerunToggleBtn" type="button" style="cursor:pointer;margin-left:8px;">접기</button></div>
                         <div id="rerunFallbackMsg" style="display:none;position:absolute;top:45%;width:100%;text-align:center;color:var(--text-secondary,#888);font-size:13px;">rerun 뷰어 연결 실패 — robot_control_node의 rerun_enable 파라미터가 켜져 있는지 확인하세요.</div>
                     </div>
