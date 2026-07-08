@@ -149,6 +149,9 @@ class MainOrchestratorNode(Node):
         # LED 제어 (검사 중 ON, 검사 완료 후 OFF)
         self._led_pub = self.create_publisher(Bool, topics.TOPIC_MOTOR_LED, 10)
 
+        # 비상정지 발행 (#6 ERROR/STOP 상태 진입 시 로봇에 능동적 정지 신호)
+        self._estop_pub = self.create_publisher(Bool, topics.TOPIC_ESTOP, 10)
+
         # 로봇 및 구동부 명령 발행
         self._robot_grasp_pub = self.create_publisher(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD, 10)
         # 레일 명령 경로는 의도적으로 두 가지다 (#5, 변경 시 주의):
@@ -279,6 +282,10 @@ class MainOrchestratorNode(Node):
     def _estop_system_cb(self, msg: Bool):
         if msg.data:
             self.get_logger().error('시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 천이합니다.')
+            # 로봇에 능동적 정지 신호 발행 (#6)
+            estop_msg = Bool()
+            estop_msg.data = True
+            self._estop_pub.publish(estop_msg)
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
 
