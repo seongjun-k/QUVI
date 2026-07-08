@@ -164,6 +164,8 @@ def generate_launch_description():
             # 검사 settle 2.0s 캡처와 다음 회전 명령 레이스 방지 (계획서 Phase 2 페이싱)
             'step_delay_sec': 3.0,
             'loop_rate_hz': 10.0,
+            # micro_ros_port 와 동일한 장치 — 미전달 시 하드리셋이 기본값 포트를 써서 어긋난다
+            'esp32_reset_port': LaunchConfiguration('micro_ros_port'),
         }],
         output='screen',
     )

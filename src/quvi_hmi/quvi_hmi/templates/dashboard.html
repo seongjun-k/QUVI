@@ -594,13 +594,13 @@
                                         이동
                                     </button>
                                 </div>
-                                <!-- SSoT: 프리셋 mm 값은 hmi_node.py RAIL_STATION_MAP 과 일치해야 한다 -->
+                                <!-- SSoT: hmi_node.py RAIL_STATION_MAP — data-mm 은 status.rail_station_map 수신 시 dashboard.js 가 동적 갱신한다 -->
                                 <div class="manual-preset-row">
                                     <button class="preset-chip" onclick="setRailPreset(0)">홈(0)</button>
-                                    <button class="preset-chip" onclick="setRailPreset(12.5)">INSPECT</button>
-                                    <button class="preset-chip" onclick="setRailPreset(25)">PASS</button>
-                                    <button class="preset-chip" onclick="setRailPreset(125)">FAIL</button>
-                                    <button class="preset-chip" onclick="setRailPreset(381.25)">BED</button>
+                                    <button class="preset-chip" id="railPreset_0" data-mm="12.5" onclick="setRailPreset(this.dataset.mm)">INSPECT</button>
+                                    <button class="preset-chip" id="railPreset_1" data-mm="25" onclick="setRailPreset(this.dataset.mm)">PASS</button>
+                                    <button class="preset-chip" id="railPreset_2" data-mm="125" onclick="setRailPreset(this.dataset.mm)">FAIL</button>
+                                    <button class="preset-chip" id="railPreset_3" data-mm="381.25" onclick="setRailPreset(this.dataset.mm)">BED</button>
                                 </div>
                             </div>
 

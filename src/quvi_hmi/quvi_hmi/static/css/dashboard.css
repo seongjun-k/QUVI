@@ -522,19 +522,6 @@ select:focus-visible,
     color: var(--accent-red);
 }
 
-/* 최신 검사 상세 */
-.latest-result {
-    padding: 16px;
-    border-bottom: 1px solid var(--border);
-}
-
-.latest-result-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-}
-
 .metrics-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
@@ -564,50 +551,6 @@ select:focus-visible,
 .metric-value.ok { color: var(--accent-green); }
 .metric-value.warn { color: var(--accent-yellow); }
 .metric-value.bad { color: var(--accent-red); }
-
-/* SSIM 바 */
-.ssim-bar-container {
-    margin-top: 12px;
-}
-
-.ssim-bar-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 4px;
-}
-
-.ssim-angle {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    color: var(--text-secondary);
-    width: 36px;
-    text-align: right;
-}
-
-.ssim-bar-track {
-    flex: 1;
-    height: 6px;
-    background: rgba(255,255,255,0.06);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.ssim-bar-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.5s ease;
-}
-
-.ssim-bar-fill.ok { background: var(--accent-green); }
-.ssim-bar-fill.warn { background: var(--accent-yellow); }
-.ssim-bar-fill.bad { background: var(--accent-red); }
-
-.ssim-value {
-    font-family: var(--font-mono);
-    font-size: 11px;
-    width: 42px;
-}
 
 /* 히스토리 테이블 */
 .history-table {

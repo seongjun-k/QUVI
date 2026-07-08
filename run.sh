@@ -72,7 +72,8 @@ if [ -t 0 ]; then
         rm -f /workspace/data/.restart_requested
         while true; do
             ros2 launch quvi_bringup full_system.launch.py
-            [ -f /workspace/data/.restart_requested ] || break
+            launch_status=\$?
+            [ -f /workspace/data/.restart_requested ] || exit \$launch_status
             rm -f /workspace/data/.restart_requested
             echo '🔁 장치 설정 변경 — 시스템 재기동'
             sleep 2
@@ -90,7 +91,8 @@ else
         rm -f /workspace/data/.restart_requested
         while true; do
             ros2 launch quvi_bringup full_system.launch.py
-            [ -f /workspace/data/.restart_requested ] || break
+            launch_status=\$?
+            [ -f /workspace/data/.restart_requested ] || exit \$launch_status
             rm -f /workspace/data/.restart_requested
             echo '🔁 장치 설정 변경 — 시스템 재기동'
             sleep 2

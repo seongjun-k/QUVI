@@ -1,5 +1,11 @@
 #include "StepperMotor.h"
 
+// 비상정지 플래그 (quvi_esp32_firmware.ino 정의). 호밍 무한루프 탈출용.
+extern volatile bool isEmergencyStopped;
+
+// 호밍 단계별 최대 대기 시간 (ms). 리밋 스위치 미검출 시 무한루프 방지.
+#define HOMING_STAGE_TIMEOUT_MS 30000UL
+
 // Constructor
 StepperMotor::StepperMotor(int8_t pulPin, int8_t dirPin, int8_t enaPin, int8_t limitPin, bool invertDir)
     : _stepper(AccelStepper::DRIVER, pulPin, dirPin),
@@ -105,7 +111,12 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     _stepper.move(directionMultiplier * 100000); // Move a very large distance
 
     unsigned long lastFeed = millis();
+    unsigned long stageStart = millis();
     while (!isLimitPressed()) {
+        if (isEmergencyStopped || (millis() - stageStart >= HOMING_STAGE_TIMEOUT_MS)) {
+            _stepper.stop();
+            return false;  // 비상정지 또는 타임아웃 — 호밍 실패
+        }
         _stepper.run();
         if (millis() - lastFeed >= 10) {
             delay(1);
@@ -140,7 +151,12 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // ==========================================
     _stepper.move(directionMultiplier * backoffSteps * 2);
     lastFeed = millis();
+    stageStart = millis();
     while (!isLimitPressed()) {
+        if (isEmergencyStopped || (millis() - stageStart >= HOMING_STAGE_TIMEOUT_MS)) {
+            _stepper.stop();
+            return false;  // 비상정지 또는 타임아웃 — 호밍 실패
+        }
         _stepper.run();
         if (millis() - lastFeed >= 10) {
             delay(1);

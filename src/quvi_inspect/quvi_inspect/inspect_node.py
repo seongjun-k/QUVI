@@ -346,6 +346,10 @@ class InspectNode(Node):
     def _trigger_callback(self, msg: Bool):
         """검사 트리거 수신."""
         if msg.data:
+            if self._ref_capture_active:
+                # 기준 캡처 중 동시 진입 방지 — _captured_images 공유로 인한 교차 오염 방지 (#15)
+                self.get_logger().warn('기준 이미지 캡처 진행 중 — 검사 트리거 무시')
+                return
             self._inspection_active = True
             self._captured_images.clear()
             self._inspection_start = time.time()   # 워치독 기준 (#4)
@@ -463,6 +467,15 @@ class InspectNode(Node):
     # ─────────────────────────────────────────────
     def _run_inspection(self):
         """4방향 이미지로 표면 특징 분석 검사 실행."""
+        try:
+            self._run_inspection_inner()
+        except Exception as e:   # noqa: BLE001 — 분석 예외로 노드가 고착되지 않도록 (#16)
+            self.get_logger().error(f'검사 중 예외 발생 — 검사 상태 해제: {e}')
+        finally:
+            self._inspection_active = False
+            self._captured_images.clear()
+
+    def _run_inspection_inner(self):
         start_time = time.time()
         self.get_logger().info('=' * 50)
         self.get_logger().info('양불 판정 시작 (표면 특징 분석)')
@@ -512,9 +525,7 @@ class InspectNode(Node):
             self._publish_debug_image(final_pass, surface_results)
         if self._save_images:
             self._save_inspection_log(final_pass, surface_results)
-
-        self._inspection_active = False
-        self._captured_images.clear()
+        # 상태 해제는 _run_inspection 의 try/finally 가 일괄 처리 (#16)
 
     # ─────────────────────────────────────────────
     # 이미지 전처리

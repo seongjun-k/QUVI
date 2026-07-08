@@ -19,7 +19,6 @@ const STAGE_LABELS = {
     'HOMING':     '홈 복귀 중',
     'TELEOPING':  '텔레오퍼레이션 동작 중',
     'FINISHED':   '작업 완료',
-    'DONE':       '작업 완료',
     'ERROR':      '오류 발생 — 확인 필요',
     'ESTOP':      '비상 정지 — E-STOP 활성',
 };
@@ -53,6 +52,14 @@ const GRIPPER = { close: 1800, open: 2300, closedHint: 1850, openHint: 2250 };
    [B] 콘텐츠 렌더링·제어 로직
    ═══════════════════════════════════════════ */
 
+// ─── HTML 이스케이프 (innerHTML 삽입 전 XSS/렌더 깨짐 방지) ───
+function escapeHtml(str) {
+    if (!str) return str;
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
 // ─── 시스템 상태 업데이트 ───
 function updateStatus(status) {
     const stateEl = document.getElementById('systemState');
@@ -65,7 +72,7 @@ function updateStatus(status) {
     stateEl.className = 'status-indicator';
     if (state === 'IDLE') stateEl.classList.add('idle');
     else if (state === 'ERROR' || state === 'ESTOP') stateEl.classList.add('error');
-    else if (state === 'DONE' || state === 'FINISHED') stateEl.classList.add('done');
+    else if (state === 'FINISHED') stateEl.classList.add('done');
     else stateEl.classList.add('running');
 
     // 진행 단계 라벨 (사람이 읽기 쉬운 한국어)
@@ -173,6 +180,12 @@ function _updateRailPosition(status) {
         ];
         const maxMm = Math.max(...stationMap.map(s => s.mm)) || 381.25;
 
+        // 프리셋 칩 mm 값 동적 갱신 (SSoT: hmi_node.py RAIL_STATION_MAP)
+        stationMap.forEach((s, idx) => {
+            const chip = document.getElementById(`railPreset_${idx}`);
+            if (chip) chip.dataset.mm = s.mm;
+        });
+
         // railPos(마지막 명령 목표값, mm)과 가장 가까운 스테이션 탐색 (부동소수 오차 허용 0.25mm)
         let station = stationMap.find(s => Math.abs(s.mm - railPos) < 0.25);
         if (!station) {
@@ -244,8 +257,6 @@ function _updateFsmHighlight(status) {
             }
         }
 
-        if (state === 'DONE') activeNode = 'fsm_FINISHED';
-
         // FSM 노드들의 active 클래스 토글
         FSM_NODES.forEach(node => {
             const nodeId = `fsm_${node}`;
@@ -271,7 +282,7 @@ function updateStageLabel(state) {
     if (state === 'ERROR' || state === 'ESTOP') el.classList.add('error');
     else if (state === 'TELEOPING') el.classList.add('teleop');
     else if (state === 'IDLE' || state === 'INIT') el.classList.add('idle');
-    else if (state === 'FINISHED' || state === 'DONE') el.classList.add('done');
+    else if (state === 'FINISHED') el.classList.add('done');
     else el.classList.add('running');
 }
 
@@ -450,7 +461,7 @@ function addHistoryRow(result) {
             <td style="font-family:var(--font-mono)">${r.hole_count}</td>
             <td style="font-family:var(--font-mono)">${r.texture_variance.toFixed(1)}</td>
             <td style="font-family:var(--font-mono)">${r.inspection_time_sec.toFixed(2)}s</td>
-            <td style="color:var(--accent-red);font-size:12px">${r.fail_reason || '-'}</td>
+            <td style="color:var(--accent-red);font-size:12px">${escapeHtml(r.fail_reason) || '-'}</td>
         </tr>`;
     });
     tbody.innerHTML = rows;

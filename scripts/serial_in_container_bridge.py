@@ -81,7 +81,7 @@ def main():
                 try:
                     tty.setraw(master_fd)
                     tty.setraw(slave_fd)
-                except:
+                except Exception:
                     pass
                 last_raw_enforce = current_time
 
@@ -114,7 +114,7 @@ def main():
         try:
             if os.path.lexists(symlink_path):
                 os.remove(symlink_path)
-        except:
+        except Exception:
             pass
         print("Container Bridge closed.")
 

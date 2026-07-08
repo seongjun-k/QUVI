@@ -845,6 +845,7 @@ class RobotControlNode(Node):
     def _estop_cmd_callback(self, msg: Bool):
         if msg.data:
             self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 천이')
+            self._abort_event.set()   # _should_abort가 보는 이벤트 — state==ERROR만으로 커버 안 되는 가드 보강 (#7)
             self._safe_estop_cleanup()
 
     def _reset_cmd_callback(self, msg: Bool):
@@ -1154,9 +1155,10 @@ class RobotControlNode(Node):
 
         success = self._write_raw_position(POSE_HOME)
         self._wait_motion_done(POSE_HOME)
+        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
         done_msg = Bool()
-        done_msg.data = True
+        done_msg.data = success
         self._home_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
@@ -1194,9 +1196,10 @@ class RobotControlNode(Node):
         # 검사 동안 팔은 P3에서 후퇴 대기
         success = self._write_raw_position(_arm_only(POSE_P3))
         self._wait_motion_done(_arm_only(POSE_P3))
+        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
         done_msg = Bool()
-        done_msg.data = True
+        done_msg.data = success
         self._place_chamber_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
@@ -1397,7 +1400,7 @@ class RobotControlNode(Node):
         msg.header.frame_id = 'base_link'
         msg.name = JOINT_NAMES
         msg.position = [
-            (raw_positions[name] / 4095.0) * 2 * math.pi
+            (raw_positions[name] / DXL_TICKS_PER_REV) * 2 * math.pi
             for name in JOINT_NAMES
         ]
         self._joint_state_pub.publish(msg)
@@ -1429,6 +1432,7 @@ class RobotControlNode(Node):
             self._publish_status(self._get_state().name)
 
     def _safe_estop_cleanup(self):
+        self._teleop_running = False   # 텔레옵 루프 즉시 종료 (ESTOP 중 send_action 지속 방지) (#1)
         try:
             if self._dxl_ready and self._follower:
                 if hasattr(self._follower, 'bus'):
@@ -1542,13 +1546,14 @@ class RobotControlNode(Node):
             t.start()
 
     def _start_teleop(self) -> bool:
-        if self._get_state() == RobotState.TELEOPING:
-            return True
-        if self._get_state() != RobotState.IDLE:
-            self.get_logger().warn('텔레옵 무시: 현재 로봇이 IDLE 상태가 아님')
-            return False
+        with self._state_lock:
+            if self._state == RobotState.TELEOPING:
+                return True
+            if self._state != RobotState.IDLE:
+                self.get_logger().warn('텔레옵 무시: 현재 로봇이 IDLE 상태가 아님')
+                return False
+            self._state = RobotState.TELEOPING   # 체크와 천이를 락 안에서 원자적으로 (동시 진입 선점 방지)
 
-        self._set_state(RobotState.TELEOPING)
         self._publish_status('텔레오퍼레이션 활성화')
         self.get_logger().info('텔레오퍼레이션 시작 중...')
 
@@ -1664,6 +1669,10 @@ class RobotControlNode(Node):
         sim_angle = 0.0
 
         while self._teleop_running and rclpy.ok():
+            if self._should_abort():   # STOP/ESTOP → 루프 종료 (RESET 후 급작동 방지) (#1)
+                self.get_logger().warn('텔레옵 중단 감지 (STOP/ESTOP) — 루프 종료')
+                self._teleop_running = False
+                break
             start_time = time.time()
 
             if self._use_real_hardware and self._leader and self._follower:

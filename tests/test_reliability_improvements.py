@@ -6,7 +6,7 @@ import time
 import math
 import threading
 import pytest
-import rclpy
+rclpy = pytest.importorskip('rclpy')   # ROS 2 미설치 환경(호스트)에서는 스킵
 import numpy as np
 from std_msgs.msg import Bool, Int32
 from quvi_inspect.inspect_node import InspectNode

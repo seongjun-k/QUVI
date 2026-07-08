@@ -667,11 +667,9 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter += 1
             if self._robot_home_done:
                 self.get_logger().info('로봇팔 홈 복귀 완료')
-                # 다음 감지된 오브젝트가 남았으면 순회 구동
-                if self._current_object_idx < self._total_objects:
-                    self._state = FsmState.GRASPING_TRIGGER
-                else:
-                    self._state = FsmState.FINISHED
+                # 단일 오브젝트 파이프라인 — _total_objects 는 GRASPING_TRIGGER 에서 항상 1로
+                # 설정돼 순회 재진입 분기가 도달 불가였다 (죽은 코드 제거, 2026-07-08 리뷰 #5)
+                self._state = FsmState.FINISHED
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                 self.get_logger().error('로봇팔 홈 복귀 대기 타임아웃! ERROR 상태로 천이')
                 self._error_msg = 'HOME_ARM_TIMEOUT'

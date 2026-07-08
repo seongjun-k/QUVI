@@ -874,15 +874,16 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 'error': '자율 시퀀스 진행 중에는 검사 단독 테스트를 사용할 수 없습니다. '
                          'STOP 후 다시 시도하세요.',
             }), 409
-        if hmi_node._inspection_test_active:
-            return jsonify({'ok': False, 'error': '검사 테스트가 이미 진행 중입니다.'}), 409
+        with hmi_node._lock:   # 검사-확인·설정 TOCTOU 레이스 방지 (#10)
+            if hmi_node._inspection_test_active:
+                return jsonify({'ok': False, 'error': '검사 테스트가 이미 진행 중입니다.'}), 409
+            hmi_node._inspection_test_active = True
 
         data = request.get_json(silent=True) or {}
         angles = data.get('angles', [0, 90, 180, 270])
 
         def _run_inspection_test():
             import time as _time
-            hmi_node._inspection_test_active = True
             hmi_node._inspection_result_event.clear()
             try:
                 hmi_node.send_led_command(True)

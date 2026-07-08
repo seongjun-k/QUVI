@@ -57,6 +57,7 @@ from quvi_inspect.ml_preprocess import preprocess_for_ml  # noqa: E402
 ANGLES = (0, 90, 180, 270)
 BACKBONE_WEIGHTS_FILENAME = 'wide_resnet50.pth'
 BIN_THRESH = 127   # inspect_node 기본 binary_threshold 와 동일
+MIN_RELIABLE_VAL_SAMPLES = 5   # held-out 표본이 이보다 적으면 max() 임계값 과적합 위험 — 경고만, 학습은 계속
 
 
 # ─────────────────────────────────────────────
@@ -132,6 +133,9 @@ def train_one_angle(
     threshold_reliable = True
     if val_items:
         val_scores = [detector.score(img) for _f, img in val_items]
+        if len(val_items) < MIN_RELIABLE_VAL_SAMPLES:   # ponytail: 소표본 max() 임계값은 과적합 위험 — 절대 개수 기준
+            print(f'  [경고] held-out {len(val_items)}장 — 소표본, 임계값 신뢰 불가')
+            threshold_reliable = False
     else:
         print('  [경고] held-out 0장 — 학습셋 점수로 대체, 임계값 신뢰 불가')
         threshold_reliable = False
