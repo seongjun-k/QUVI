@@ -146,8 +146,8 @@ class InspectNode(Node):
             ('min_hole_area_px',        50,                                 '_min_hole_px'),
             # ─── 턴테이블 / 전처리 ───
             ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
-            # 데이터셋 촬영(2.0s 노출 안정)과 실검사 노출 조건 정합 — train/infer skew 방지 (계획서 Phase 2)
-            ('capture_settle_sec',      2.0,                                '_capture_settle'),
+            # 데이터셋 촬영(1.5s 노출 안정)과 실검사 노출 조건 정합 — train/infer skew 방지 (계획서 Phase 2)
+            ('capture_settle_sec',      1.5,                                '_capture_settle'),
             # 한 바퀴 캡처 ≈ 20s(각도당 ~5s) + LED 안정화 5s + 여유 — 12s는 270° 캡처 전에 판정을 강행했다
             ('inspection_finalize_sec', 45.0,                               '_finalize_sec'),
             ('roi_margin',              20,                                 '_roi_margin'),
@@ -163,7 +163,7 @@ class InspectNode(Node):
             ('publish_debug_image',     True,                               '_pub_debug'),
             ('debug_image_topic',       '/inspect/debug_image',             '_debug_topic'),
             # ─── 데이터셋 촬영 모드 (ML 정상품 수집) ───
-            ('dataset_capture_settle_sec', 2.0,                             '_ds_settle_sec'),
+            ('dataset_capture_settle_sec', 1.5,                             '_ds_settle_sec'),
             ('dataset_capture_dir',     '/workspace/data/anomaly_dataset/raw', '_ds_dir'),
             # ─── ML 이상탐지 (섀도우 모드 — passed 판정에는 반영하지 않음) ───
             ('anomaly_enabled',         False,                              '_anomaly_enabled'),
@@ -558,14 +558,23 @@ class InspectNode(Node):
             # 기준 이미지는 전체 프레임으로 저장되므로, 캡처도 정렬 전 면적을
             # 써야 조건이 일치한다. 정렬된 ROI 면적으로 비교하면 크롭 배율만큼
             # 비율이 부풀어 항상 FAIL 이 난다.
-            ref = self._reference_images.get(angle)
-            if ref is not None:
+            # 배치 각도가 틀어지면 캡처 뷰가 다른 각도의 기준과 대응하므로,
+            # 4개 각도 기준 전부와 비교해 1.0 에 가장 가까운 면적비를 채택한다.
+            cap_area = cache.largest_external_area()
+            a_ratio  = float('nan')
+            for ref in self._reference_images.values():
+                if ref is None:
+                    continue
                 ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
                 ref_area = BinaryCache(ref_resized, self._bin_thresh).largest_external_area()
-                cap_area = cache.largest_external_area()
-                a_ratio  = cap_area / ref_area if ref_area > 0 else 0.0
-            else:
-                a_ratio = float('nan')
+                r = cap_area / ref_area if ref_area > 0 else 0.0
+                if math.isnan(a_ratio) or abs(r - 1.0) < abs(a_ratio - 1.0):
+                    a_ratio = r
+            if math.isnan(a_ratio):
+                # 기준 이미지 전무 시 면적비 검출 축이 통째로 빠진 채 검사가 진행됨을 알린다
+                self.get_logger().warning(
+                    '기준 이미지 없음 — 면적비 검사 스킵됨 (기준 캡처 필요)',
+                    throttle_duration_sec=30.0)
 
             # ── 소프트웨어 정렬 (정렬된 이미지로 표면 분석) ──
             if self._align_enabled:

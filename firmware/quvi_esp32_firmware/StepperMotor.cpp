@@ -136,6 +136,10 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     _stepper.move(-directionMultiplier * backoffSteps);
     lastFeed = millis();
     while (_stepper.distanceToGo() != 0) {
+        if (isEmergencyStopped) {
+            _stepper.stop();
+            return false;  // 비상정지 — 호밍 실패
+        }
         _stepper.run();
         if (millis() - lastFeed >= 10) {
             delay(1);
@@ -173,6 +177,10 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     _stepper.move(-directionMultiplier * 50);
     lastFeed = millis();
     while (_stepper.distanceToGo() != 0) {
+        if (isEmergencyStopped) {
+            _stepper.stop();
+            return false;  // 비상정지 — 호밍 실패
+        }
         _stepper.run();
         if (millis() - lastFeed >= 10) {
             delay(1);

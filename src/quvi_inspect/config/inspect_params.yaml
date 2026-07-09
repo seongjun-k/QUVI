@@ -19,7 +19,7 @@ inspect_node:
 
     # ─── 턴테이블 촬영 ───
     turntable_angles: [0, 90, 180, 270]   # 4방향 촬영 각도
-    capture_settle_sec: 0.5                # 회전 후 안정화 대기 시간
+    capture_settle_sec: 1.5                # 회전 후 안정화 대기 시간 — 데이터셋 촬영(1.5s)과 정합 유지
 
     # ─── 이미지 전처리 ───
     roi_margin: 20                    # ROI 마진 (px)

@@ -275,13 +275,24 @@ void performHomingCalibration() {
     #endif
 
     // Calibrate linear rail (towards motor on left)
-    railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF);
+    bool railHomed = railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF);
 
     // Restore operating speed & acceleration profiles which were overridden during homing sequence
     railMotor.setMaxSpeed(RAIL_MAX_SPEED);
     railMotor.setAcceleration(RAIL_ACCELERATION);
     turnMotor.setMaxSpeed(TURN_MAX_SPEED);
     turnMotor.setAcceleration(TURN_ACCELERATION);
+
+    // 호밍 실패(ESTOP/타임아웃) — 완료 처리·rail_done 발행 금지. isHomingCompleted가
+    // false로 남아 이동 명령이 게이트되고, orchestrator는 STARTUP_RAIL_HOME_WAIT에 머문다.
+    if (!railHomed) {
+        isHoming = false;
+        setLedColor(COLOR_RED);
+        #ifndef USE_MICRO_ROS
+            Serial0.println("[ERROR] Homing failed (E-stop or timeout). Rail NOT homed.");
+        #endif
+        return;
+    }
 
     // Calibrate turntable (optional - reset absolute zero position on boot)
     turnMotor.setCurrentPosition(0);

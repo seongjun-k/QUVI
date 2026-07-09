@@ -188,10 +188,6 @@ select:focus-visible,
     animation: alarm-pulse 2s ease-in-out infinite;
 }
 
-.btn-estop {
-    animation: alarm-pulse 2s ease-in-out infinite;
-}
-
 .result-badge.fail {
     animation: alarm-pulse 2s ease-in-out infinite;
 }
@@ -316,6 +312,7 @@ select:focus-visible,
     transition: all 0.15s ease;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
 }
 

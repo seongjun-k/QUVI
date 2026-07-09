@@ -1168,12 +1168,13 @@ class RobotControlNode(Node):
 
         success = self._write_raw_position(target_pose)
         self._wait_motion_done(target_pose)   # 고정 sleep 대신 완료 폴링(abort-aware)
+        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
         self._set_state(RobotState.IDLE)
         self._publish_status(f'자세 변경 완료: {label}')
 
         done_msg = Bool()
-        done_msg.data = True
+        done_msg.data = success
         self._rotate_done_pub.publish(done_msg)
 
         return success
@@ -1282,9 +1283,10 @@ class RobotControlNode(Node):
 
         success = self._write_raw_position(_arm_only(POSE_P5))
         self._wait_motion_done(_arm_only(POSE_P5))  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
+        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
         done_msg = Bool()
-        done_msg.data = True
+        done_msg.data = success
         self._pick_chamber_done_pub.publish(done_msg)
 
         self._set_state(RobotState.IDLE)
