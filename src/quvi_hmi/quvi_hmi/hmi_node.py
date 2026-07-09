@@ -693,16 +693,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
 
 
-    @app.route('/api/trigger/inspection', methods=['POST'])
-    def api_trigger_inspection():
-        if not hmi_node.trigger_inspection(True):
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 수동 검사 트리거를 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
-        return jsonify({'ok': True})
-
     # ─── Rail 이동 API ───
     @app.route('/api/rail/move', methods=['POST'])
     def api_rail_move():

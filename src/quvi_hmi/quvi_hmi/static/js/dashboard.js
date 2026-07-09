@@ -516,15 +516,6 @@ async function sendCommand(cmd) {
 }
 
 
-
-async function triggerInspection() {
-    const res = await fetch('/api/trigger/inspection', { method: 'POST' });
-    if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        console.error('[QUVI] 수동 검사 거부:', data.error || res.status);
-    }
-}
-
 // ─── 텔레오퍼레이션 토글 API 호출 ───
 async function toggleTeleop(enable) {
     const action = enable ? 'on' : 'off';
