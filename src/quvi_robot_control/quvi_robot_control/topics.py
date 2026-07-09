@@ -3,8 +3,7 @@ QUVI 시스템 전체 통신 토픽 명세 상수.
 여러 노드에서 동일한 토픽 이름을 보장하기 위해 한 곳에서 관리합니다.
 
 SSoT(단일 진실 공급원)입니다 — 새 토픽 추가·이름 변경은 이 파일에서 시작합니다.
-단, quvi_hmi/hmi_node.py 는 이 모듈을 import하지 않고 상단에 자체 토픽 상수
-사본을 둡니다. 여기를 수정할 때는 hmi_node.py 의 동일 값도 함께 확인하세요.
+quvi_hmi/hmi_node.py 도 이 모듈을 import합니다 (HMI 전용 토픽 3개만 자체 정의).
 """
 
 # HMI <-> Orchestrator

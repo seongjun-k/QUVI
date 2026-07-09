@@ -10,6 +10,7 @@ QUVI 공통 유틸리티
 """
 from __future__ import annotations
 
+import logging
 from typing import Optional, Tuple
 
 import cv2
@@ -35,7 +36,6 @@ def decode_raw(msg: Image) -> Optional[np.ndarray]:
     try:
         return _bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
     except Exception as e:
-        import logging
         logging.getLogger(__name__).warning(f'decode_raw 실패: {e}')
         return None
 

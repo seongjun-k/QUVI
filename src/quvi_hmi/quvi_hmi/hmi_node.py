@@ -38,25 +38,21 @@ from flask import Flask, Response, jsonify, render_template, request
 from flask_socketio import SocketIO
 
 
-# ─── ROS 토픽 이름 (이 파일 안에서만 사용하는 SSoT.
-#      quvi_robot_control/topics.py 의 값과 일치해야 한다) ───
-TOPIC_HMI_STATUS          = '/hmi/status'
-TOPIC_HMI_COMMAND         = '/hmi/command'
-TOPIC_ACT_MODELS          = '/robot/act_models'
-TOPIC_ACT_CURRENT         = '/robot/act_current'
-TOPIC_ACT_MODEL_SELECT    = '/robot/act_model_select'
+# ─── ROS 토픽 이름 (SSoT: quvi_robot_control/topics.py) ───
+from quvi_robot_control.topics import (
+    TOPIC_HMI_STATUS, TOPIC_HMI_COMMAND,
+    TOPIC_ACT_MODELS, TOPIC_ACT_CURRENT, TOPIC_ACT_MODEL_SELECT,
+    TOPIC_INSPECTION_TRIGGER, TOPIC_INSPECTION_CAPTURE_NOW,
+    TOPIC_ROBOT_JOINT_STATES, TOPIC_ROBOT_TELEOP_CMD, TOPIC_ESTOP,
+    TOPIC_MOTOR_RAIL_CMD as TOPIC_MOTOR_RAIL,
+    TOPIC_MOTOR_TURNTABLE_CMD, TOPIC_MOTOR_TURNTABLE_DONE,
+    TOPIC_MOTOR_LED as TOPIC_MOTOR_TURNTABLE_LED,
+)
+
+# HMI 전용 토픽 (topics.py 미등재 — inspect_node의 리터럴과 일치해야 한다)
 TOPIC_INSPECTION_RESULT   = '/inspection/result'
-TOPIC_INSPECTION_TRIGGER  = '/inspection/trigger'
-TOPIC_INSPECTION_CAPTURE_NOW = '/inspection/capture_now'
 TOPIC_CAPTURE_REFERENCE   = '/inspection/capture_reference'
 TOPIC_CAPTURE_DATASET     = '/inspection/capture_dataset'
-TOPIC_ROBOT_JOINT_STATES  = '/robot/joint_states'
-TOPIC_ROBOT_TELEOP_CMD    = '/robot/teleop_command'
-TOPIC_ESTOP               = '/system/estop'
-TOPIC_MOTOR_RAIL          = '/motor/rail'
-TOPIC_MOTOR_TURNTABLE_CMD = '/motor/turntable_cmd'
-TOPIC_MOTOR_TURNTABLE_LED = '/motor/turntable_led'
-TOPIC_MOTOR_TURNTABLE_DONE = '/motor/turntable_done'
 
 # ─── FSM 표시 상태 (SSoT) ───
 # 상태 발원지는 main_orchestrator_node.py 의 FsmState 이며, 대시보드는 접두어
