@@ -56,7 +56,26 @@ from quvi_inspect.ml_preprocess import preprocess_for_ml  # noqa: E402
 
 ANGLES = (0, 90, 180, 270)
 BACKBONE_WEIGHTS_FILENAME = 'wide_resnet50.pth'
-BIN_THRESH = 127   # inspect_node 기본 binary_threshold 와 동일
+
+
+def _load_bin_thresh() -> int:
+    """inspect_params.yaml 의 binary_threshold 를 읽는다 (train/infer skew 방지).
+
+    노드가 쓰는 값과 학습 전처리 이진화 임계값이 어긋나면 학습/추론 분포가
+    갈라진다. yaml 미존재·키 부재 시 노드 기본값 127 폴백.
+    """
+    yaml_path = os.path.join(_SRC_DIR, 'quvi_inspect', 'config', 'inspect_params.yaml')
+    try:
+        import yaml
+        with open(yaml_path, encoding='utf-8') as f:
+            params = yaml.safe_load(f)['inspect_node']['ros__parameters']
+        return int(params['binary_threshold'])
+    except Exception as e:  # noqa: BLE001 — 학습을 막지 않고 폴백
+        print(f'[경고] binary_threshold 읽기 실패({e}) — 기본값 127 사용')
+        return 127
+
+
+BIN_THRESH = _load_bin_thresh()
 MIN_RELIABLE_VAL_SAMPLES = 5   # held-out 표본이 이보다 적으면 max() 임계값 과적합 위험 — 경고만, 학습은 계속
 
 

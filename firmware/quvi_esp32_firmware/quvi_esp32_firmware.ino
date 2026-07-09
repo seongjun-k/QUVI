@@ -23,6 +23,7 @@
   #include <std_msgs/msg/int32.h>
   #include <std_msgs/msg/bool.h>
   #include <quvi_msgs/msg/motor_status.h>
+  #include <rmw_microros/rmw_microros.h>   // 에이전트 생존 확인(ping)용
 #endif
 
 // =============================================================================
@@ -314,12 +315,12 @@ void rail_subscription_callback(const void * msin) {
     if (isEmergencyStopped || !isHomingCompleted) return;
 
     long target_steps = msg->data;
-    
-    // Soft Limit check for safety
-    if (target_steps >= RAIL_MIN_LIMIT && target_steps <= RAIL_MAX_LIMIT) {
-        railMotor.setTargetPosition(target_steps);
-        rail_done_pending = true;
-    }
+
+    // Soft Limit: 범위 밖 명령은 조용히 버리면 상위가 done 대기로 행 걸린다.
+    // 리밋으로 클램프해 실행하고 done 을 발행한다 (리밋 값이 물리 안전 경계).
+    long clamped = constrain(target_steps, (long)RAIL_MIN_LIMIT, (long)RAIL_MAX_LIMIT);
+    railMotor.setTargetPosition(clamped);
+    rail_done_pending = true;
 }
 
 void turn_subscription_callback(const void * msin) {
@@ -468,7 +469,26 @@ void vCommTask(void *pvParameters) {
                 continue;
             }
             RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)));
-            
+
+            // 에이전트 생존 감시: 런타임에 agent 가 죽으면 재연결 수단이 없어
+            // 노드가 유령 상태로 남는다. 3회 연속 ping 실패 시 모터를 세우고
+            // 재부팅해 상단의 연결 재시도 + 재호밍 경로를 재사용한다.
+            // (ESTOP 중에는 위 분기에서 continue 되므로 여기 도달하지 않는다 —
+            //  재부팅으로 isEmergencyStopped 가 소실되는 상황 방지)
+            static unsigned long last_ping = 0;
+            static int ping_fail_count = 0;
+            if (millis() - last_ping > 2000) {
+                last_ping = millis();
+                if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
+                    ping_fail_count = 0;
+                } else if (++ping_fail_count >= 3) {
+                    railMotor.setTargetPosition(railMotor.getCurrentPosition());
+                    turnMotor.setTargetPosition(turnMotor.getCurrentPosition());
+                    setLedColor(COLOR_PURPLE);
+                    ESP.restart();
+                }
+            }
+
             if (rail_done_pending && !railMotor.isMoving()) {
                 rail_done_msg.data = true;
                 RCSOFTCHECK(rcl_publish(&rail_done_pub, &rail_done_msg, NULL));
