@@ -25,39 +25,44 @@
 
     <!-- [고정 셸] 수정 빈도 낮음 -->
     <!-- 사이드바 네비게이션 -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <div class="logo">QUVI<span>Quality Vision</span></div>
         <nav class="nav-menu">
-            <a href="#" id="menu-dashboard" class="nav-item active" onclick="switchTab('dashboard')">
+            <a href="#" id="menu-dashboard" class="nav-item active" onclick="switchTab('dashboard')" title="대시보드">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="3" width="7" height="9" rx="1"/>
                     <rect x="14" y="3" width="7" height="5" rx="1"/>
                     <rect x="14" y="12" width="7" height="9" rx="1"/>
                     <rect x="3" y="16" width="7" height="5" rx="1"/>
                 </svg>
-                대시보드
+                <span class="nav-item-label">대시보드</span>
             </a>
-            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')">
+            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')" title="리더 암 조종 (Teleop)">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2a10 10 0 0 0-10 10c0 5.523 4.477 10 10 10s10-4.477 10-10A10 10 0 0 0 12 2zm1 14h-2v-6h2v6zm0-8h-2V6h2v2z"/>
                 </svg>
-                리더 암 조종 (Teleop)
+                <span class="nav-item-label">리더 암 조종 (Teleop)</span>
             </a>
-            <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')">
+            <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')" title="시스템 상태">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
                     <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
                     <line x1="12" y1="22.08" x2="12" y2="12"/>
                 </svg>
-                시스템 상태
+                <span class="nav-item-label">시스템 상태</span>
             </a>
-            <a href="#" id="menu-inspection" class="nav-item" onclick="switchTab('inspection')">
+            <a href="#" id="menu-inspection" class="nav-item" onclick="switchTab('inspection')" title="검사 상세 내역">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12zm10 6c3.31 0 6-2.69 6-6s-2.69-6-6-6-6 2.69-6 6 2.69 6 6 6z"/>
                 </svg>
-                검사 상세 내역
+                <span class="nav-item-label">검사 상세 내역</span>
             </a>
         </nav>
+        <button type="button" id="sidebarToggle" class="sidebar-toggle" onclick="toggleSidebar()" title="사이드바 접기/펼치기">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
     </aside>
 
     <!-- 메인 컨텐츠 영역 -->
@@ -153,7 +158,7 @@
                     </div>
                     <!-- ACT 추론 실시간 모니터링(rerun 웹 뷰어) — 발표용, robot_control_node의 rerun_enable=true일 때만 데이터 표시 -->
                     <div class="camera-feed" id="rerunPanelBody" style="grid-column:1 / -1;">
-                        <iframe id="rerunViewerFrame" src="about:blank" style="width:100%;height:100%;min-height:640px;border:0;" title="rerun 뷰어"></iframe>
+                        <iframe id="rerunViewerFrame" src="about:blank" style="width:100%;min-height:480px;border:0;" title="rerun 뷰어"></iframe>
                         <div class="camera-label">ACT 추론 모니터링 (rerun) <button id="rerunToggleBtn" type="button" style="cursor:pointer;margin-left:8px;">접기</button></div>
                         <div id="rerunFallbackMsg" style="display:none;position:absolute;top:45%;width:100%;text-align:center;color:var(--text-secondary,#888);font-size:13px;">rerun 뷰어 연결 실패 — robot_control_node의 rerun_enable 파라미터가 켜져 있는지 확인하세요.</div>
                     </div>

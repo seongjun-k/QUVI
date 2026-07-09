@@ -675,7 +675,8 @@ class InspectNode(Node):
         """원본 이미지를 타일링하고 표면 특징 분석 결과를 오버레이한다."""
         TILE_W, TILE_H = 320, 240
         n = len(self._angles)
-        cols = n if n <= 4 else 4
+        # 4장(기본 0/90/180/270°)은 2x2 격자로 — HMI 판정 결과 셀 비율에 맞춤
+        cols = 2 if n == 4 else (n if n <= 4 else 4)
 
         tiles = []
         for angle in self._angles:
@@ -687,10 +688,11 @@ class InspectNode(Node):
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
             tiles.append(tile)
 
-        while len(tiles) < cols:
+        while len(tiles) % cols:
             tiles.append(np.zeros((TILE_H, TILE_W, 3), np.uint8))
 
-        debug_img = np.hstack(tiles[:cols])
+        rows = [np.hstack(tiles[i:i + cols]) for i in range(0, len(tiles), cols)]
+        debug_img = np.vstack(rows)
 
         # 표면 특징 요약 오버레이
         summary = (

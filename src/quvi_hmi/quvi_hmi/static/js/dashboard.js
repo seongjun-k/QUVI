@@ -1109,3 +1109,14 @@ refreshDevices();
         toggleBtn.textContent = collapsed ? '접기' : '펼치기';
     });
 })();
+
+// ─── 사이드바 접기/펼치기 ───
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const collapsed = sidebar.classList.toggle('collapsed');
+    localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0');
+}
+
+if (localStorage.getItem('sidebarCollapsed') === '1') {
+    document.getElementById('sidebar').classList.add('collapsed');
+}
