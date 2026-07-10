@@ -52,9 +52,9 @@ def encode_bgr(frame: np.ndarray) -> Image:
 class BinaryCache:
     """단일 회색조 이미지에 대한 이진화 + 윤곽 검출 결과를 캐싱한다.
 
-    inspect_node 에서 _get_object_area / _compute_solidity / _compute_holes 가
+    inspect_node 에서 largest_external_area() / solidity() / holes() 가
     동일 이미지에 대해 각각 threshold + findContours 를 반복 호출하던 문제를 제거.
-    BinaryCache 를 1 회 생성하면 세 함수가 결과를 공유한다.
+    BinaryCache 를 1 회 생성하면 세 메서드가 결과를 공유한다.
 
     Attributes:
         binary            : 이진화된 이미지 (uint8)

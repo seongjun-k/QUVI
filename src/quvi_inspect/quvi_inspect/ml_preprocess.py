@@ -37,10 +37,11 @@ def preprocess_for_ml(
 
     처리 순서:
       1. BGR → grayscale → GaussianBlur(5) 로 룰 파이프라인과 동일하게 정렬
-      2. BinaryCache 로 이진화 + 최대 외부 윤곽의 boundingRect 계산
-      3. boundingRect 에 padding_pct 만큼 여유를 두고 이미지 경계로 클램프
-      4. **컬러 원본**(bgr, 블러 전)에서 해당 영역을 crop
-      5. out_size × out_size 로 리사이즈 후 BGR → RGB 변환
+      2. BinaryCache 로 이진화 + 최대 외부 윤곽의 minAreaRect(각도 포함) 계산
+      3. 그 각도로 **컬러 원본**(bgr, 블러 전)에 warpAffine 역회전 적용
+      4. 역회전된 rect 크기에 padding_pct 마진을 두고 crop
+      5. 장축을 out_size 에 맞춘 종횡비 보존 리사이즈 후 out_size×out_size
+         검은 캔버스 중앙에 배치(letterbox) → BGR → RGB 변환
 
     윤곽을 못 찾거나 최대 윤곽 면적이 너무 작으면(객체 미검출) 전체 이미지를
     그대로 리사이즈하는 폴백을 사용한다. 이 함수는 파이프라인이 끊기지 않도록
@@ -50,7 +51,7 @@ def preprocess_for_ml(
     Args:
         bgr: 원본 BGR 이미지 (예: 1920×1080 검사 캡처).
         bin_thresh: BinaryCache 이진화 임계값.
-        padding_pct: bbox 크롭 시 여유 마진 비율 (0.15 = 15%).
+        padding_pct: 회전 정렬된 rect 크롭 시 여유 마진 비율 (0.15 = 15%).
         out_size: 출력 정사각 이미지 한 변 픽셀 수.
 
     Returns:
@@ -67,19 +68,46 @@ def preprocess_for_ml(
         largest = max(cache.contours_external, key=cv2.contourArea)
         area = cv2.contourArea(largest)
         if area >= _MIN_CONTOUR_AREA_PX:
-            x, y, w, h = cv2.boundingRect(largest)
-            pad_w = int(w * padding_pct)
-            pad_h = int(h * padding_pct)
-            x1 = max(0, x - pad_w)
-            y1 = max(0, y - pad_h)
-            x2 = min(img_w, x + w + pad_w)
-            y2 = min(img_h, y + h + pad_h)
+            (cx, cy), (w, h), angle = cv2.minAreaRect(largest)
+
+            # 각도 정규화: get_aligned_roi 와 동일하게 가로축을 장축으로 통일
+            if w < h:
+                angle += 90
+                w, h = h, w
+            if angle > 45:
+                angle -= 90
+
+            # 컬러 원본에 역회전 적용 (컬러이므로 INTER_CUBIC 무방)
+            M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+            rotated = cv2.warpAffine(
+                bgr, M, (img_w, img_h),
+                flags=cv2.INTER_CUBIC,
+                borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+            pad_w = int(w * (1 + padding_pct))
+            pad_h = int(h * (1 + padding_pct))
+            x1 = max(0, int(cx - pad_w / 2))
+            y1 = max(0, int(cy - pad_h / 2))
+            x2 = min(img_w, x1 + pad_w)
+            y2 = min(img_h, y1 + pad_h)
             if x2 > x1 and y2 > y1:
-                crop = bgr[y1:y2, x1:x2]
+                crop = rotated[y1:y2, x1:x2]
 
     if crop is None or crop.size == 0:
         # 객체 미검출 또는 윤곽 과소 — 전체 이미지 폴백 (경고는 호출자 몫).
         crop = bgr
 
-    resized = cv2.resize(crop, (out_size, out_size), interpolation=cv2.INTER_AREA)
-    return cv2.cvtColor(resized, cv2.COLOR_BGR2RGB)
+    # 장축 기준 종횡비 보존 리사이즈 후 검은 캔버스 중앙에 배치 (letterbox)
+    crop_h, crop_w = crop.shape[:2]
+    long_side = max(crop_w, crop_h)
+    scale = out_size / long_side if long_side > 0 else 1.0
+    target_w = max(1, int(crop_w * scale))
+    target_h = max(1, int(crop_h * scale))
+    resized = cv2.resize(crop, (target_w, target_h), interpolation=cv2.INTER_CUBIC)
+
+    canvas = np.zeros((out_size, out_size, 3), dtype=np.uint8)
+    off_x = (out_size - target_w) // 2
+    off_y = (out_size - target_h) // 2
+    canvas[off_y:off_y + target_h, off_x:off_x + target_w] = resized
+
+    return cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB)

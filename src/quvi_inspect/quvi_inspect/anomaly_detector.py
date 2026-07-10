@@ -2,8 +2,8 @@
 QUVI 자체구현 PatchCore (경량 이상탐지)
 ──────────────────────────────────
 사전학습 WideResNet-50(ImageNet)의 중간층(layer2+layer3) 패치 특징으로
-정상품 메모리뱅크를 구성하고, 추론 시 패치별 최근접 거리의 최댓값을
-이상점수로 사용하는 자체구현 PatchCore.
+정상품 메모리뱅크를 구성하고, 추론 시 패치별 최근접 거리 상위
+_SCORE_TOP_K(=5)개 평균을 이상점수로 사용하는 자체구현 PatchCore.
 
 신규 의존성 없음 — torch/torchvision만 사용 (anomalib/lightning/faiss/
 sklearn 등 금지). 학습 루프가 없는 특징추출 기반 기법이라 소량 정상 데이터
@@ -28,6 +28,9 @@ _IMAGENET_STD = (0.229, 0.224, 0.225)
 
 # 뱅크 대상 kNN 거리 계산 시 한 번에 비교할 뱅크 청크 크기 (OOM 방지)
 _DIST_CHUNK_SIZE = 4096
+
+# 이상점수 계산 시 평균 낼 상위 패치 거리 개수 (단일 최댓값의 노이즈 민감도 완화)
+_SCORE_TOP_K = 5
 
 
 # ─────────────────────────────────────────────
@@ -216,7 +219,7 @@ class PatchCoreDetector:
 
     # ── 추론(이상점수) ───────────────────────────
     def score(self, image: np.ndarray) -> float:
-        """단일 이미지의 이상점수(패치별 뱅크 최근접 거리의 최댓값)를 반환한다.
+        """단일 이미지의 이상점수(패치별 뱅크 최근접 거리 상위 _SCORE_TOP_K개 평균)를 반환한다.
 
         Args:
             image: 256×256 RGB uint8 이미지 (ml_preprocess.preprocess_for_ml 출력).
@@ -232,7 +235,8 @@ class PatchCoreDetector:
         patches = self._flatten_patches(emb)  # (P, C)
 
         min_dists = self._min_dist_to_bank(patches)
-        return float(min_dists.max().item())
+        k = min(_SCORE_TOP_K, min_dists.shape[0])
+        return float(torch.topk(min_dists, k).values.mean().item())
 
     def _min_dist_to_bank(
         self, query: torch.Tensor, chunk_size: int = _DIST_CHUNK_SIZE,
