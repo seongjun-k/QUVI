@@ -38,7 +38,7 @@ const CAPTURE_ANGLES = [0, 90, 180, 270];
 // SSoT: 검사 노드 판정 기준 표시용 — dashboard.html 기준표 텍스트와 일치
 const THRESHOLDS = {
     solidity: [0.85, 1.0],
-    areaRatio: [0.90, 1.10],
+    areaRatio: [0.90, 1.50],  // inspect_node feature_area_ratio_min/max와 일치 유지
     holeCount: [0, 2],
     holeAreaRatio: [0, 0.05],
     textureMax: 500,
@@ -129,7 +129,7 @@ function _updateJointStates(status) {
 
             if (idx === 5) {
                 // 그리퍼 (ID 6, 1800 ~ 2300 ticks)
-                const ticks = Math.round((rad * 4095.0) / (2 * Math.PI));
+                const ticks = Math.round((rad * 4096.0) / (2 * Math.PI));
                 valEl.textContent = `${ticks} ticks`;
 
                 // 퍼센트 계산
@@ -161,7 +161,7 @@ function _updateJointStates(status) {
         // 동기화 시간 업데이트
         const syncTimeEl = document.getElementById('jointSyncTime');
         if (syncTimeEl) {
-            syncTimeEl.textContent = '실시간 (30Hz)';
+            syncTimeEl.textContent = '실시간 (10Hz)';
             syncTimeEl.style.color = 'var(--accent-green)';
         }
     }

@@ -37,6 +37,7 @@ TOPIC_MOTOR_LED         = '/motor/turntable_led'       # Bool — LED ON/OFF →
 TOPIC_INSPECTION_TRIGGER = '/inspection/trigger'
 # turntable_done 누락(0도->0도 무이동) 시 캡처가 밀리는 문제 방지용 명시 캡처 명령
 TOPIC_INSPECTION_CAPTURE_NOW = '/inspection/capture_now'
+TOPIC_INSPECTION_RESULT = '/inspection/result'
 
 # Global Status
 TOPIC_ESTOP = '/system/estop'

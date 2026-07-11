@@ -150,9 +150,6 @@ class MainOrchestratorNode(Node):
         # LED 제어 (검사 중 ON, 검사 완료 후 OFF)
         self._led_pub = self.create_publisher(Bool, topics.TOPIC_MOTOR_LED, 10)
 
-        # 비상정지 발행 (#6 ERROR/STOP 상태 진입 시 로봇에 능동적 정지 신호)
-        self._estop_pub = self.create_publisher(Bool, topics.TOPIC_ESTOP, 10)
-
         # 로봇 및 구동부 명령 발행
         self._robot_grasp_pub = self.create_publisher(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD, 10)
         # 레일 명령 경로는 의도적으로 두 가지다 (#5, 변경 시 주의):
@@ -175,8 +172,8 @@ class MainOrchestratorNode(Node):
 
     def _setup_subscribers(self):
         # 레일/턴테이블 done 구독 (시작 초기화 시) — rail_done 은 단일 콜백에서 상태로 분기 (T3)
-        self.create_subscription(Bool, '/motor/rail_done', self._startup_rail_done_cb, 10)
-        self.create_subscription(Bool, '/motor/turntable_done', self._startup_turntable_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_MOTOR_RAIL_DONE, self._startup_rail_done_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE, self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
         self.create_subscription(MotorStatus, topics.TOPIC_MOTOR_STATUS, self._motor_status_cb, 10)
 
@@ -191,7 +188,7 @@ class MainOrchestratorNode(Node):
         self.create_subscription(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_DONE, self._pick_chamber_done_cb, 10)
 
         # 검사 결과 토픽 구독
-        self.create_subscription(InspectionResult, '/inspection/result', self._inspect_result_cb, 10)
+        self.create_subscription(InspectionResult, topics.TOPIC_INSPECTION_RESULT, self._inspect_result_cb, 10)
 
         # 헬스 체크용 정보 노드 상태 구독
         self.create_subscription(String, topics.TOPIC_ROBOT_STATUS, self._robot_node_status_cb, 10)
@@ -224,12 +221,22 @@ class MainOrchestratorNode(Node):
         elif command == "STOP":
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
             self._state = FsmState.IDLE
+            # INSPECTING 계열에서 정지해도 링 조명 소등을 보장한다.
+            led_off = Bool()
+            led_off.data = False
+            self._led_pub.publish(led_off)
         elif command == "ESTOP":
             self.get_logger().error('비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.')
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
+            led_off = Bool()
+            led_off.data = False
+            self._led_pub.publish(led_off)
         elif command == "RESET":
             self.get_logger().info('시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.')
+            led_off = Bool()
+            led_off.data = False
+            self._led_pub.publish(led_off)
             reset_msg = Bool()
             reset_msg.data = True
             self._robot_reset_pub.publish(reset_msg)
@@ -388,7 +395,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_RAIL_HOME_WAIT:
             self._state_timer_counter += 1
             if self._startup_rail_done:
-                self.get_logger().info('[STARTUP] 레일 0mm 도신. 12.5mm 검사장 이동 시작')
+                self.get_logger().info('[STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작')
                 self._state = FsmState.STARTUP_INSPECT_TRIGGER
             elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
                 self.get_logger().error('[STARTUP] 레일 홈 타임아웃! ERROR')
@@ -407,7 +414,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_INSPECT_WAIT:
             self._state_timer_counter += 1
             if self._startup_rail_done:
-                self.get_logger().info('[STARTUP] 레일 12.5mm 도신. 턴테이블 0° 초기화 시작')
+                self.get_logger().info('[STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작')
                 self._state = FsmState.STARTUP_TURNTABLE_TRIGGER
             elif self._state_timer_counter > int(self._rail_timeout * self._loop_rate):
                 self.get_logger().error('[STARTUP] 레일 검사장 타임아웃! ERROR')
@@ -426,7 +433,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_TURNTABLE_WAIT:
             self._state_timer_counter += 1
             if self._startup_turntable_done:
-                self.get_logger().info('[STARTUP] 터테이블 0° 완료. 자율 구동 시퀀스 진입')
+                self.get_logger().info('[STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입')
                 self._state_timer_counter = 0
                 self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER
             elif self._state_timer_counter > int(10.0 * self._loop_rate):  # 10초 타임아웃
@@ -722,7 +729,7 @@ class MainOrchestratorNode(Node):
     # ─── HMI 전송 유틸리티 ───
     def _publish_hmi_status(self):
         # Dynamically query the ROS 2 graph to check if other nodes are online
-        inspect_online = self.count_publishers('/inspection/result') > 0
+        inspect_online = self.count_publishers(topics.TOPIC_INSPECTION_RESULT) > 0
         grasp_online = self.count_publishers('/robot/status') > 0
         motor_online = self.count_publishers(topics.TOPIC_MOTOR_STATUS) > 0
 

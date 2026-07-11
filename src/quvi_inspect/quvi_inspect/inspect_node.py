@@ -16,6 +16,7 @@ import os
 import time
 import math
 import json
+import threading
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -95,6 +96,9 @@ class InspectNode(Node):
         self._latest_frame: Optional[np.ndarray] = None
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
+        # MultiThreadedExecutor에서 _capture_angle과 _watchdog_cb가 동시에
+        # _run_inspection에 진입할 수 있어 이중 판정을 막는 락 (#12).
+        self._inspection_lock = threading.Lock()
         self._ref_capture_active = False
         self._dataset_capture_active = False
         self._current_object_index = 0
@@ -467,13 +471,18 @@ class InspectNode(Node):
     # ─────────────────────────────────────────────
     def _run_inspection(self):
         """4방향 이미지로 표면 특징 분석 검사 실행."""
-        try:
-            self._run_inspection_inner()
-        except Exception as e:   # noqa: BLE001 — 분석 예외로 노드가 고착되지 않도록 (#16)
-            self.get_logger().error(f'검사 중 예외 발생 — 검사 상태 해제: {e}')
-        finally:
-            self._inspection_active = False
-            self._captured_images.clear()
+        with self._inspection_lock:
+            # 먼저 들어간 호출이 finally에서 _inspection_active를 내리므로,
+            # 락을 기다리다 뒤늦게 들어온 두번째 호출은 여기서 걸러진다.
+            if not self._inspection_active:
+                return
+            try:
+                self._run_inspection_inner()
+            except Exception as e:   # noqa: BLE001 — 분석 예외로 노드가 고착되지 않도록 (#16)
+                self.get_logger().error(f'검사 중 예외 발생 — 검사 상태 해제: {e}')
+            finally:
+                self._inspection_active = False
+                self._captured_images.clear()
 
     def _run_inspection_inner(self):
         start_time = time.time()

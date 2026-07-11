@@ -282,7 +282,7 @@ class RobotControlNode(Node):
         self._cb_group = ReentrantCallbackGroup()
 
         # ─── lerobot bus I/O 직렬화 락 ───
-        # MultiThreadedExecutor 환경에서 30Hz joint 발행 타이머(read)와
+        # MultiThreadedExecutor 환경에서 10Hz joint 발행 타이머(read)와
         # ACT/텔레옵 루프(write)가 동일 시리얼 포트에 동시 접근하면
         # 패킷이 섞일 수 있으므로 모든 I/O를 이 락으로 직렬화한다.
         self._dxl_io_lock = threading.Lock()
@@ -985,7 +985,8 @@ class RobotControlNode(Node):
             p1_pose['gripper'] = GRIPPER_CLOSE
 
             self._write_raw_position(p1_pose)
-            self._wait_motion_done(p1_pose)
+            # 그리퍼는 물체를 쥐어 목표(GRIPPER_CLOSE)에 도달 못 하므로 대기 대상에서 제외 — 안 하면 매 회 10s 풀타임아웃.
+            self._wait_motion_done(_arm_only(p1_pose))
 
             done_msg = Bool()
             done_msg.data = True
@@ -1079,7 +1080,7 @@ class RobotControlNode(Node):
                 try:
                     raw_positions = self._follower.bus.sync_read('Present_Position', normalize=False)
                 except Exception as e:
-                    self.get_logger().error(f'관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
+                    self.get_logger().error(f'관절 위치 읽기 실패 — 통신 오류: {e}. 파지를 중단합니다.')
                     self._set_state_if_current(RobotState.ERROR, gen)
                     self._publish_status('ERROR: Dynamixel 통신 오류')
                     return False
@@ -1497,7 +1498,7 @@ class RobotControlNode(Node):
             self._dxl_io_lock.release()
 
     # ─────────────────────────────────────────────
-    # 관절 상태 발행 (30 Hz 타이머)
+    # 관절 상태 발행 (10 Hz 타이머)
     # ─────────────────────────────────────────────
     def _publish_joint_states(self):
         raw_positions = self._read_raw_positions()
@@ -1763,7 +1764,8 @@ class RobotControlNode(Node):
         return True
 
     def _stop_teleop(self) -> bool:
-        if not self._teleop_running:
+        # ESTOP이 _teleop_running만 끈 경우에도 leader가 남아 있으면 포트 해제를 보장한다.
+        if not self._teleop_running and self._leader is None:
             return True
 
         self.get_logger().info('텔레오퍼레이션 종료 중...')

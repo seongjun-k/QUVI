@@ -44,6 +44,7 @@ from quvi_robot_control.topics import (
     TOPIC_ACT_MODELS, TOPIC_ACT_CURRENT, TOPIC_ACT_MODEL_SELECT,
     TOPIC_INSPECTION_TRIGGER, TOPIC_INSPECTION_CAPTURE_NOW,
     TOPIC_ROBOT_JOINT_STATES, TOPIC_ROBOT_TELEOP_CMD, TOPIC_ESTOP,
+    TOPIC_ROBOT_STATUS,
     TOPIC_MOTOR_RAIL_CMD as TOPIC_MOTOR_RAIL,
     TOPIC_MOTOR_TURNTABLE_CMD, TOPIC_MOTOR_TURNTABLE_DONE,
     TOPIC_MOTOR_LED as TOPIC_MOTOR_TURNTABLE_LED,
@@ -168,6 +169,10 @@ class HmiNode(Node):
             InspectionResult, TOPIC_INSPECTION_RESULT, self._inspection_cb, 10)
         self.create_subscription(
             JointState, TOPIC_ROBOT_JOINT_STATES, self._joint_states_cb, 10)
+        # robot_control이 텔레옵을 거부/에러 종료해도 teleop_active가 REST로만
+        # 갱신되어 UI에 고착되는 문제 — 로봇 상태 발행과 동기화한다.
+        self.create_subscription(
+            String, TOPIC_ROBOT_STATUS, self._robot_status_cb, 10)
         # NOTE: /motor/rail 은 명령 토픽(HMI→ESP32)이므로 구독하지 않음.
         # 구독하면 자신이 발행한 명령을 즉시 수신하여 실제 위치처럼 표시되는
         # 루프백 문제가 발생한다. rail_position 은 send_rail_command() 에서
@@ -249,7 +254,12 @@ class HmiNode(Node):
         with self._lock:
             self._system_status['joint_positions'] = list(msg.position)
 
-
+    def _robot_status_cb(self, msg: String):
+        # robot_control이 텔레옵을 거부(에러)했거나 종료했을 때 teleop_active를 내려
+        # REST(/api/teleop/<action>)로만 세팅되던 플래그가 UI에 고착되지 않게 한다.
+        if msg.data.startswith('텔레옵 에러') or msg.data == '텔레오퍼레이션 종료':
+            with self._lock:
+                self._system_status['teleop_active'] = False
 
     def _inspection_cb(self, msg: InspectionResult):
         record = {
