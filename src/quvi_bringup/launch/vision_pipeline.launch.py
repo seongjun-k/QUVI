@@ -81,8 +81,8 @@ def generate_launch_description():
         description='고정캠 자동 노출 활성화 여부 (true/false)')
 
     fixed_cam_exposure_arg = DeclareLaunchArgument(
-        'fixed_cam_exposure', default_value='150',
-        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용)')
+        'fixed_cam_exposure', default_value='110',
+        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — 2026-07-10 ACT 학습 데이터 밝기 기준 실측 튜닝')
 
     anomaly_enabled_arg = DeclareLaunchArgument(
         'anomaly_enabled', default_value='true',
@@ -104,6 +104,8 @@ def generate_launch_description():
             'camera_name': 'sidecam',
             'autoexposure': ParameterValue(LaunchConfiguration('fixed_cam_autoexposure'), value_type=bool),
             'exposure': ParameterValue(LaunchConfiguration('fixed_cam_exposure'), value_type=int),
+            # ACT 학습 데이터가 brightness 0 기준 — 장치 잔존값(50 등)이 관측 분포를 흔들지 않게 고정
+            'brightness': 0,
         }],
         remappings=[
             ('image_raw', 'image_raw'),

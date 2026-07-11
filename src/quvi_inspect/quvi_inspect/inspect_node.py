@@ -262,14 +262,14 @@ class InspectNode(Node):
     def _image_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
         if frame is not None:
-            # 검사캠이 거꾸로 장착되어 위아래 반전 (2026-07-06)
-            self._latest_frame = cv2.flip(frame, 0)
+            # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10) → 동시 -1
+            self._latest_frame = cv2.flip(frame, -1)
 
     def _image_callback_raw(self, msg: Image):
         frame = decode_raw(msg)
         if frame is not None:
-            # 검사캠이 거꾸로 장착되어 위아래 반전 (2026-07-06)
-            self._latest_frame = cv2.flip(frame, 0)
+            # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10) → 동시 -1
+            self._latest_frame = cv2.flip(frame, -1)
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
         self._current_object_index = msg.object_index

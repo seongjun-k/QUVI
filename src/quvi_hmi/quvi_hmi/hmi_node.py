@@ -274,7 +274,7 @@ class HmiNode(Node):
         if frame is None:
             return
         if key == 'camera2':
-            frame = cv2.flip(frame, 0)  # 검사캠이 거꾸로 장착되어 위아래 반전
+            frame = cv2.flip(frame, -1)  # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10)
         _, jpeg = cv2.imencode('.jpg', frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         with self._lock:
@@ -369,12 +369,7 @@ class HmiNode(Node):
         import glob
 
         def _uniq(seq):
-            seen, out = set(), []
-            for x in seq:
-                if x and x not in seen:
-                    seen.add(x)
-                    out.append(x)
-            return out
+            return list(dict.fromkeys(seq))  # 순서 보존 중복 제거
 
         serial = _uniq(
             sorted(glob.glob('/dev/serial/by-id/*'))
@@ -779,9 +774,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         delay  = float(data.get('delay_sec', 1.5))  # 턴테이블 회전 안정화 대기
 
         def _run_capture_sequence():
-            import time as _time
             hmi_node.send_capture_reference_command(True)
-            _time.sleep(0.3)
+            time.sleep(0.3)
             _run_turntable_sequence(hmi_node, angles, delay + 5.0, timeout_label='기준 캡처')
             hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
 
@@ -816,13 +810,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         hmi_node._dataset_capture_abort = False
 
         def _run_dataset_sequence():
-            import time as _time
             for i in range(rounds):
                 if hmi_node._dataset_capture_abort:
                     break
                 # inspect_node가 한 바퀴(4장) 저장 후 모드를 스스로 끄므로 매 바퀴 재활성화 필요
                 hmi_node.send_capture_dataset_command(True)
-                _time.sleep(0.3)
+                time.sleep(0.3)
                 # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
                 _run_turntable_sequence(
                     hmi_node, angles, settle_sec + post_capture_sec + 5.0,
@@ -869,11 +862,10 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         angles = data.get('angles', [0, 90, 180, 270])
 
         def _run_inspection_test():
-            import time as _time
             hmi_node._inspection_result_event.clear()
             try:
                 hmi_node.send_led_command(True)
-                _time.sleep(5.0)  # 노출 안정화 (오케스트레이터와 동일)
+                time.sleep(5.0)  # 노출 안정화 (오케스트레이터와 동일)
                 hmi_node.trigger_inspection(True)
                 for angle in angles:
                     hmi_node._ref_turntable_done_event.clear()
@@ -882,7 +874,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                     if not done:
                         hmi_node.get_logger().warn(f'검사 테스트: {angle}° turntable_done 타임아웃')
                     hmi_node.send_capture_now_command()
-                    _time.sleep(2.5)  # 안정화 + 캡처 여유
+                    time.sleep(2.5)  # 안정화 + 캡처 여유
                 result_ready = hmi_node._inspection_result_event.wait(timeout=20.0)
                 if not result_ready:
                     hmi_node.get_logger().warn('검사 테스트: /inspection/result 대기 타임아웃')

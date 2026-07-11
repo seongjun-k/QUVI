@@ -152,15 +152,15 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 # ── 티칭 웨이포인트 (teach_pendant.py 로 기록 후 여기에 붙여넣기) ──────────────
 # scripts/teach_pendant.py 실행 → 원하는 자세로 이동 → 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
-POSE_P1 = {'shoulder_pan': 2074, 'shoulder_lift':  970, 'elbow_flex': 3092, 'wrist_flex': 2972, 'wrist_roll': 2035, 'gripper': 2100}  # 베드 위 대기
-POSE_P2 = {'shoulder_pan':   10, 'shoulder_lift': 1137, 'elbow_flex': 2583, 'wrist_flex': 3070, 'wrist_roll': 2034, 'gripper': 2100}  # 180도 회전
-POSE_P3 = {'shoulder_pan':   10, 'shoulder_lift': 1754, 'elbow_flex': 2287, 'wrist_flex': 3068, 'wrist_roll': 2035, 'gripper': 2100}  # 턴테이블 진입점
-POSE_P4 = {'shoulder_pan':   10, 'shoulder_lift': 1773, 'elbow_flex': 2558, 'wrist_flex': 2785, 'wrist_roll': 2023, 'gripper': 2100}  # 턴테이블 놓기 지점
-POSE_P5 = {'shoulder_pan': 2016, 'shoulder_lift': 1104, 'elbow_flex': 3001, 'wrist_flex': 3044, 'wrist_roll': 1929, 'gripper': 2100}  # 180도 반대 회전 (경유)
-POSE_P6 = {'shoulder_pan': 2105, 'shoulder_lift': 1434, 'elbow_flex': 2969, 'wrist_flex': 2684, 'wrist_roll': 2018, 'gripper': 2100}  # 분류장 위치
+POSE_P1 = {'shoulder_pan': 2053, 'shoulder_lift':  978, 'elbow_flex': 3050, 'wrist_flex': 3056, 'wrist_roll': 2029, 'gripper': 2100}  # 베드 위 대기
+POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
+POSE_P3 = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
+POSE_P4 = {'shoulder_pan':   10, 'shoulder_lift': 1744, 'elbow_flex': 2547, 'wrist_flex': 2820, 'wrist_roll': 2020, 'gripper': 2100}  # 턴테이블 놓기 지점
+POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
+POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
 
-# 홈 자세는 P1과 동일 — 2026-07-06 사용자 지정
-POSE_HOME = dict(POSE_P1)
+# 홈 자세는 P1과 동일하되 그리퍼는 완전 개방 — ACT 파지 시작 자세 (2026-07-10 사용자 지정)
+POSE_HOME = dict(POSE_P1, gripper=GRIPPER_OPEN)
 
 # ── Dynamixel 프로파일 (⚠️ 시간기반 프로파일 모드) ───────────────────────────
 # omx_follower.configure() 가 Drive_Mode Bit2(시간기반 프로파일)를 설정하므로
@@ -228,6 +228,16 @@ def raw_to_rad(raw: float) -> float:
 def rad_to_raw(rad: float) -> float:
     """라디안(ACT 정책 출력) → raw Dynamixel 위치값."""
     return DXL_TICK_CENTER + rad * DXL_TICKS_PER_REV / (2.0 * math.pi)
+
+
+def _arm_only(pose: dict) -> dict:
+    """그리퍼 제외 팔 관절만 반환.
+
+    그리퍼는 전류기반 위치제어라 물체를 쥐면 pose 의 목표값에 도달하지 못해
+    _wait_motion_done 이 풀타임아웃하고 파지력도 느슨해진다 — 시퀀스 이동은
+    팔 관절만 보내고 그리퍼는 명시 명령으로만 제어한다.
+    """
+    return {k: v for k, v in pose.items() if k != 'gripper'}
 
 
 # ─────────────────────────────────────────────────────────────
@@ -561,7 +571,7 @@ class RobotControlNode(Node):
     def _publish_act_current(self):
         """현재 모델·로드 상태를 latched 토픽으로 발행."""
         name = ''
-        for m in getattr(self, '_act_models_cache', []):
+        for m in self._act_models_cache:
             if m['path'] == self._act_model_path:
                 name = m['name']
                 break
@@ -1205,8 +1215,21 @@ class RobotControlNode(Node):
         self._publish_status('홈 복귀')
         self.get_logger().info('홈 복귀 시작')
 
+        # 수동 배치·정지 후 토크가 꺼져 있을 수 있어 홈 이동 전 전 관절 토크 인가
+        # (2026-07-10: START 시 토크 오프 상태면 홈 이동이 무시돼 ACT 파지 실패)
+        if self._use_real_hardware and self._dxl_ready:
+            try:
+                with self._dxl_io_lock:
+                    self._follower.bus.sync_write(
+                        'Torque_Enable', {n: 1 for n in JOINT_NAMES}, normalize=False)
+            except Exception as e:
+                self.get_logger().warn(f'홈 복귀 전 토크 인가 실패: {e}')
+
+        # 그리퍼(전류기반)는 _wait_motion_done 대상에서 제외 — 개방 목표에 못
+        # 도달하면 10s 풀타임아웃으로 home done 발행이 늦어 베드 이동이 지연된다
         success = self._write_raw_position(POSE_HOME)
-        self._wait_motion_done(POSE_HOME)
+        self._wait_motion_done(_arm_only(POSE_HOME))
+        self._wait_gripper()
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
         done_msg = Bool()
@@ -1221,12 +1244,6 @@ class RobotControlNode(Node):
         self._set_state(RobotState.RELEASING)
         self._publish_status('검사장 안착 시퀀스 시작')
         self.get_logger().info('검사장 안착 시퀀스 시작')
-
-        # 그리퍼는 물체를 쥔 채라 pose 의 gripper 값(2100)에 도달하지 못한다 —
-        # 포함하면 _wait_motion_done 이 매 이동 10초 풀타임아웃하고 파지력도
-        # 느슨해지므로, 팔 관절만 이동시키고 그리퍼는 명시 명령으로만 제어한다.
-        def _arm_only(pose):
-            return {k: v for k, v in pose.items() if k != 'gripper'}
 
         self._write_raw_position(_arm_only(POSE_P1))
         self._wait_motion_done(_arm_only(POSE_P1))
@@ -1262,11 +1279,6 @@ class RobotControlNode(Node):
         self._set_state(RobotState.ACT_GRASPING)
         self._publish_status('검사장 재파지 시퀀스 시작')
         self.get_logger().info('검사장 재파지 시퀀스 시작')
-
-        # 그리퍼는 pose 값 대신 명시 명령으로만 제어 (물체 파지 시 pose 의
-        # gripper 값에 도달하지 못해 _wait_motion_done 이 풀타임아웃한다).
-        def _arm_only(pose):
-            return {k: v for k, v in pose.items() if k != 'gripper'}
 
         # P3에서 완전 개방 후 팔 관절만 P4로 접근
         self._write_raw_position({'gripper': GRIPPER_OPEN})
@@ -1540,7 +1552,7 @@ class RobotControlNode(Node):
                 self.get_logger().warn(f'시퀀스 중단 감지 — {label} 생략')
                 return False
             self.get_logger().info(f'이동: {label}')
-            arm_only = {k: v for k, v in pose.items() if k != 'gripper'}
+            arm_only = _arm_only(pose)
             success = self._write_raw_position(
                 arm_only,
                 velocity=PROFILE_VELOCITY_SEQ,

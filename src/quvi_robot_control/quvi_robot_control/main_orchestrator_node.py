@@ -121,6 +121,7 @@ class MainOrchestratorNode(Node):
         self._place_chamber_done = False
         self._pick_chamber_done = False
         self._startup_rail_done = False      # 시작 초기화 레일 done
+        self._startup_home_done = False      # 시작 초기화 로봇팔 홈 done (베드 이동 게이트)
         self._startup_turntable_done = False # 시작 초기화 턴테이블 done
 
         # 타이머 카운터 (FSM 딜레이 대기용)
@@ -217,6 +218,7 @@ class MainOrchestratorNode(Node):
                     return
                 self._startup_rail_done = False
                 self._startup_turntable_done = False
+                self._startup_home_done = False
                 self._state = FsmState.STARTUP_RAIL_HOME_TRIGGER
                 self.get_logger().info('시작 초기화 시퀀스: 레일 0mm 홈 이동 시작')
         elif command == "STOP":
@@ -314,6 +316,10 @@ class MainOrchestratorNode(Node):
         # 홈 복귀 완료 전용
         if msg.data and (self._state == FsmState.HOMING_ARM_WAIT):
             self._robot_home_done = True
+        # STARTUP 병행 홈(레일 홈과 동시 발행)의 done — 베드 이동 게이트용
+        if msg.data and (self._state.value.startswith("STARTUP_")
+                         or self._state == FsmState.START_RAIL_MOVE_BED_TRIGGER):
+            self._startup_home_done = True
 
     def _turntable_done_cb(self, msg: Bool):
         # 턴테이블 회전 완료 전용
@@ -370,7 +376,13 @@ class MainOrchestratorNode(Node):
             rail_msg = Int32()
             rail_msg.data = 0  # 0mm 홈 = 0 steps
             self._startup_rail_pub.publish(rail_msg)
-            self.get_logger().info('[STARTUP] 레일 0mm 홈 이동 명령 발행')
+            # 레일 홈과 동시에 로봇팔 토크 인가 + 홈(P1) 이동 — ACT 파지 시작
+            # 자세를 보장한다 (2026-07-10). done 은 대기하지 않는다 (레일 done 기준 진행,
+            # _robot_home_done_cb 는 HOMING_ARM_WAIT 상태에서만 플래그를 세워 간섭 없음).
+            home_cmd = Bool()
+            home_cmd.data = True
+            self._robot_home_pub.publish(home_cmd)
+            self.get_logger().info('[STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행')
             self._state = FsmState.STARTUP_RAIL_HOME_WAIT
 
         elif self._state == FsmState.STARTUP_RAIL_HOME_WAIT:
@@ -415,6 +427,7 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter += 1
             if self._startup_turntable_done:
                 self.get_logger().info('[STARTUP] 터테이블 0° 완료. 자율 구동 시퀀스 진입')
+                self._state_timer_counter = 0
                 self._state = FsmState.START_RAIL_MOVE_BED_TRIGGER
             elif self._state_timer_counter > int(10.0 * self._loop_rate):  # 10초 타임아웃
                 self.get_logger().error('[STARTUP] 턴테이블 done 타임아웃. ERROR 상태로 전환.')
@@ -422,13 +435,28 @@ class MainOrchestratorNode(Node):
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.START_RAIL_MOVE_BED_TRIGGER:
-            self._robot_rail_done = False
-            self._state_timer_counter = 0
-            rail_cmd = Int32()
-            rail_cmd.data = 0  # RailPosition.BED
-            self._robot_rail_pub.publish(rail_cmd)
-            self.get_logger().info('레일 베드 위치(30,500스텝) 이동 명령 전송')
-            self._state = FsmState.START_RAIL_MOVE_BED_WAIT
+            # STARTUP 병행 홈이 끝나기 전 레일 명령을 보내면 robot_control 이
+            # HOMING 상태라 _try_start_command 가 무시한다 (2026-07-10) — done 대기.
+            self._state_timer_counter += 1
+            if not self._startup_home_done:
+                # STARTUP 발행 시점에 robot_control 이 비-IDLE 이면 홈 명령이
+                # 버려진다("명령 무시") — 3초 간격 재발행으로 방어 (진행 중이면 무해)
+                if self._state_timer_counter % max(1, int(3.0 * self._loop_rate)) == 0:
+                    home_cmd = Bool()
+                    home_cmd.data = True
+                    self._robot_home_pub.publish(home_cmd)
+                if self._state_timer_counter > int(self._home_timeout * self._loop_rate):
+                    self.get_logger().error('[STARTUP] 로봇팔 홈 done 타임아웃! ERROR')
+                    self._error_msg = 'STARTUP_ARM_HOME_TIMEOUT'
+                    self._state = FsmState.ERROR
+            else:
+                self._robot_rail_done = False
+                self._state_timer_counter = 0
+                rail_cmd = Int32()
+                rail_cmd.data = 0  # RailPosition.BED
+                self._robot_rail_pub.publish(rail_cmd)
+                self.get_logger().info('레일 베드 위치(30,500스텝) 이동 명령 전송')
+                self._state = FsmState.START_RAIL_MOVE_BED_WAIT
 
         elif self._state == FsmState.START_RAIL_MOVE_BED_WAIT:
             self._state_timer_counter += 1
@@ -633,7 +661,9 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('적재 및 그리퍼 해제 완료')
                 self._processed_count += 1
                 self._current_object_idx += 1
-                self._state = FsmState.HOMING_RAIL_TRIGGER
+                # 놓은 직후 팔부터 기본 자세로 복귀 — 팔이 분류함 위에 뻗은 채
+                # 레일이 움직이지 않도록 팔 홈 → 레일 베드 순서로 진행한다.
+                self._state = FsmState.HOMING_ARM_TRIGGER
             elif self._state_timer_counter > int(self._release_timeout * self._loop_rate):
                 self.get_logger().error('그리퍼 해제 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'RELEASE_TIMEOUT'
@@ -653,7 +683,9 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter += 1
             if self._robot_rail_done:
                 self.get_logger().info('레일 홈 복귀 완료')
-                self._state = FsmState.HOMING_ARM_TRIGGER
+                # 단일 오브젝트 파이프라인 — _total_objects 는 GRASPING_TRIGGER 에서 항상 1로
+                # 설정돼 순회 재진입 분기가 도달 불가였다 (죽은 코드 제거, 2026-07-08 리뷰 #5)
+                self._state = FsmState.FINISHED
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                 self.get_logger().error('레일 홈 복귀 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'HOME_RAIL_TIMEOUT'
@@ -672,10 +704,8 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.HOMING_ARM_WAIT:
             self._state_timer_counter += 1
             if self._robot_home_done:
-                self.get_logger().info('로봇팔 홈 복귀 완료')
-                # 단일 오브젝트 파이프라인 — _total_objects 는 GRASPING_TRIGGER 에서 항상 1로
-                # 설정돼 순회 재진입 분기가 도달 불가였다 (죽은 코드 제거, 2026-07-08 리뷰 #5)
-                self._state = FsmState.FINISHED
+                self.get_logger().info('로봇팔 홈 복귀 완료. 레일 베드 복귀 시작')
+                self._state = FsmState.HOMING_RAIL_TRIGGER
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                 self.get_logger().error('로봇팔 홈 복귀 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'HOME_ARM_TIMEOUT'
