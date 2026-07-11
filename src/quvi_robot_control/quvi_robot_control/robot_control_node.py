@@ -260,6 +260,8 @@ class RobotControlNode(Node):
         # ─── 내부 상태 ───
         self._state: RobotState = RobotState.IDLE
         self._state_lock = threading.Lock()
+        # 명령 세대 토큰 — RESET/ESTOP 후 잔존 동작 스레드가 상태를 덮어쓰지 못하게 함
+        self._cmd_gen = 0
 
         # STOP/ESTOP 소프트 중단 이벤트 (#1/#3). 진행 중 동작 스레드가 이 이벤트를
         # 확인하고 즉시 빠져나온다. 새 명령 수락 시 해제.
@@ -849,6 +851,7 @@ class RobotControlNode(Node):
                 self.get_logger().warn(f'명령 무시: 현재 {self._state.name} 동작 중')
                 return False
             self._state = target_state
+            self._cmd_gen += 1
             self._publish_status(self._state.name)
         self._abort_event.clear()   # 새 명령 수락 → 이전 STOP 중단 해제
         t = threading.Thread(target=target_func, args=args, daemon=True)
@@ -943,6 +946,7 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _execute_rule_based_grasp(self) -> bool:
         """ACT 미사용/미로드 시 룰베이스(티칭 기반) 파지."""
+        gen = self._cmd_gen
         self.get_logger().info('ACT 미사용 또는 로드 안됨 — 룰베이스(티칭 기반) 파지를 실행합니다.')
         self._publish_status('룰베이스 파지 시작')
 
@@ -962,12 +966,12 @@ class RobotControlNode(Node):
             self._act_done_pub.publish(done_msg)
             self._grasp_done_pub.publish(done_msg)
 
-            self._set_state(RobotState.IDLE)
+            self._set_state_if_current(RobotState.IDLE, gen)
             self._publish_status('룰베이스 파지 완료')
             return True
         except Exception as e:
             self.get_logger().error(f'룰베이스 파지 중 오류: {e}')
-            self._set_state(RobotState.ERROR)
+            self._set_state_if_current(RobotState.ERROR, gen)
             self._publish_status(f'ERROR: {e}')
             return False
 
@@ -1008,7 +1012,8 @@ class RobotControlNode(Node):
             self._write_raw_position(goal_dict)
 
     def _execute_act_grasp(self) -> bool:
-        self._set_state(RobotState.ACT_GRASPING)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.ACT_GRASPING, gen)
 
         # ACT를 사용하지 않거나 로드가 안된 경우 룰베이스(티칭 기반) 파지 수행
         if not self._use_act or not self._act_ready:
@@ -1037,7 +1042,7 @@ class RobotControlNode(Node):
 
                 if frame is None:
                     self.get_logger().error('사이드캠 이미지 없음 — 파지 불가')
-                    self._set_state(RobotState.IDLE)
+                    self._set_state_if_current(RobotState.IDLE, gen)
                     return False
 
                 img_tensor = self._act_image_tensor(frame)
@@ -1049,7 +1054,7 @@ class RobotControlNode(Node):
                     raw_positions = self._follower.bus.sync_read('Present_Position', normalize=False)
                 except Exception as e:
                     self.get_logger().error(f'관절 위치 읽기 실패 — 통신 오류. 파지를 중단합니다.')
-                    self._set_state(RobotState.ERROR)
+                    self._set_state_if_current(RobotState.ERROR, gen)
                     self._publish_status('ERROR: Dynamixel 통신 오류')
                     return False
                 finally:
@@ -1109,7 +1114,7 @@ class RobotControlNode(Node):
             self._act_done_pub.publish(done_msg)
             self._grasp_done_pub.publish(done_msg)
 
-            self._set_state(RobotState.IDLE)
+            self._set_state_if_current(RobotState.IDLE, gen)
             self._publish_status('ACT 파지 완료')
             return True
 
@@ -1117,7 +1122,7 @@ class RobotControlNode(Node):
             self.get_logger().error(f'ACT 파지 중 오류: {e}')
             if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                 self._follower.bus.port_handler.is_using = False
-            self._set_state(RobotState.ERROR)
+            self._set_state_if_current(RobotState.ERROR, gen)
             self._publish_status(f'ERROR: {e}')
             return False
 
@@ -1129,7 +1134,8 @@ class RobotControlNode(Node):
         레일을 지정 위치로 이동.
         /motor/rail 토픽으로 steps(Int32) 발행 → ESP32-S3가 TB6600 구동.
         """
-        self._set_state(RobotState.MOVING_RAIL)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.MOVING_RAIL, gen)
         target_mm = float(self._rail_mm[position])
         pos_name = position.name
         self._publish_status(f'레일 이동: {pos_name} ({target_mm:.2f}mm)')
@@ -1146,15 +1152,20 @@ class RobotControlNode(Node):
             deadline = time.time() + self._rail_timeout
             success = False
             while time.time() < deadline:
+                if self._should_abort():
+                    self.get_logger().warn('레일 이동 중단 감지 (STOP/ESTOP) — done 발행 없이 종료')
+                    self._set_state_if_current(RobotState.IDLE, gen)
+                    self._publish_status('레일 이동 중단')
+                    return False
                 if self._esp32_rail_done:
                     self._esp32_rail_done = False
                     success = True
                     break
                 time.sleep(0.05)
-            
+
             if not success:
                 self.get_logger().error(f'레일 이동 타임아웃! ({self._rail_timeout}초)')
-                self._set_state(RobotState.ERROR)
+                self._set_state_if_current(RobotState.ERROR, gen)
                 self._publish_status('ERROR: 레일 이동 타임아웃')
                 return False
         else:
@@ -1164,7 +1175,7 @@ class RobotControlNode(Node):
         done_msg.data = True
         self._rail_done_pub.publish(done_msg)
 
-        self._set_state(RobotState.IDLE)
+        self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status(f'레일 이동 완료: {pos_name}')
         return True
 
@@ -1172,7 +1183,8 @@ class RobotControlNode(Node):
     # 실행 함수 — 자세 이동
     # ─────────────────────────────────────────────
     def _execute_pose(self, target_pose: dict, label: str = '') -> bool:
-        self._set_state(RobotState.ROTATING_BASE)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.ROTATING_BASE, gen)
         self._publish_status(f'자세 변경: {label}')
         self.get_logger().info(f'자세 변경: {label} → {target_pose}')
 
@@ -1180,7 +1192,7 @@ class RobotControlNode(Node):
         self._wait_motion_done(target_pose)   # 고정 sleep 대신 완료 폴링(abort-aware)
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
-        self._set_state(RobotState.IDLE)
+        self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status(f'자세 변경 완료: {label}')
 
         done_msg = Bool()
@@ -1193,7 +1205,8 @@ class RobotControlNode(Node):
     # 실행 함수 — 투하
     # ─────────────────────────────────────────────
     def _execute_release(self) -> bool:
-        self._set_state(RobotState.RELEASING)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.RELEASING, gen)
         self._publish_status('웨이포인트 시퀀스 시작 (P1~P6)')
         self.get_logger().info('웨이포인트 시퀀스 시작')
 
@@ -1203,7 +1216,7 @@ class RobotControlNode(Node):
         done_msg.data = success
         self._release_done_pub.publish(done_msg)
 
-        self._set_state(RobotState.IDLE)
+        self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('웨이포인트 시퀀스 완료' if success else '웨이포인트 시퀀스 실패')
         return success
 
@@ -1211,7 +1224,8 @@ class RobotControlNode(Node):
     # 실행 함수 — 홈 복귀
     # ─────────────────────────────────────────────
     def _execute_home(self) -> bool:
-        self._set_state(RobotState.HOMING)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.HOMING, gen)
         self._publish_status('홈 복귀')
         self.get_logger().info('홈 복귀 시작')
 
@@ -1236,34 +1250,36 @@ class RobotControlNode(Node):
         done_msg.data = success
         self._home_done_pub.publish(done_msg)
 
-        self._set_state(RobotState.IDLE)
+        self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('홈 복귀 완료')
         return success
 
     def _execute_place_in_chamber(self) -> bool:
-        self._set_state(RobotState.RELEASING)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.RELEASING, gen)
         self._publish_status('검사장 안착 시퀀스 시작')
         self.get_logger().info('검사장 안착 시퀀스 시작')
 
-        self._write_raw_position(_arm_only(POSE_P1))
+        # 물체 파지 중 이송 — 낙하/파손 방지 저속(SEQ) 프로파일
+        self._write_raw_position(_arm_only(POSE_P1), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P1))
 
         time.sleep(2.0)  # 대기
 
-        self._write_raw_position(_arm_only(POSE_P2))
+        self._write_raw_position(_arm_only(POSE_P2), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P2))
 
-        self._write_raw_position(_arm_only(POSE_P3))
+        self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P3))
 
-        self._write_raw_position(_arm_only(POSE_P4))
+        self._write_raw_position(_arm_only(POSE_P4), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P4))
 
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         self._wait_gripper()
 
         # 검사 동안 팔은 P3에서 후퇴 대기
-        success = self._write_raw_position(_arm_only(POSE_P3))
+        success = self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P3))
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
@@ -1271,12 +1287,13 @@ class RobotControlNode(Node):
         done_msg.data = success
         self._place_chamber_done_pub.publish(done_msg)
 
-        self._set_state(RobotState.IDLE)
+        self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('검사장 안착 완료')
         return success
 
     def _execute_pick_from_chamber(self) -> bool:
-        self._set_state(RobotState.ACT_GRASPING)
+        gen = self._cmd_gen
+        self._set_state_if_current(RobotState.ACT_GRASPING, gen)
         self._publish_status('검사장 재파지 시퀀스 시작')
         self.get_logger().info('검사장 재파지 시퀀스 시작')
 
@@ -1284,16 +1301,17 @@ class RobotControlNode(Node):
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         self._wait_gripper()
 
-        self._write_raw_position(_arm_only(POSE_P4))
+        # 물체 파지 중 이송 — 낙하/파손 방지 저속(SEQ) 프로파일
+        self._write_raw_position(_arm_only(POSE_P4), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P4))
 
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
         self._wait_gripper()
 
-        self._write_raw_position(_arm_only(POSE_P3))
+        self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P3))
 
-        success = self._write_raw_position(_arm_only(POSE_P5))
+        success = self._write_raw_position(_arm_only(POSE_P5), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P5))  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
@@ -1301,7 +1319,7 @@ class RobotControlNode(Node):
         done_msg.data = success
         self._pick_chamber_done_pub.publish(done_msg)
 
-        self._set_state(RobotState.IDLE)
+        self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('검사장 재파지 완료')
         return success
 
@@ -1481,6 +1499,14 @@ class RobotControlNode(Node):
         with self._state_lock:
             self._state = state
 
+    def _set_state_if_current(self, state: RobotState, gen: int):
+        """자신이 최신 명령(gen)일 때만 상태를 쓴다 — RESET/ESTOP 후 잔존 스레드의 덮어쓰기 방지.
+        # ponytail: gen 은 실행 함수 진입 시점 스냅샷 — 스폰~진입 사이 RESET 이 끼는 마이크로초 창은 기존과 동일 위험으로 수용"""
+        if gen != self._cmd_gen:
+            self.get_logger().warn(f'잔존 스레드의 상태 변경 무시: {state.name} (gen {gen} != {self._cmd_gen})')
+            return
+        self._set_state(state)
+
     def _publish_status(self, msg: str):
         status_msg = String()
         status_msg.data = f'[ROBOT] {msg}'
@@ -1508,10 +1534,12 @@ class RobotControlNode(Node):
         except Exception as e:
             self.get_logger().error(f'ESTOP cleanup 중 오류: {e}')
 
+        self._cmd_gen += 1
         self._set_state(RobotState.ERROR)
         self._publish_status('ERROR: ESTOP ACTIVE — 토크 해제됨')
 
     def _execute_reset(self) -> bool:
+        self._cmd_gen += 1
         self._abort_event.clear()   # 리셋 시 이전 STOP 중단 해제 (#1)
         with self._dxl_io_lock:
             if self._follower:

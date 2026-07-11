@@ -443,8 +443,15 @@ function setMetricInverse(id, value, threshold) {
 let historyData = [];
 
 function addHistoryRow(result) {
+    // 0.1s 주기 status_update가 같은 최신 결과를 반복 전송 — timestamp로 중복 차단.
+    // 이력 레코드 timestamp는 hmi_node에서 isoformat으로 생성되어 검사 1건당 고유
+    if (historyData.length && historyData[0].timestamp === result.timestamp) return;
     historyData.unshift(result);
     if (historyData.length > 50) historyData.pop();
+    renderHistoryTable();
+}
+
+function renderHistoryTable() {
     document.getElementById('historyCount').textContent = historyData.length + '건';
 
     const tbody = document.getElementById('historyBody');
@@ -1040,6 +1047,7 @@ async function loadInitialData() {
 
         if (history.length > 0) {
             historyData = history.reverse().slice(0, 50);
+            renderHistoryTable();
             updateLatestInspection(historyData[0]);
         }
     } catch (e) {

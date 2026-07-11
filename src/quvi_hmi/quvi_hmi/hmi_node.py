@@ -213,8 +213,11 @@ class HmiNode(Node):
             Bool, TOPIC_MOTOR_TURNTABLE_DONE,
             self._ref_turntable_done_cb, 10)
 
+        # 수동 시퀀스 상호 배제 — 기준 캡처/데이터셋 촬영/검사 단독 테스트 동시 실행 방지
+        self._hmi_busy_lock = threading.Lock()
+        self._hmi_busy_name = None
+
         # ─── 검사 단독 테스트(로봇/FSM 없이 검사 사이클만 실행) 동기화 ───
-        self._inspection_test_active = False
         self._inspection_result_event = threading.Event()
 
         # 자율 시퀀스(P1~P6)는 오케스트레이터 + robot_control_node 단일 경로가 담당한다.
@@ -461,6 +464,18 @@ class HmiNode(Node):
             state = self._system_status.get('current_state', 'IDLE')
         return state in self._MANUAL_TRIGGER_SAFE_STATES
 
+    def _acquire_hmi_busy(self, name: str) -> bool:
+        """수동 시퀀스 선점. 이미 다른 시퀀스 진행 중이면 False."""
+        with self._hmi_busy_lock:
+            if self._hmi_busy_name is not None:
+                return False
+            self._hmi_busy_name = name
+            return True
+
+    def _release_hmi_busy(self):
+        with self._hmi_busy_lock:
+            self._hmi_busy_name = None
+
 
 
     def trigger_inspection(self, enable: bool) -> bool:
@@ -670,6 +685,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/teleop/<action>', methods=['POST'])
     def api_teleop(action):
         if action == 'on':
+            if not hmi_node._manual_trigger_allowed():
+                return jsonify({
+                    'ok': False,
+                    'error': '자율 시퀀스 진행 중에는 텔레옵을 사용할 수 없습니다. '
+                             'STOP 후 다시 시도하세요.',
+                }), 409
             msg = Bool()
             msg.data = True
             hmi_node._teleop_pub.publish(msg)
@@ -769,15 +790,27 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         2. 턴테이블을 0° → 90° → 180° → 270° 순서로 순환
            (inspect_node가 /motor/turntable_done 수신 시 자동 캡쳐)
         """
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 기준 이미지 캡쳐를 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
+        if not hmi_node._acquire_hmi_busy('기준 캡처'):
+            return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
+
         data = request.get_json(silent=True) or {}
         angles = data.get('angles', [0, 90, 180, 270])
         delay  = float(data.get('delay_sec', 1.5))  # 턴테이블 회전 안정화 대기
 
         def _run_capture_sequence():
-            hmi_node.send_capture_reference_command(True)
-            time.sleep(0.3)
-            _run_turntable_sequence(hmi_node, angles, delay + 5.0, timeout_label='기준 캡처')
-            hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
+            try:
+                hmi_node.send_capture_reference_command(True)
+                time.sleep(0.3)
+                _run_turntable_sequence(hmi_node, angles, delay + 5.0, timeout_label='기준 캡처')
+                hmi_node.get_logger().info(f'기준 이미지 캡쳐 순환 완료: {angles}')
+            finally:
+                hmi_node._release_hmi_busy()
 
         t = threading.Thread(target=_run_capture_sequence, daemon=True)
         t.start()
@@ -800,6 +833,15 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
            (inspect_node가 done 수신 후 settle_sec 뒤 캡처, 캡처 후
             post_capture_sec 뒤에야 다음 회전 명령을 보내 노출 안정을 보장)
         """
+        if not hmi_node._manual_trigger_allowed():
+            return jsonify({
+                'ok': False,
+                'error': '자율 시퀀스 진행 중에는 데이터셋 촬영을 사용할 수 없습니다. '
+                         'STOP 후 다시 시도하세요.',
+            }), 409
+        if not hmi_node._acquire_hmi_busy('데이터셋 촬영'):
+            return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
+
         data = request.get_json(silent=True) or {}
         angles = data.get('angles', [0, 90, 180, 270])
         settle_sec = float(data.get('settle_sec', 2.0))
@@ -810,18 +852,21 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         hmi_node._dataset_capture_abort = False
 
         def _run_dataset_sequence():
-            for i in range(rounds):
-                if hmi_node._dataset_capture_abort:
-                    break
-                # inspect_node가 한 바퀴(4장) 저장 후 모드를 스스로 끄므로 매 바퀴 재활성화 필요
-                hmi_node.send_capture_dataset_command(True)
-                time.sleep(0.3)
-                # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
-                _run_turntable_sequence(
-                    hmi_node, angles, settle_sec + post_capture_sec + 5.0,
-                    post_wait_sec=settle_sec + post_capture_sec, timeout_label='데이터셋 캡처')
-                hmi_node.get_logger().info(f'데이터셋 촬영 {i + 1}/{rounds}바퀴 완료')
-            hmi_node.get_logger().info(f'데이터셋 촬영 순환 완료: {angles}')
+            try:
+                for i in range(rounds):
+                    if hmi_node._dataset_capture_abort:
+                        break
+                    # inspect_node가 한 바퀴(4장) 저장 후 모드를 스스로 끄므로 매 바퀴 재활성화 필요
+                    hmi_node.send_capture_dataset_command(True)
+                    time.sleep(0.3)
+                    # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
+                    _run_turntable_sequence(
+                        hmi_node, angles, settle_sec + post_capture_sec + 5.0,
+                        post_wait_sec=settle_sec + post_capture_sec, timeout_label='데이터셋 캡처')
+                    hmi_node.get_logger().info(f'데이터셋 촬영 {i + 1}/{rounds}바퀴 완료')
+                hmi_node.get_logger().info(f'데이터셋 촬영 순환 완료: {angles}')
+            finally:
+                hmi_node._release_hmi_busy()
 
         t = threading.Thread(target=_run_dataset_sequence, daemon=True)
         t.start()
@@ -853,10 +898,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 'error': '자율 시퀀스 진행 중에는 검사 단독 테스트를 사용할 수 없습니다. '
                          'STOP 후 다시 시도하세요.',
             }), 409
-        with hmi_node._lock:   # 검사-확인·설정 TOCTOU 레이스 방지 (#10)
-            if hmi_node._inspection_test_active:
-                return jsonify({'ok': False, 'error': '검사 테스트가 이미 진행 중입니다.'}), 409
-            hmi_node._inspection_test_active = True
+        if not hmi_node._acquire_hmi_busy('검사 단독 테스트'):
+            return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
 
         data = request.get_json(silent=True) or {}
         angles = data.get('angles', [0, 90, 180, 270])
@@ -882,7 +925,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             finally:
                 hmi_node.trigger_inspection(False)
                 hmi_node.send_led_command(False)
-                hmi_node._inspection_test_active = False
+                hmi_node._release_hmi_busy()
 
         t = threading.Thread(target=_run_inspection_test, daemon=True)
         t.start()
