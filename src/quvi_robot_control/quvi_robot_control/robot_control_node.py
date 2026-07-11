@@ -844,16 +844,23 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     # 명령 콜백 (토픽 기반 — 비동기)
     # ─────────────────────────────────────────────
-    def _try_start_command(self, target_state: RobotState, target_func, *args):
-        """lock 안에서 상태를 선점하고 스레드를 시작하여 레이스 컨디션을 방지한다."""
+    def _try_acquire_state(self, target_state: RobotState, allow_error: bool = False) -> bool:
+        """lock 안에서 IDLE(옵션: ERROR 포함) 선점. 성공 시 상태 세트 + _cmd_gen 증가."""
         with self._state_lock:
-            if self._state != RobotState.IDLE:
+            allowed = (RobotState.IDLE, RobotState.ERROR) if allow_error else (RobotState.IDLE,)
+            if self._state not in allowed:
                 self.get_logger().warn(f'명령 무시: 현재 {self._state.name} 동작 중')
                 return False
             self._state = target_state
             self._cmd_gen += 1
             self._publish_status(self._state.name)
         self._abort_event.clear()   # 새 명령 수락 → 이전 STOP 중단 해제
+        return True
+
+    def _try_start_command(self, target_state: RobotState, target_func, *args):
+        """lock 안에서 상태를 선점하고 스레드를 시작하여 레이스 컨디션을 방지한다."""
+        if not self._try_acquire_state(target_state):
+            return False
         t = threading.Thread(target=target_func, args=args, daemon=True)
         t.start()
         return True
@@ -916,18 +923,32 @@ class RobotControlNode(Node):
     # 서비스 핸들러
     # ─────────────────────────────────────────────
     def _act_grasp_service(self, request, response):
+        if not self._try_acquire_state(RobotState.ACT_GRASPING):
+            response.success = False
+            response.message = f'현재 {self._state.name} 동작 중 — 명령 거부'
+            return response
         success = self._execute_act_grasp()
         response.success = success
         response.message = 'ACT 파지 완료' if success else 'ACT 파지 실패'
         return response
 
     def _go_home_service(self, request, response):
+        # 홈 복귀는 복구 수단 — act_loop.sh HOME_BETWEEN=1 이 파지 실패(ERROR) 후 호출하므로
+        # ERROR 상태에서도 허용 (수동 복구 경로도 동일)
+        if not self._try_acquire_state(RobotState.HOMING, allow_error=True):
+            response.success = False
+            response.message = f'현재 {self._state.name} 동작 중 — 명령 거부'
+            return response
         success = self._execute_home()
         response.success = success
         response.message = '홈 복귀 완료' if success else '홈 복귀 실패'
         return response
 
     def _open_gripper_service(self, request, response):
+        if self._state not in (RobotState.IDLE, RobotState.ERROR):
+            response.success = False
+            response.message = f'현재 {self._state.name} 동작 중 — 그리퍼 명령 거부'
+            return response
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         time.sleep(0.5)
         response.success = True
@@ -935,6 +956,11 @@ class RobotControlNode(Node):
         return response
 
     def _close_gripper_service(self, request, response):
+        # 짧은 sync_write라 상태 선점(_try_acquire_state)까지는 하지 않고 가드만 둔다
+        if self._state not in (RobotState.IDLE, RobotState.ERROR):
+            response.success = False
+            response.message = f'현재 {self._state.name} 동작 중 — 그리퍼 명령 거부'
+            return response
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
         time.sleep(0.5)
         response.success = True
