@@ -29,6 +29,7 @@ from std_msgs.msg import Bool
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
 from quvi_robot_control.utils import decode_compressed, decode_raw, BinaryCache, encode_bgr
+from quvi_robot_control import topics
 from quvi_inspect.ml_preprocess import preprocess_for_ml
 
 
@@ -61,17 +62,17 @@ class InspectNode(Node):
                 self._image_callback_raw, 10)
 
         self._turntable_done_sub = self.create_subscription(
-            Bool, '/motor/turntable_done',
+            Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE,
             self._turntable_done_callback, 10)
 
         self._trigger_sub = self.create_subscription(
-            Bool, '/inspection/trigger',
+            Bool, topics.TOPIC_INSPECTION_TRIGGER,
             self._trigger_callback, 10)
 
         # turntable_done 누락(0도->0도 무이동 등) 시 검사 모드 캡처가 밀리는 문제를
         # 방지하기 위해 오케스트레이터가 각도별로 명시 발행하는 캡처 명령.
         self._capture_now_sub = self.create_subscription(
-            Bool, '/inspection/capture_now',
+            Bool, topics.TOPIC_INSPECTION_CAPTURE_NOW,
             self._capture_now_callback, 10)
 
         self._ref_capture_sub = self.create_subscription(
@@ -83,11 +84,11 @@ class InspectNode(Node):
             self._dataset_capture_trigger_callback, 10)
 
         self._grasp_cmd_sub = self.create_subscription(
-            GraspGoal, '/robot/grasp_command',
+            GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
             self._grasp_cmd_callback, 10)
 
         self._result_pub = self.create_publisher(
-            InspectionResult, '/inspection/result', 10)
+            InspectionResult, topics.TOPIC_INSPECTION_RESULT, 10)
 
         if self._pub_debug:
             self._debug_pub = self.create_publisher(
