@@ -51,6 +51,15 @@ volatile bool isHomingCompleted  = false;
 volatile bool homingRequested = false;
 volatile bool isHoming        = false;  // homing 진행 중 LED 블링크 간섭 방지
 
+// [fix] vCommTask → vMotorTask 위임용 이동 목표 플래그 (AccelStepper 크로스코어 동시접근 방지)
+// setTargetPosition()은 내부적으로 moveTo()(speed/step 재계산)를 수행해 thread-safe하지 않다.
+// vCommTask는 목표값 계산만 하고, 실제 setTargetPosition() 호출은 vMotorTask(Core 0)가 단독 수행한다.
+volatile bool railTargetPending = false;
+volatile long railPendingTarget = 0;
+volatile bool turnTargetPending = false;
+volatile long turnPendingTarget = 0;
+volatile bool stopAllRequested  = false;   // ESTOP 소프트 정지 — 현재 위치로 목표 재설정
+
 // Color presets for status visualization
 const uint32_t COLOR_OFF    = statusLed.Color(0, 0, 0);
 const uint32_t COLOR_BLUE   = statusLed.Color(0, 0, 100);    // Idle / Safe
@@ -205,6 +214,23 @@ void vMotorTask(void *pvParameters) {
             continue;
         }
 
+        // [fix] vCommTask가 위임한 이동 목표를 Core 0 단독으로 적용 (stop 우선, pending 무효화)
+        if (stopAllRequested) {
+            stopAllRequested = false;
+            railMotor.setTargetPosition(railMotor.getCurrentPosition());
+            turnMotor.setTargetPosition(turnMotor.getCurrentPosition());
+            railTargetPending = false;
+            turnTargetPending = false;
+        }
+        if (railTargetPending) {
+            railMotor.setTargetPosition(railPendingTarget);
+            railTargetPending = false;
+        }
+        if (turnTargetPending) {
+            turnMotor.setTargetPosition(turnPendingTarget);
+            turnTargetPending = false;
+        }
+
         // Handle step calculations for both motors in parallel
         bool railMoving = railMotor.update();
         bool turnMoving = turnMotor.update();
@@ -330,7 +356,9 @@ void rail_subscription_callback(const void * msin) {
     // Soft Limit: 범위 밖 명령은 조용히 버리면 상위가 done 대기로 행 걸린다.
     // 리밋으로 클램프해 실행하고 done 을 발행한다 (리밋 값이 물리 안전 경계).
     long clamped = constrain(target_steps, (long)RAIL_MIN_LIMIT, (long)RAIL_MAX_LIMIT);
-    railMotor.setTargetPosition(clamped);
+    // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임
+    railPendingTarget = clamped;
+    railTargetPending = true;
     rail_done_pending = true;
 }
 
@@ -354,7 +382,10 @@ void turn_subscription_callback(const void * msin) {
     long deltaSteps = round(delta * TURN_STEPS_PER_DEGREE);
     long targetSteps = turnMotor.getCurrentPosition() + deltaSteps;
 
-    turnMotor.setTargetPosition(targetSteps);
+    // [fix] 읽기(getCurrentPosition)는 long 단일 읽기라 레이스가 나도 최대 1스텝 오차로 실용상 안전 —
+    // 쓰기(setTargetPosition)만 vMotorTask(Core 0)에 위임해 크로스코어 동시 접근을 차단한다.
+    turnPendingTarget = targetSteps;
+    turnTargetPending = true;
     turn_done_pending = true;
 }
 
@@ -493,20 +524,24 @@ void vCommTask(void *pvParameters) {
                 if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
                     ping_fail_count = 0;
                 } else if (++ping_fail_count >= 3) {
-                    railMotor.setTargetPosition(railMotor.getCurrentPosition());
-                    turnMotor.setTargetPosition(turnMotor.getCurrentPosition());
+                    // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임.
+                    // ESP.restart() 전 vMotorTask 루프 1회(최대 delayMicroseconds(10) 수준) 이내에
+                    // 적용되므로 재부팅 지연 관점에서 무시 가능한 지연이다.
+                    stopAllRequested = true;
                     setLedColor(COLOR_PURPLE);
                     ESP.restart();
                 }
             }
 
-            if (rail_done_pending && !railMotor.isMoving()) {
+            // [fix] railTargetPending/turnTargetPending 미적용 상태에서 isMoving()==false를 보고
+            // done을 조기 발행하지 않도록 pending 미적용 조건을 추가한다.
+            if (rail_done_pending && !railTargetPending && !railMotor.isMoving()) {
                 rail_done_msg.data = true;
                 RCSOFTCHECK(rcl_publish(&rail_done_pub, &rail_done_msg, NULL));
                 rail_done_pending = false;
             }
-            
-            if (turn_done_pending && !turnMotor.isMoving()) {
+
+            if (turn_done_pending && !turnTargetPending && !turnMotor.isMoving()) {
                 turn_done_msg.data = true;
                 RCSOFTCHECK(rcl_publish(&turn_done_pub, &turn_done_msg, NULL));
                 turn_done_pending = false;
@@ -573,7 +608,9 @@ void vCommTask(void *pvParameters) {
                             if (steps >= RAIL_MIN_LIMIT && steps <= RAIL_MAX_LIMIT) {
                                 Serial0.print("[MOVE] Linear Rail set to target steps: ");
                                 Serial0.println(steps);
-                                railMotor.setTargetPosition(steps);
+                                // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임
+                                railPendingTarget = steps;
+                                railTargetPending = true;
                             } else {
                                 Serial0.print("[ERROR] Step value out of soft-limits (0 - ");
                                 Serial0.print(RAIL_MAX_LIMIT);
@@ -597,7 +634,9 @@ void vCommTask(void *pvParameters) {
                             long deltaSteps = round(delta * TURN_STEPS_PER_DEGREE);
                             long targetSteps = turnMotor.getCurrentPosition() + deltaSteps;
 
-                            turnMotor.setTargetPosition(targetSteps);
+                            // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임
+                            turnPendingTarget = targetSteps;
+                            turnTargetPending = true;
                         }
                         else if (cmd == 'S') {
                             Serial0.println("----------------------------------------");
