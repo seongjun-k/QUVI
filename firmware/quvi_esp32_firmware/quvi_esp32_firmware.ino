@@ -301,7 +301,7 @@ void performHomingCalibration() {
     #endif
 
     // Calibrate linear rail (towards motor on left)
-    bool railHomed = railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF);
+    bool railHomed = railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF, RAIL_ACCELERATION);
 
     // Restore operating speed & acceleration profiles which were overridden during homing sequence
     railMotor.setMaxSpeed(RAIL_MAX_SPEED);

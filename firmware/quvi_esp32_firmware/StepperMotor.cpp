@@ -94,7 +94,7 @@ bool StepperMotor::update() {
 }
 
 // Robust 3-stage synchronous Homing Sequence using AccelStepper
-bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long backoffSteps) {
+bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long backoffSteps, float accel) {
     if (_limitPin < 0) return false;
 
     enable();
@@ -107,7 +107,7 @@ bool StepperMotor::home(bool homingDir, float coarseSpeed, float fineSpeed, long
     // STAGE 1: Coarse search (Fast towards switch)
     // ==========================================
     _stepper.setMaxSpeed(coarseSpeed);
-    _stepper.setAcceleration(500.0);
+    _stepper.setAcceleration(accel);
     _stepper.move(directionMultiplier * 100000); // Move a very large distance
 
     unsigned long lastFeed = millis();

@@ -30,7 +30,9 @@ public:
 
     // Homing Sequence
     // Performed synchronously to ensure absolute calibration
-    bool home(bool homingDir, float coarseSpeed, float fineSpeed, long backoffSteps);
+    // accel: 코스 탐색 가속도 (steps/s²) — 낮으면 코스 속도 도달까지 레일
+    // 대부분을 가속 구간으로 소모해 호밍이 느리게 출발한다.
+    bool home(bool homingDir, float coarseSpeed, float fineSpeed, long backoffSteps, float accel);
 
     // Limit switch query
     bool isLimitPressed();

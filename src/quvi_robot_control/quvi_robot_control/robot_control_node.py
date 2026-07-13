@@ -185,6 +185,10 @@ GRIPPER_SETTLE_SEC    = 1.2
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
 
+# 대시보드에서 마지막으로 선택한 ACT 모델 경로 저장 파일 —
+# 재기동 시 파라미터 기본값 대신 이 경로를 우선 복원한다.
+ACT_LAST_MODEL_FILE = '/workspace/data/act_last_model.json'
+
 # ── 관절 안전 범위 (P1: ACT/시퀀스 폭주 방지) ────────────────────────────────
 # 정규화 단위 안전 범위 — send_action 경로(ACT·텔레옵).
 #   shoulder_pan, wrist_roll : DEGREES 모드. 1회전이 [-180°, +180°] 에 매핑되며
@@ -291,8 +295,12 @@ class RobotControlNode(Node):
         self._act_loading = False
         self._act_reload_lock = threading.Lock()
         self._act_models_cache = []
-        if self._use_act:
-            self._load_act_policy()
+        # 저장된 마지막 선택이 있으면 use_act=false 로 기동해도 복원 로드한다 —
+        # 복원 성공 시 자동 ON (대시보드 선택 시 자동 ON 과 동일 정책)
+        restored = self._restore_last_act_model()
+        if self._use_act or restored:
+            if self._load_act_policy() and restored:
+                self._use_act = True
 
         # ─── 발표용 rerun 웹 뷰어 (기본 비활성) ───
         # bounded queue — full이면 조용히 drop, ACT 추론 루프를 막지 않기 위함.
@@ -480,11 +488,33 @@ class RobotControlNode(Node):
             self._act_device_obj = device
             self._act_model_path = str(resolved_path)
             self._act_ready = True
+            self._save_last_act_model(str(resolved_path))
             self.get_logger().info(f'ACT 모델 로드 완료: {resolved_path} (device={device})')
             return True
         except Exception as e:
             self.get_logger().error(f'ACT 모델 로드 실패: {e}')
             return False
+
+    def _restore_last_act_model(self) -> bool:
+        """직전 세션에서 선택한 모델 경로 복원. 성공 시 True, 파일 없거나 경로 소실 시 False."""
+        try:
+            saved = json.loads(Path(ACT_LAST_MODEL_FILE).read_text())['path']
+            if Path(saved).is_dir():
+                self._act_model_path = saved
+                self.get_logger().info(f'마지막 선택 ACT 모델 복원: {saved}')
+                return True
+            self.get_logger().warn(f'저장된 ACT 모델 경로 소실 — 기본값 사용: {saved}')
+        except (OSError, KeyError, ValueError):
+            pass  # 최초 기동 등 파일 없음 — 기본값 사용
+        return False
+
+    def _save_last_act_model(self, path: str):
+        """로드 성공한 모델 경로를 저장 (재기동 시 복원용). 실패해도 로드는 유효."""
+        try:
+            Path(ACT_LAST_MODEL_FILE).write_text(
+                json.dumps({'path': path}, ensure_ascii=False))
+        except OSError as e:
+            self.get_logger().warn(f'ACT 모델 경로 저장 실패: {e}')
 
     # ─────────────────────────────────────────────
     # ACT 모델 스캔 / 런타임 선택 (HMI 대시보드 연동)

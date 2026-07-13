@@ -145,7 +145,7 @@ class InspectNode(Node):
             ('solidity_max',            1.00,                               '_sol_max'),
             ('feature_area_ratio_min',  0.80,                               '_f_area_min'),
             ('feature_area_ratio_max',  1.50,                               '_f_area_max'),
-            ('hole_count_max',          2,                                  '_hole_max'),
+            ('hole_count_max',          0,                                  '_hole_max'),
             ('hole_area_ratio_max',     0.05,                               '_hole_area_max'),
             ('texture_variance_max',    500.0,                              '_tex_var_max'),
             ('min_hole_area_px',        50,                                 '_min_hole_px'),

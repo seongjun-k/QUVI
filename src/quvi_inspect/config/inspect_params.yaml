@@ -12,7 +12,7 @@ inspect_node:
     solidity_max: 1.00
     feature_area_ratio_min: 0.80      # 면적 비율 최소 (미출력 감지) — 폭² 정규화 후 프레임 잘림 경계 케이스 허용, 2026-07-13
     feature_area_ratio_max: 1.50
-    hole_count_max: 2                 # 최대 구멍 개수 (레이어 분리)
+    hole_count_max: 0                 # 최대 구멍 개수 (레이어 분리) — 1개라도 감지 시 FAIL, 2026-07-13
     hole_area_ratio_max: 0.05         # 구멍 면적 비율 최대 5%
     texture_variance_max: 500.0       # 텍스처 분산 최대 (스트링잉)
     min_hole_area_px: 50              # 구멍 최소 면적 (px²)

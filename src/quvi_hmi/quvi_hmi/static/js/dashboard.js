@@ -38,15 +38,15 @@ const CAPTURE_ANGLES = [0, 90, 180, 270];
 // SSoT: 검사 노드 판정 기준 표시용 — dashboard.html 기준표 텍스트와 일치
 const THRESHOLDS = {
     solidity: [0.85, 1.0],
-    areaRatio: [0.90, 1.50],  // inspect_node feature_area_ratio_min/max와 일치 유지
-    holeCount: [0, 2],
+    areaRatio: [0.80, 1.50],  // inspect_node feature_area_ratio_min/max와 일치 유지
+    holeCount: [0, 0],        // inspect_node hole_count_max와 일치 유지 — 1개부터 FAIL
     holeAreaRatio: [0, 0.05],
     textureMax: 500,
 };
 
 // ─── 그리퍼 개폐 기준값 (ticks) ───
 // SSoT: robot_control_node.py GRIPPER_OPEN/CLOSE 와 일치
-const GRIPPER = { close: 1800, open: 2300, closedHint: 1850, openHint: 2250 };
+const GRIPPER = { close: 1800, open: 2500, closedHint: 1850, openHint: 2250 };
 
 /* ═══════════════════════════════════════════
    [B] 콘텐츠 렌더링·제어 로직
