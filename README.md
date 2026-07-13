@@ -32,9 +32,11 @@
 
 1. **표면 특징 룰 판정 (판정 주체)** — 각도별 worst-case로 PASS/FAIL 결정
    * Solidity (컨벡스 헐 대비 윤곽 면적 — 워핑 감지)
-   * 면적비 (기준 이미지 대비 — 미출력/과출력 감지)
-   * 구멍 개수·구멍 면적비 (레이어 분리 감지)
+   * 면적비 (기준 이미지 대비 — 미출력/과출력 감지). 턴테이블 편심에 의한 물체-카메라 거리 변화를 상쇄하기 위해 **면적/폭² 거리 불변 정규화**로 비교
+   * 구멍 개수·구멍 면적비 (레이어 분리 감지) — 구멍 1개부터 FAIL
    * 텍스처 분산 (라플라시안 — 스트링잉 감지)
+
+   판정 임계값은 `src/quvi_inspect/config/inspect_params.yaml`에서 관리하며, HMI 표시 기준(`dashboard.js` THRESHOLDS)과 동기화를 유지합니다.
 2. **PatchCore 이상탐지 (섀도우 모드)** — WideResNet50 백본 기반 각도별 메모리뱅크로 이상점수를 계산해 로그에만 기록. 판정에는 반영하지 않으며, 룰 판정과의 일치율을 축적해 컷오버 여부를 검증하는 단계입니다 (`scripts/shadow_report.py`).
 
 기준 이미지는 HMI의 기준 이미지 캡처 모드로 정상품을 실촬영하여 생성합니다.
@@ -151,7 +153,7 @@ docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 CUDA 미가용 시 CPU로 폴백하며 경고를 출력합니다.
 
 ### 3. 추론 및 배포
-학습된 체크포인트를 `act_model_path` 파라미터 경로에 두면 `robot_control_node`가 자동 로드합니다. HMI 대시보드에서 모델 스캔·선택으로 런타임 교체도 가능합니다.
+HMI 대시보드에서 모델 스캔·선택으로 런타임 교체가 가능하며, **마지막으로 선택한 모델은 `data/act_last_model.json`에 저장되어 재기동 시 자동 로드·활성화**됩니다. 저장된 선택이 없으면 `act_model_path` 파라미터 기본 경로를 사용합니다.
 
 ---
 
@@ -170,6 +172,21 @@ python3 scripts/shadow_report.py
 ```
 
 런치 인자 `anomaly_enabled`(기본 true)로 켜고 끄며, 모델 파일이 없거나 로드에 실패하면 자동 비활성되어 룰 판정만 사용합니다.
+
+---
+
+## ESP32-S3 펌웨어 빌드·플래시
+
+리니어 레일·턴테이블·LED를 담당하는 ESP32-S3 펌웨어는 PlatformIO 프로젝트입니다 (`firmware/quvi_esp32_firmware/`). ESP32-S3는 CH340 브리지 경유(`/dev/ttyESP32` udev 심링크, `scripts/99-esp32.rules`)로 연결되며, 부트 버튼 조작 없이 자동 리셋 업로드됩니다.
+
+```bash
+# 호스트에서 실행. micro-ROS agent가 포트를 잡고 있으면 먼저 종료할 것.
+cd firmware/quvi_esp32_firmware
+pio run                                        # 컴파일
+pio run -t upload --upload-port /dev/ttyESP32  # 플래시
+```
+
+호밍(3단계: 코스 탐색 → 백오프 → 정밀 탐색)·레일 좌표계·소프트 리밋 등 하드웨어 캘리브레이션 상수는 `Config.h`에서 관리합니다.
 
 ---
 

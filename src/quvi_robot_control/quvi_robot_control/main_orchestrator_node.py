@@ -222,24 +222,16 @@ class MainOrchestratorNode(Node):
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
             self._state = FsmState.IDLE
             # INSPECTING 계열에서 정지해도 링 조명 소등을 보장한다.
-            led_off = Bool()
-            led_off.data = False
-            self._led_pub.publish(led_off)
+            self._led_pub.publish(Bool(data=False))
         elif command == "ESTOP":
             self.get_logger().error('비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.')
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
-            led_off = Bool()
-            led_off.data = False
-            self._led_pub.publish(led_off)
+            self._led_pub.publish(Bool(data=False))
         elif command == "RESET":
             self.get_logger().info('시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.')
-            led_off = Bool()
-            led_off.data = False
-            self._led_pub.publish(led_off)
-            reset_msg = Bool()
-            reset_msg.data = True
-            self._robot_reset_pub.publish(reset_msg)
+            self._led_pub.publish(Bool(data=False))
+            self._robot_reset_pub.publish(Bool(data=True))
 
             # ESP32 하드 리셋 — ESTOP 후 펌웨어(isEmergencyStopped)가 복귀 로직이
             # 없어 재부팅해야만 정상화된다. FSM 루프를 막지 않게 별도 스레드로 수행.
@@ -251,6 +243,7 @@ class MainOrchestratorNode(Node):
             self._processed_count = 0
             self._pass_count = 0
             self._fail_count = 0
+            self._total_objects = 0
             self._act_ready = False
             self._motor_homed = False
 
@@ -380,15 +373,11 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_RAIL_HOME_TRIGGER:
             self._startup_rail_done = False
             self._state_timer_counter = 0
-            rail_msg = Int32()
-            rail_msg.data = 0  # 0mm 홈 = 0 steps
-            self._startup_rail_pub.publish(rail_msg)
+            self._startup_rail_pub.publish(Int32(data=0))  # 0mm 홈 = 0 steps
             # 레일 홈과 동시에 로봇팔 토크 인가 + 홈(P1) 이동 — ACT 파지 시작
             # 자세를 보장한다 (2026-07-10). done 은 대기하지 않는다 (레일 done 기준 진행,
             # _robot_home_done_cb 는 HOMING_ARM_WAIT 상태에서만 플래그를 세워 간섭 없음).
-            home_cmd = Bool()
-            home_cmd.data = True
-            self._robot_home_pub.publish(home_cmd)
+            self._robot_home_pub.publish(Bool(data=True))
             self.get_logger().info('[STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행')
             self._state = FsmState.STARTUP_RAIL_HOME_WAIT
 
@@ -405,9 +394,8 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_INSPECT_TRIGGER:
             self._startup_rail_done = False
             self._state_timer_counter = 0
-            rail_msg = Int32()
-            rail_msg.data = int(12.5 * 80)  # INSPECT(A) = 1000 steps
-            self._startup_rail_pub.publish(rail_msg)
+            # INSPECT(A) 12.5mm = 1000 steps
+            self._startup_rail_pub.publish(Int32(data=int(12.5 * topics.RAIL_STEPS_PER_MM)))
             self.get_logger().info('[STARTUP] 레일 12.5mm INSPECT 이동 명령 발행')
             self._state = FsmState.STARTUP_INSPECT_WAIT
 
@@ -424,9 +412,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.STARTUP_TURNTABLE_TRIGGER:
             self._startup_turntable_done = False
             self._state_timer_counter = 0
-            turn_msg = Int32()
-            turn_msg.data = 0  # 0°
-            self._turntable_pub.publish(turn_msg)
+            self._turntable_pub.publish(Int32(data=0))  # 0°
             self.get_logger().info('[STARTUP] 턴테이블 0° 초기화 명령 발행')
             self._state = FsmState.STARTUP_TURNTABLE_WAIT
 
@@ -449,9 +435,7 @@ class MainOrchestratorNode(Node):
                 # STARTUP 발행 시점에 robot_control 이 비-IDLE 이면 홈 명령이
                 # 버려진다("명령 무시") — 3초 간격 재발행으로 방어 (진행 중이면 무해)
                 if self._state_timer_counter % max(1, int(3.0 * self._loop_rate)) == 0:
-                    home_cmd = Bool()
-                    home_cmd.data = True
-                    self._robot_home_pub.publish(home_cmd)
+                    self._robot_home_pub.publish(Bool(data=True))
                 if self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                     self.get_logger().error('[STARTUP] 로봇팔 홈 done 타임아웃! ERROR')
                     self._error_msg = 'STARTUP_ARM_HOME_TIMEOUT'
@@ -459,9 +443,7 @@ class MainOrchestratorNode(Node):
             else:
                 self._robot_rail_done = False
                 self._state_timer_counter = 0
-                rail_cmd = Int32()
-                rail_cmd.data = 0  # RailPosition.BED
-                self._robot_rail_pub.publish(rail_cmd)
+                self._robot_rail_pub.publish(Int32(data=0))  # RailPosition.BED
                 self.get_logger().info('레일 베드 위치(30,500스텝) 이동 명령 전송')
                 self._state = FsmState.START_RAIL_MOVE_BED_WAIT
 
@@ -476,7 +458,7 @@ class MainOrchestratorNode(Node):
                 self._state = FsmState.ERROR
 
         elif self._state == FsmState.GRASPING_TRIGGER:
-            self._total_objects = 1
+            self._total_objects += 1
             self._current_object_idx = 0
             
             goal = GraspGoal()
@@ -506,9 +488,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.PLACING_CHAMBER_TRIGGER:
             self._place_chamber_done = False
             self._state_timer_counter = 0
-            cmd = Bool()
-            cmd.data = True
-            self._robot_place_chamber_pub.publish(cmd)
+            self._robot_place_chamber_pub.publish(Bool(data=True))
             self.get_logger().info('검사장(턴테이블) 안착 명령 전송')
             self._state = FsmState.PLACING_CHAMBER_WAIT
 
@@ -525,9 +505,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.INSPECTING_TRIGGER:
             self._inspect_done = False
             # LED ON — 카메라 노출 안정화 대기 시작
-            led_on = Bool()
-            led_on.data = True
-            self._led_pub.publish(led_on)
+            self._led_pub.publish(Bool(data=True))
             self.get_logger().info('조명 ON — 카메라 노출 안정화 대기 5초')
             self._state_timer_counter = 0
             self._state = FsmState.INSPECTING_LED_STABILIZE
@@ -538,9 +516,7 @@ class MainOrchestratorNode(Node):
             # '진입점 도착 후 5초' 안정화 대기에 해당한다.
             if self._state_timer_counter >= int(5.0 * self._loop_rate):
                 # 검사 노드 활성화 및 턴테이블 회전 진입
-                inspect_trigger = Bool()
-                inspect_trigger.data = True
-                self._inspect_trigger_pub.publish(inspect_trigger)
+                self._inspect_trigger_pub.publish(Bool(data=True))
                 self._inspect_angle_idx = 0
                 self._state_timer_counter = 0
                 self.get_logger().info('카메라 노출 안정화 완료 — 턴테이블 검사 시작')
@@ -548,9 +524,7 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.INSPECTING_ROTATE:
             angle = self._inspect_angles[self._inspect_angle_idx]
-            angle_msg = Int32()
-            angle_msg.data = angle
-            self._turntable_pub.publish(angle_msg)
+            self._turntable_pub.publish(Int32(data=angle))
             self.get_logger().info(f'턴테이블 {angle}도 회전 명령 전송')
 
             self._turntable_done = False
@@ -564,9 +538,7 @@ class MainOrchestratorNode(Node):
                 self._state_timer_counter = 0
                 # done 기반 캡처는 0도->0도 무이동 시 done 미발행으로 밀릴 수 있어,
                 # 명시적 캡처 명령으로 각도별 캡처 시점을 오케스트레이터가 직접 지정한다.
-                capture_now = Bool()
-                capture_now.data = True
-                self._inspect_capture_now_pub.publish(capture_now)
+                self._inspect_capture_now_pub.publish(Bool(data=True))
                 self._state = FsmState.INSPECTING_CAPTURE
             elif self._state_timer_counter > int(self._step_delay * self._loop_rate * 2):
                 self.get_logger().warn(
@@ -574,9 +546,7 @@ class MainOrchestratorNode(Node):
                     f'{self._inspect_angles[self._inspect_angle_idx]}도 회전이 늦어지고 있습니다. '
                     f'그래도 다음 단계로 진행합니다.')
                 self._state_timer_counter = 0
-                capture_now = Bool()
-                capture_now.data = True
-                self._inspect_capture_now_pub.publish(capture_now)
+                self._inspect_capture_now_pub.publish(Bool(data=True))
                 self._state = FsmState.INSPECTING_CAPTURE
 
         elif self._state == FsmState.INSPECTING_CAPTURE:
@@ -594,14 +564,10 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter += 1
             if self._inspect_done:
                 # LED OFF — 검사 완료
-                led_off = Bool()
-                led_off.data = False
-                self._led_pub.publish(led_off)
+                self._led_pub.publish(Bool(data=False))
                 self._state = FsmState.PICKING_CHAMBER_TRIGGER
             elif self._state_timer_counter > int(self._inspect_timeout * self._loop_rate):
-                led_off = Bool()
-                led_off.data = False
-                self._led_pub.publish(led_off)
+                self._led_pub.publish(Bool(data=False))
                 self.get_logger().error('품질 검사 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'INSPECT_TIMEOUT'
                 self._state = FsmState.ERROR
@@ -609,9 +575,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.PICKING_CHAMBER_TRIGGER:
             self._pick_chamber_done = False
             self._state_timer_counter = 0
-            cmd = Bool()
-            cmd.data = True
-            self._robot_pick_chamber_pub.publish(cmd)
+            self._robot_pick_chamber_pub.publish(Bool(data=True))
             self.get_logger().info('검사장 재파지 명령 전송')
             self._state = FsmState.PICKING_CHAMBER_WAIT
 
@@ -628,19 +592,18 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.SORTING_TRIGGER:
             self._robot_rail_done = False
             self._state_timer_counter = 0
-            rail_cmd = Int32()
 
             # 양불 결과에 따라 레일 목표 위치 분류
             if self._latest_inspection_passed:
-                rail_cmd.data = 2  # RailPosition.PASS
+                dest = 2  # RailPosition.PASS
                 self._pass_count += 1
                 self.get_logger().info('검사 결과: PASS -> PASS 적재함(X=B)으로 레일 이송')
             else:
-                rail_cmd.data = 3  # RailPosition.FAIL
+                dest = 3  # RailPosition.FAIL
                 self._fail_count += 1
                 self.get_logger().info('검사 결과: FAIL -> FAIL 적재함(X=C)으로 레일 이송')
 
-            self._robot_rail_pub.publish(rail_cmd)
+            self._robot_rail_pub.publish(Int32(data=dest))
             self._state = FsmState.SORTING_WAIT_RAIL
 
         elif self._state == FsmState.SORTING_WAIT_RAIL:
@@ -656,9 +619,7 @@ class MainOrchestratorNode(Node):
         elif self._state == FsmState.RELEASING_TRIGGER:
             self._robot_release_done = False
             self._state_timer_counter = 0
-            release_cmd = Bool()
-            release_cmd.data = True
-            self._robot_release_pub.publish(release_cmd)
+            self._robot_release_pub.publish(Bool(data=True))
             self.get_logger().info('분류 적재함 위 출력물 투하 명령 전송')
             self._state = FsmState.RELEASING_WAIT
 
@@ -680,9 +641,7 @@ class MainOrchestratorNode(Node):
             self._robot_rail_done = False
             self._state_timer_counter = 0
             # 레일을 다시 3D 프린터 베드로 원점 복귀
-            rail_cmd = Int32()
-            rail_cmd.data = 0  # RailPosition.BED
-            self._robot_rail_pub.publish(rail_cmd)
+            self._robot_rail_pub.publish(Int32(data=0))  # RailPosition.BED
             self.get_logger().info('레일 홈 복귀 명령 전송')
             self._state = FsmState.HOMING_RAIL_WAIT
 
@@ -702,9 +661,7 @@ class MainOrchestratorNode(Node):
             self._robot_home_done = False
             self._state_timer_counter = 0
             # 로봇팔 홈 복귀 실행
-            home_cmd = Bool()
-            home_cmd.data = True
-            self._robot_home_pub.publish(home_cmd)
+            self._robot_home_pub.publish(Bool(data=True))
             self.get_logger().info('로봇팔 홈 복귀 명령 전송')
             self._state = FsmState.HOMING_ARM_WAIT
 

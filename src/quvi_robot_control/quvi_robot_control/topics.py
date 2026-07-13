@@ -12,7 +12,6 @@ TOPIC_HMI_COMMAND = '/hmi/command'
 
 # Orchestrator <-> Robot Control
 TOPIC_ROBOT_RAIL_CMD = '/robot/rail_command'
-TOPIC_ROBOT_ROTATE_CMD = '/robot/rotate_command'
 TOPIC_ROBOT_RELEASE_CMD = '/robot/release_command'
 TOPIC_ROBOT_HOME_CMD = '/robot/home_command'
 TOPIC_ROBOT_GRASP_CMD = '/robot/grasp_command'
@@ -42,7 +41,8 @@ TOPIC_INSPECTION_RESULT = '/inspection/result'
 # Global Status
 TOPIC_ESTOP = '/system/estop'
 
-TOPIC_ROBOT_ROTATE_DONE = '/robot/rotate_done'
+# mm → steps 변환 계수 (SSoT). 근거: firmware Config.h STEPPER 200스텝 × 16마이크로스텝 / 40mm
+RAIL_STEPS_PER_MM = 80
 
 TOPIC_ROBOT_PLACE_CHAMBER_CMD = '/robot/place_in_chamber'
 TOPIC_ROBOT_PLACE_CHAMBER_DONE = '/robot/place_in_chamber_done'

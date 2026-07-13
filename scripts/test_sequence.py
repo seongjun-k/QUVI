@@ -178,7 +178,7 @@ def gripper_close(port, pkt):
 POSE_P1 = {'shoulder_pan': 2054, 'shoulder_lift': 1258, 'elbow_flex': 2800, 'wrist_flex': 2981, 'wrist_roll': 2035, 'gripper': 2150}
 POSE_P2 = {'shoulder_pan':   12, 'shoulder_lift': 1843, 'elbow_flex': 2165, 'wrist_flex': 3123, 'wrist_roll': 2095, 'gripper': 2150}
 POSE_P3 = {'shoulder_pan':   16, 'shoulder_lift': 1736, 'elbow_flex': 2413, 'wrist_flex': 3018, 'wrist_roll': 2087, 'gripper': 2150}
-POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1841, 'elbow_flex': 2522, 'wrist_flex': 2759, 'wrist_roll': 2085, 'gripper': 2150}
+POSE_P4 = {'shoulder_pan':   26, 'shoulder_lift': 1776, 'elbow_flex': 2537, 'wrist_flex': 2825, 'wrist_roll': 2019, 'gripper': 2067}
 POSE_P5 = {'shoulder_pan': 2047, 'shoulder_lift': 1854, 'elbow_flex': 2460, 'wrist_flex': 2909, 'wrist_roll': 2050, 'gripper': 2150}
 POSE_P6 = {'shoulder_pan': 2039, 'shoulder_lift': 1076, 'elbow_flex': 2884, 'wrist_flex': 3094, 'wrist_roll': 1993, 'gripper': 2150}
 
@@ -215,9 +215,19 @@ def run_sequence(port, pkt):
     print("[시퀀스 완료]")
 
 
+POSES = {
+    '1': (POSE_P1, 'P1  베드 위 대기'),
+    '2': (POSE_P2, 'P2  180도 회전'),
+    '3': (POSE_P3, 'P3  턴테이블 진입점'),
+    '4': (POSE_P4, 'P4  턴테이블 놓기/집기 지점'),
+    '5': (POSE_P5, 'P5  180도 반대 회전'),
+    '6': (POSE_P6, 'P6  분류장 위치'),
+}
+
+
 def main():
     print("=" * 55)
-    print("  웨이포인트 시퀀스 테스트 (소프트웨어 보간 모드)")
+    print("  웨이포인트 테스트 (소프트웨어 보간 모드)")
     print(f"  보간 스텝: {INTERP_STEPS}개 / 스텝 간격: {INTERP_DELAY}s")
     print(f"  총 이동 시간 (팔): 약 {INTERP_STEPS * INTERP_DELAY:.1f}초")
     print(f"  Profile_Velocity={PROFILE_VELOCITY} ({PROFILE_VELOCITY * 0.229:.1f} RPM)")
@@ -225,8 +235,11 @@ def main():
         print("  [스텝 모드]")
     print(f"  포트: {PORT}")
     print("=" * 55)
-    print("\n[Enter]로 시작, Ctrl+C로 중단")
-    input()
+    print("  1~6 : 해당 포즈로 단독 이동")
+    print("  o/c : 그리퍼 열기/닫기")
+    print("  a   : 전체 시퀀스 실행")
+    print("  q   : 종료 (Ctrl+C 동일)")
+    print("=" * 55)
 
     port, pkt = open_bus()
     set_torque(port, pkt, True)
@@ -234,16 +247,32 @@ def main():
     try:
         while True:
             try:
-                run_sequence(port, pkt)
-            except KeyboardInterrupt:
-                print("\n[중단]")
-                break
-            print("\n다시 실행하려면 [Enter], 종료하려면 Ctrl+C")
-            try:
-                input()
-            except KeyboardInterrupt:
+                key = input("\n명령 (1~6/o/c/a/q) > ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
                 print("\n[종료]")
                 break
+
+            if key in POSES:
+                pose, label = POSES[key]
+                _step_num[0] = 0
+                try:
+                    move_to(port, pkt, pose, label)
+                except KeyboardInterrupt:
+                    print("\n[이동 중단]")
+            elif key == 'o':
+                gripper_open(port, pkt)
+            elif key == 'c':
+                gripper_close(port, pkt)
+            elif key == 'a':
+                try:
+                    run_sequence(port, pkt)
+                except KeyboardInterrupt:
+                    print("\n[중단]")
+            elif key == 'q':
+                print("[종료]")
+                break
+            elif key:
+                print("  잘못된 입력")
     finally:
         port.closePort()
         print("[포트 닫음]")

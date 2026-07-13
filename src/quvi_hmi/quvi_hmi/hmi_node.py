@@ -27,7 +27,6 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
-from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, Image, JointState
 from std_msgs.msg import Bool, String, Int32
 
@@ -39,7 +38,9 @@ from flask_socketio import SocketIO
 
 
 # ─── ROS 토픽 이름 (SSoT: quvi_robot_control/topics.py) ───
+from quvi_robot_control.utils import decode_compressed, decode_raw
 from quvi_robot_control.topics import (
+    RAIL_STEPS_PER_MM,
     TOPIC_HMI_STATUS, TOPIC_HMI_COMMAND,
     TOPIC_ACT_MODELS, TOPIC_ACT_CURRENT, TOPIC_ACT_MODEL_SELECT,
     TOPIC_INSPECTION_TRIGGER, TOPIC_INSPECTION_CAPTURE_NOW,
@@ -74,9 +75,8 @@ RAIL_STATION_MAP = [
     {'name': 'BED (D)',     'mm': 381.25},
 ]
 
-# Config.h 기준 변환 상수: STEPPER_STEPS_PER_REV(200) × RAIL_MICROSTEPPING(16) / RAIL_MM_PER_REV(40mm)
-RAIL_STEPS_PER_MM = 80.0
-RAIL_MAX_STEPS    = 33600  # RAIL_MAX_LIMIT (420mm × 80 steps/mm)
+# RAIL_STEPS_PER_MM 은 topics.py SSoT 에서 import (근거는 firmware Config.h)
+RAIL_MAX_STEPS = 33600  # RAIL_MAX_LIMIT (420mm × 80 steps/mm)
 
 # ─── 장치 매핑 (대시보드 선택 → config 파일 → 런치가 읽음) ───
 DEVICE_CONFIG_PATH = '/workspace/data/device_config.json'
@@ -119,8 +119,6 @@ class HmiNode(Node):
         self._debug = self.get_parameter('debug').value
         self._jpeg_quality = self.get_parameter('jpeg_quality').value
         self._stream_fps = self.get_parameter('stream_fps').value
-
-        self._bridge = CvBridge()
 
         # ─── 공유 상태 (thread-safe) ───
         self._lock = threading.Lock()
@@ -190,13 +188,13 @@ class HmiNode(Node):
 
         self.create_subscription(
             CompressedImage, sidecam_topic,
-            lambda msg: self._cam_cb(msg, 'sidecam'), 5)
+            lambda msg: self._store_frame(decode_compressed(msg), 'sidecam'), 5)
         self.create_subscription(
             CompressedImage, cam2_topic,
-            lambda msg: self._cam_cb(msg, 'camera2'), 5)
+            lambda msg: self._store_frame(decode_compressed(msg), 'camera2'), 5)
         self.create_subscription(
             Image, inspect_topic,
-            lambda msg: self._cam_raw_cb(msg, 'inspect_debug'), 5)
+            lambda msg: self._store_frame(decode_raw(msg), 'inspect_debug'), 5)
 
         # ─── ROS 2 Publishers ───
         self._cmd_pub = self.create_publisher(String, TOPIC_HMI_COMMAND, 10)
@@ -293,20 +291,9 @@ class HmiNode(Node):
         with self._lock:
             self._jpeg_cache[key] = jpeg.tobytes()
 
-    def _cam_cb(self, msg: CompressedImage, key: str):
-        np_arr = np.frombuffer(msg.data, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        self._store_frame(frame, key)
-
-    def _cam_raw_cb(self, msg: Image, key: str):
-        frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        self._store_frame(frame, key)
-
     # ─── 제어 명령 발행 ───
     def send_command(self, command: str):
-        msg = String()
-        msg.data = command
-        self._cmd_pub.publish(msg)
+        self._cmd_pub.publish(String(data=command))
         self.get_logger().info(f'HMI 명령: {command}')
         # 명령은 /hmi/command 로만 발행한다. 실제 모터 시퀀스는 오케스트레이터가
         # 단독으로 구동한다 (이중 제어 제거: docs/act_sequence_fix_plan.md P0).
@@ -320,9 +307,7 @@ class HmiNode(Node):
         """
         steps = int(round(mm * RAIL_STEPS_PER_MM))
         steps = max(0, min(RAIL_MAX_STEPS, steps))
-        msg = Int32()
-        msg.data = steps
-        self._rail_pub.publish(msg)
+        self._rail_pub.publish(Int32(data=steps))
         with self._lock:
             self._system_status['rail_position'] = float(mm)  # UI 표시는 mm 유지
         self.get_logger().info(f'Rail 명령: {mm:.2f} mm → {steps} steps')
@@ -334,18 +319,14 @@ class HmiNode(Node):
         여기서 turntable_angle 을 직접 갱신한다 (루프백 방지).
         """
         angle = max(0, min(360, int(angle)))
-        msg = Int32()
-        msg.data = angle
-        self._turntable_pub.publish(msg)
+        self._turntable_pub.publish(Int32(data=angle))
         with self._lock:
             self._system_status['turntable_angle'] = angle
         self.get_logger().info(f'턴테이블 명령: {angle}°')
 
     def send_led_command(self, on: bool):
         """LED(턴테이블 링 조명) ON/OFF 발행."""
-        msg = Bool()
-        msg.data = bool(on)
-        self._led_pub.publish(msg)
+        self._led_pub.publish(Bool(data=bool(on)))
         with self._lock:
             self._system_status['led_state'] = bool(on)
         self.get_logger().info(f'LED 명령: {"ON" if on else "OFF"}')
@@ -371,9 +352,7 @@ class HmiNode(Node):
 
     def send_act_model_select(self, path: str):
         """선택한 ACT 모델 경로를 robot_control_node 로 발행."""
-        msg = String()
-        msg.data = str(path)
-        self._act_model_select_pub.publish(msg)
+        self._act_model_select_pub.publish(String(data=str(path)))
         self.get_logger().info(f'ACT 모델 선택 발행: {path}')
 
     # ─── 장치 매핑 (카메라/로봇/ESP USB) ───
@@ -447,9 +426,7 @@ class HmiNode(Node):
         start=True  : 캡쳐 모드 시작 — inspect_node가 턴테이블 done 신호마다 기준 이미지를 저장한다.
         start=False : 캡쳐 모드 중단.
         """
-        msg = Bool()
-        msg.data = bool(start)
-        self._ref_capture_pub.publish(msg)
+        self._ref_capture_pub.publish(Bool(data=bool(start)))
         self.get_logger().info(f'기준 이미지 캡쳐 명령: {"START" if start else "STOP"}')
 
     def send_capture_dataset_command(self, start: bool):
@@ -459,9 +436,7 @@ class HmiNode(Node):
                        done 신호마다 컬러 원본 이미지를 저장한다 (기준 이미지와 별도 경로).
         start=False : 촬영 모드 중단.
         """
-        msg = Bool()
-        msg.data = bool(start)
-        self._ds_capture_pub.publish(msg)
+        self._ds_capture_pub.publish(Bool(data=bool(start)))
         self.get_logger().info(f'데이터셋 촬영 명령: {"START" if start else "STOP"}')
 
     # 수동 트리거가 허용되는 FSM 상태 (자율 시퀀스 진행 중에는 거부).
@@ -493,9 +468,7 @@ class HmiNode(Node):
         if enable and not self._manual_trigger_allowed():
             self.get_logger().warn('수동 검사 트리거 거부: FSM 이 자율 시퀀스 진행 중')
             return False
-        msg = Bool()
-        msg.data = enable
-        self._inspect_trigger_pub.publish(msg)
+        self._inspect_trigger_pub.publish(Bool(data=enable))
         return True
 
     def send_capture_now_command(self):
@@ -504,9 +477,7 @@ class HmiNode(Node):
         turntable_done 신호 누락(0도->0도 무이동 등) 대비 — 검사 단독 테스트에서
         각 각도 회전 완료 후 명시적으로 발행해 캡처를 보장한다.
         """
-        msg = Bool()
-        msg.data = True
-        self._capture_now_pub.publish(msg)
+        self._capture_now_pub.publish(Bool(data=True))
 
     # ─── 데이터 접근 ───
     def get_status(self) -> dict:
@@ -604,6 +575,16 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     socketio = SocketIO(app, cors_allowed_origins=cors_origins,
                         async_mode='threading')
 
+    def _manual_guard(label: str):
+        """자율 시퀀스 진행 중 수동 트리거 차단 — 허용이면 None, 아니면 409 응답."""
+        if hmi_node._manual_trigger_allowed():
+            return None
+        return jsonify({
+            'ok': False,
+            'error': f'자율 시퀀스 진행 중에는 {label} 사용할 수 없습니다. '
+                     'STOP 후 다시 시도하세요.',
+        }), 409
+
     # ─── 페이지 라우트 ───
     @app.route('/')
     def index():
@@ -685,32 +666,22 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             return jsonify({'error': f'Unknown command: {cmd}'}), 400
         
         if cmd == 'estop':
-            msg = Bool()
-            msg.data = True
-            hmi_node._estop_pub.publish(msg)
-            
+            hmi_node._estop_pub.publish(Bool(data=True))
+
         hmi_node.send_command(cmd.upper())
         return jsonify({'ok': True, 'command': cmd})
 
     @app.route('/api/teleop/<action>', methods=['POST'])
     def api_teleop(action):
         if action == 'on':
-            if not hmi_node._manual_trigger_allowed():
-                return jsonify({
-                    'ok': False,
-                    'error': '자율 시퀀스 진행 중에는 텔레옵을 사용할 수 없습니다. '
-                             'STOP 후 다시 시도하세요.',
-                }), 409
-            msg = Bool()
-            msg.data = True
-            hmi_node._teleop_pub.publish(msg)
+            if blocked := _manual_guard('텔레옵을'):
+                return blocked
+            hmi_node._teleop_pub.publish(Bool(data=True))
             with hmi_node._lock:
                 hmi_node._system_status['teleop_active'] = True
             return jsonify({'ok': True, 'teleop': 'on'})
         elif action == 'off':
-            msg = Bool()
-            msg.data = False
-            hmi_node._teleop_pub.publish(msg)
+            hmi_node._teleop_pub.publish(Bool(data=False))
             with hmi_node._lock:
                 hmi_node._system_status['teleop_active'] = False
             return jsonify({'ok': True, 'teleop': 'off'})
@@ -723,12 +694,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/rail/move', methods=['POST'])
     def api_rail_move():
         """JSON body: {"mm": <float>} — Rail 목표 위치 발행."""
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 수동 레일 이동을 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('수동 레일 이동을'):
+            return blocked
         data = request.get_json(silent=True) or {}
         try:
             mm = float(data['mm'])
@@ -742,12 +709,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/turntable/move', methods=['POST'])
     def api_turntable_move():
         """JSON body: {"angle": <int>} — 턴테이블 목표 각도 발행."""
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 수동 턴테이블 이동을 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('수동 턴테이블 이동을'):
+            return blocked
         data = request.get_json(silent=True) or {}
         try:
             angle = int(data['angle'])
@@ -761,12 +724,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/led/toggle', methods=['POST'])
     def api_led_toggle():
         """LED 현재 상태를 반전하여 발행."""
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 수동 LED 제어를 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('수동 LED 제어를'):
+            return blocked
         with hmi_node._lock:
             current = hmi_node._system_status.get('led_state', False)
         new_state = not current
@@ -776,12 +735,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     @app.route('/api/led/<action>', methods=['POST'])
     def api_led_action(action):
         """LED 명시적 ON/OFF."""
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 수동 LED 제어를 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('수동 LED 제어를'):
+            return blocked
         if action == 'on':
             hmi_node.send_led_command(True)
             return jsonify({'ok': True, 'led': True})
@@ -800,12 +755,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         2. 턴테이블을 0° → 90° → 180° → 270° 순서로 순환
            (inspect_node가 /motor/turntable_done 수신 시 자동 캡쳐)
         """
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 기준 이미지 캡쳐를 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('기준 이미지 캡쳐를'):
+            return blocked
         if not hmi_node._acquire_hmi_busy('기준 캡처'):
             return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
 
@@ -840,15 +791,12 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         정상품을 턴테이블에 올려둔 상태에서 호출한다.
         1. /inspection/capture_dataset = True 발행
         2. 턴테이블을 순서대로 회전
-           (inspect_node가 done 수신 후 settle_sec 뒤 캡처, 캡처 후
-            post_capture_sec 뒤에야 다음 회전 명령을 보내 노출 안정을 보장)
+           (inspect_node가 done 수신 후 자체 dataset_capture_settle_sec(1.5s) 뒤
+            캡처. HMI 쪽 settle_sec/post_capture_sec 은 회전 명령 간격 제어로
+            별도 동작 — 두 대기가 독립 병렬로 걸린다)
         """
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 데이터셋 촬영을 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('데이터셋 촬영을'):
+            return blocked
         if not hmi_node._acquire_hmi_busy('데이터셋 촬영'):
             return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
 
@@ -902,12 +850,8 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         발행해 inspect_node의 검사 모드를 흉내낸다. 결과는 기존 /inspection/result
         구독 경로(_inspection_cb)로 검사 이력에 누적되어 UI에 자연 반영된다.
         """
-        if not hmi_node._manual_trigger_allowed():
-            return jsonify({
-                'ok': False,
-                'error': '자율 시퀀스 진행 중에는 검사 단독 테스트를 사용할 수 없습니다. '
-                         'STOP 후 다시 시도하세요.',
-            }), 409
+        if blocked := _manual_guard('검사 단독 테스트를'):
+            return blocked
         if not hmi_node._acquire_hmi_busy('검사 단독 테스트'):
             return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
 
