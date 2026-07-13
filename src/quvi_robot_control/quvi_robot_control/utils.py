@@ -90,6 +90,18 @@ class BinaryCache:
         return float(cv2.contourArea(
             max(self.contours_external, key=cv2.contourArea)))
 
+    def largest_external_width(self) -> float:
+        """가장 큰 외부 윤곽의 boundingRect 폭(px). 윤곽 없으면 0.0.
+
+        턴테이블 편심으로 물체-카메라 거리가 회전 위상마다 변해 픽셀 면적이
+        거리 제곱으로 흔들린다. 면적을 폭²로 나누면 거리 배율이 상쇄되므로
+        면적비 검사의 거리 불변 정규화 분모로 쓴다.
+        """
+        if not self.contours_external:
+            return 0.0
+        largest = max(self.contours_external, key=cv2.contourArea)
+        return float(cv2.boundingRect(largest)[2])
+
     def solidity(self) -> float:
         """컨벡스 헐 대비 윤곽 면적 비율 (워핑 감지 지표)."""
         if not self.contours_external:

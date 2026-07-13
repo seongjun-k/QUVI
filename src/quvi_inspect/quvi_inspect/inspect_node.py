@@ -143,7 +143,7 @@ class InspectNode(Node):
             # ─── 표면 특징 분석 임계값 ───
             ('solidity_min',            0.85,                               '_sol_min'),
             ('solidity_max',            1.00,                               '_sol_max'),
-            ('feature_area_ratio_min',  0.90,                               '_f_area_min'),
+            ('feature_area_ratio_min',  0.80,                               '_f_area_min'),
             ('feature_area_ratio_max',  1.50,                               '_f_area_max'),
             ('hole_count_max',          2,                                  '_hole_max'),
             ('hole_area_ratio_max',     0.05,                               '_hole_area_max'),
@@ -570,14 +570,23 @@ class InspectNode(Node):
             # 비율이 부풀어 항상 FAIL 이 난다.
             # 배치 각도가 틀어지면 캡처 뷰가 다른 각도의 기준과 대응하므로,
             # 4개 각도 기준 전부와 비교해 1.0 에 가장 가까운 면적비를 채택한다.
+            # 턴테이블 편심으로 물체-카메라 거리가 위상마다 변해 raw 면적이
+            # 거리 제곱으로 흔들리므로(정상품 0.78~1.71 관측, 2026-07-13),
+            # 면적/폭² 끼리 비교해 거리 배율을 상쇄한다. 미출력(높이 손실)은
+            # 폭 대비 면적이 줄어 여전히 비율 하락으로 검출된다.
             cap_area = cache.largest_external_area()
+            cap_w    = cache.largest_external_width()
+            cap_norm = cap_area / (cap_w * cap_w) if cap_w > 0 else 0.0
             a_ratio  = float('nan')
             for ref in self._reference_images.values():
                 if ref is None:
                     continue
                 ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
-                ref_area = BinaryCache(ref_resized, self._bin_thresh).largest_external_area()
-                r = cap_area / ref_area if ref_area > 0 else 0.0
+                ref_cache = BinaryCache(ref_resized, self._bin_thresh)
+                ref_area  = ref_cache.largest_external_area()
+                ref_w     = ref_cache.largest_external_width()
+                ref_norm  = ref_area / (ref_w * ref_w) if ref_w > 0 else 0.0
+                r = cap_norm / ref_norm if ref_norm > 0 else 0.0
                 if math.isnan(a_ratio) or abs(r - 1.0) < abs(a_ratio - 1.0):
                     a_ratio = r
             if math.isnan(a_ratio):
@@ -655,9 +664,14 @@ class InspectNode(Node):
         all_hole_ar  = [f['hole_area_ratio']   for f in vals]
         all_tex      = [f['texture_variance']  for f in vals]
 
-        # worst_area: 1.0 에서 가장 멀리 벗어난 값 (NaN 제외)
+        # worst_area: 범위 위반 값 우선, 없으면 1.0 에서 가장 멀리 벗어난 값 (NaN 제외)
+        # 합격 범위가 비대칭이라 |1-a| 최대값이 범위 기준 최악과 다를 수 있다 —
+        # 위반 값을 두고 편차 큰 통과 값을 표시하면 표는 OK 인데 사유는 면적비인 모순이 생긴다
         valid_areas = [a for a in all_area if not math.isnan(a)]
-        worst_area = max(valid_areas, key=lambda a: abs(1.0 - a)) if valid_areas else float('nan')
+        violating_areas = [a for a in valid_areas
+                           if not (self._f_area_min <= a <= self._f_area_max)]
+        pick = violating_areas or valid_areas
+        worst_area = max(pick, key=lambda a: abs(1.0 - a)) if pick else float('nan')
 
         # ── ML 이상탐지 집계 (섀도우 모드 — passed 에는 절대 반영하지 않음) ──
         ml_scores = {a: f['anomaly_score'] for a, f in angle_features.items()

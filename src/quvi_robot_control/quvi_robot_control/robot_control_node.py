@@ -29,7 +29,6 @@ ROS 2 인터페이스 (Subscriber, 토픽명은 topics.py SSoT — 일부 예외
   /robot/grasp_command       quvi_msgs/GraspGoal            파지 트리거 (좌표는 참고용, ACT는 이미지로 추론)
   /robot/rail_command        std_msgs/Int32                 레일 목표 위치 코드 (0=BED,1=INSPECT,2=PASS,3=FAIL)
   /motor/rail_done           std_msgs/Bool                  ESP32 레일 이동 완료 (MOVING_RAIL 중에만 수락)
-  /robot/rotate_command      std_msgs/Bool                  베이스 180° 회전 (true=뒤, false=앞)
   /robot/release_command     std_msgs/Bool                  웨이포인트 시퀀스(P1~P6) 실행
   /robot/home_command        std_msgs/Bool                  홈 복귀
   /robot/place_in_chamber    std_msgs/Bool                  검사장 안착 시퀀스
@@ -49,7 +48,6 @@ ROS 2 인터페이스 (Publisher):
   /robot/release_done           std_msgs/Bool                웨이포인트 시퀀스 완료 신호
   /robot/home_done              std_msgs/Bool                홈 복귀 완료 신호
   /robot/rail_done              std_msgs/Bool                레일 이동 완료 신호
-  /robot/rotate_done            std_msgs/Bool                베이스 회전 완료 신호
   /robot/place_in_chamber_done  std_msgs/Bool                검사장 안착 완료 신호
   /robot/pick_in_chamber_done   std_msgs/Bool                검사장 재파지 완료 신호
   /robot/act_models             std_msgs/String              스캔된 ACT 모델 목록 (latched)
@@ -78,12 +76,12 @@ import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.callback_groups import ReentrantCallbackGroup
-from cv_bridge import CvBridge
 from sensor_msgs.msg import CompressedImage, JointState
 from std_msgs.msg import Bool, Int32, String
 from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
+from quvi_robot_control.utils import decode_compressed, decode_raw
 
 from quvi_msgs.msg import GraspGoal
 
@@ -124,7 +122,6 @@ class RobotState(IntEnum):
     IDLE          = 0
     HOMING        = 1
     MOVING_RAIL   = 2
-    ROTATING_BASE = 3
     ACT_GRASPING  = 4
     PLACING       = 5
     RELEASING     = 6
@@ -134,12 +131,8 @@ class RobotState(IntEnum):
 
 
 # 그리퍼 raw 위치값 (XL330-M288T)
-GRIPPER_OPEN  = 2300
+GRIPPER_OPEN  = 2500
 GRIPPER_CLOSE = 1800
-
-# mm → steps 변환 계수. ESP32 Config.h(STEPPER 200×16 / 40mm)와 hmi_node.py 의
-# RAIL_STEPS_PER_MM 과 반드시 일치해야 한다.
-RAIL_STEPS_PER_MM = 80
 
 
 # 관절 이름 (ROS 2 JointState 메시지용)
@@ -155,7 +148,7 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 POSE_P1 = {'shoulder_pan': 2053, 'shoulder_lift':  978, 'elbow_flex': 3050, 'wrist_flex': 3056, 'wrist_roll': 2029, 'gripper': 2100}  # 베드 위 대기
 POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
 POSE_P3 = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
-POSE_P4 = {'shoulder_pan':   10, 'shoulder_lift': 1744, 'elbow_flex': 2547, 'wrist_flex': 2820, 'wrist_roll': 2020, 'gripper': 2100}  # 턴테이블 놓기 지점
+POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
 POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
 
@@ -269,7 +262,6 @@ class RobotControlNode(Node):
 
         self._latest_sidecam: Optional[np.ndarray] = None
         self._sidecam_lock = threading.Lock()
-        self._bridge = CvBridge()
 
         self._esp32_rail_done = False
 
@@ -566,9 +558,8 @@ class RobotControlNode(Node):
             self.get_logger().error(f'ACT 모델 스캔 실패: {e}')
             models = []
         self._act_models_cache = models
-        msg = String()
-        msg.data = json.dumps(models, ensure_ascii=False)
-        self._act_models_pub.publish(msg)
+        self._act_models_pub.publish(
+            String(data=json.dumps(models, ensure_ascii=False)))
 
     def _publish_act_current(self):
         """현재 모델·로드 상태를 latched 토픽으로 발행."""
@@ -584,9 +575,8 @@ class RobotControlNode(Node):
             'loading': bool(self._act_loading),
             'use_act': bool(self._use_act),
         }
-        msg = String()
-        msg.data = json.dumps(payload, ensure_ascii=False)
-        self._act_current_pub.publish(msg)
+        self._act_current_pub.publish(
+            String(data=json.dumps(payload, ensure_ascii=False)))
 
     def _on_act_model_select(self, msg: String):
         """HMI 에서 모델 선택 수신 → 백그라운드 재로드."""
@@ -654,10 +644,6 @@ class RobotControlNode(Node):
         self._esp32_rail_done_sub = self.create_subscription(
             Bool, topics.TOPIC_MOTOR_RAIL_DONE,
             self._esp32_rail_done_callback, 10)
-
-        self._rotate_cmd_sub = self.create_subscription(
-            Bool, topics.TOPIC_ROBOT_ROTATE_CMD,
-            self._rotate_cmd_callback, 10)
 
         self._release_cmd_sub = self.create_subscription(
             Bool, topics.TOPIC_ROBOT_RELEASE_CMD,
@@ -737,9 +723,6 @@ class RobotControlNode(Node):
         self._rail_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_RAIL_DONE, 10)
 
-        self._rotate_done_pub = self.create_publisher(
-            Bool, topics.TOPIC_ROBOT_ROTATE_DONE, 10)
-
         self._place_chamber_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_DONE, 10)
 
@@ -768,14 +751,13 @@ class RobotControlNode(Node):
     # 카메라 콜백
     # ─────────────────────────────────────────────
     def _sidecam_callback(self, msg: CompressedImage):
-        np_arr = np.frombuffer(msg.data, np.uint8)
-        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        frame = decode_compressed(msg)
         if frame is not None:
             with self._sidecam_lock:
                 self._latest_sidecam = frame
 
     def _sidecam_callback_raw(self, msg):
-        frame = self._bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        frame = decode_raw(msg)
         if frame is not None:
             with self._sidecam_lock:
                 self._latest_sidecam = frame
@@ -882,11 +864,6 @@ class RobotControlNode(Node):
             return
         self._try_start_command(RobotState.MOVING_RAIL, self._execute_rail_move, pos)
 
-    def _rotate_cmd_callback(self, msg: Bool):
-        pan_val = 0 if msg.data else 2048
-        pose = {'shoulder_pan': pan_val}
-        self._try_start_command(RobotState.ROTATING_BASE, self._execute_pose, pose, f'베이스 회전(pan={pan_val})')
-
     def _release_cmd_callback(self, msg: Bool):
         if not msg.data:
             return
@@ -981,17 +958,14 @@ class RobotControlNode(Node):
             self.get_logger().info('1. POSE_P1 위치로 즉시 이동 (그리퍼는 닫힘 상태 유지)')
 
             # POSE_P1 자세로 이동하되, 그리퍼는 사용자가 물려준 물체를 쥐도록 GRIPPER_CLOSE(1800)로 덮어씌웁니다.
-            p1_pose = {k: v for k, v in POSE_P1.items()}
-            p1_pose['gripper'] = GRIPPER_CLOSE
+            p1_pose = dict(POSE_P1, gripper=GRIPPER_CLOSE)
 
             self._write_raw_position(p1_pose)
             # 그리퍼는 물체를 쥐어 목표(GRIPPER_CLOSE)에 도달 못 하므로 대기 대상에서 제외 — 안 하면 매 회 10s 풀타임아웃.
             self._wait_motion_done(_arm_only(p1_pose))
 
-            done_msg = Bool()
-            done_msg.data = True
-            self._act_done_pub.publish(done_msg)
-            self._grasp_done_pub.publish(done_msg)
+            self._act_done_pub.publish(Bool(data=True))
+            self._grasp_done_pub.publish(Bool(data=True))
 
             self._set_state_if_current(RobotState.IDLE, gen)
             self._publish_status('룰베이스 파지 완료')
@@ -1055,7 +1029,7 @@ class RobotControlNode(Node):
             # 프로파일 누수를 제거한다. 학습 녹화 시 configure() 기본값(50ms)이 적용됐으므로
             # 동일하게 맞춰 학습 동역학과 일치시킨다.
             self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
-            ACT_GRASP_DURATION = 10.0
+            ACT_GRASP_DURATION = 7.0
             dt = 1.0 / ACT_CONTROL_HZ
             start = time.time()
             chunk_count = 0
@@ -1136,10 +1110,8 @@ class RobotControlNode(Node):
             total_time = time.time() - start
             self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s | 청크 수={chunk_count}')
 
-            done_msg = Bool()
-            done_msg.data = True
-            self._act_done_pub.publish(done_msg)
-            self._grasp_done_pub.publish(done_msg)
+            self._act_done_pub.publish(Bool(data=True))
+            self._grasp_done_pub.publish(Bool(data=True))
 
             self._set_state_if_current(RobotState.IDLE, gen)
             self._publish_status('ACT 파지 완료')
@@ -1171,9 +1143,7 @@ class RobotControlNode(Node):
         if self._use_real_hardware:
             self._esp32_rail_done = False
 
-        msg = Int32()
-        msg.data = int(target_mm * RAIL_STEPS_PER_MM)
-        self._rail_pub.publish(msg)
+        self._rail_pub.publish(Int32(data=int(target_mm * topics.RAIL_STEPS_PER_MM)))
 
         if self._use_real_hardware:
             deadline = time.time() + self._rail_timeout
@@ -1198,35 +1168,11 @@ class RobotControlNode(Node):
         else:
             time.sleep(1.0)
 
-        done_msg = Bool()
-        done_msg.data = True
-        self._rail_done_pub.publish(done_msg)
+        self._rail_done_pub.publish(Bool(data=True))
 
         self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status(f'레일 이동 완료: {pos_name}')
         return True
-
-    # ─────────────────────────────────────────────
-    # 실행 함수 — 자세 이동
-    # ─────────────────────────────────────────────
-    def _execute_pose(self, target_pose: dict, label: str = '') -> bool:
-        gen = self._cmd_gen
-        self._set_state_if_current(RobotState.ROTATING_BASE, gen)
-        self._publish_status(f'자세 변경: {label}')
-        self.get_logger().info(f'자세 변경: {label} → {target_pose}')
-
-        success = self._write_raw_position(target_pose)
-        self._wait_motion_done(target_pose)   # 고정 sleep 대신 완료 폴링(abort-aware)
-        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
-
-        self._set_state_if_current(RobotState.IDLE, gen)
-        self._publish_status(f'자세 변경 완료: {label}')
-
-        done_msg = Bool()
-        done_msg.data = success
-        self._rotate_done_pub.publish(done_msg)
-
-        return success
 
     # ─────────────────────────────────────────────
     # 실행 함수 — 투하
@@ -1239,9 +1185,7 @@ class RobotControlNode(Node):
 
         success = self._execute_taught_sequence()
 
-        done_msg = Bool()
-        done_msg.data = success
-        self._release_done_pub.publish(done_msg)
+        self._release_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('웨이포인트 시퀀스 완료' if success else '웨이포인트 시퀀스 실패')
@@ -1273,9 +1217,7 @@ class RobotControlNode(Node):
         self._wait_gripper()
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
-        done_msg = Bool()
-        done_msg.data = success
-        self._home_done_pub.publish(done_msg)
+        self._home_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('홈 복귀 완료')
@@ -1310,9 +1252,7 @@ class RobotControlNode(Node):
         self._wait_motion_done(_arm_only(POSE_P3))
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
-        done_msg = Bool()
-        done_msg.data = success
-        self._place_chamber_done_pub.publish(done_msg)
+        self._place_chamber_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('검사장 안착 완료')
@@ -1342,9 +1282,7 @@ class RobotControlNode(Node):
         self._wait_motion_done(_arm_only(POSE_P5))  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
         success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
 
-        done_msg = Bool()
-        done_msg.data = success
-        self._pick_chamber_done_pub.publish(done_msg)
+        self._pick_chamber_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
         self._publish_status('검사장 재파지 완료')
@@ -1535,9 +1473,7 @@ class RobotControlNode(Node):
         self._set_state(state)
 
     def _publish_status(self, msg: str):
-        status_msg = String()
-        status_msg.data = f'[ROBOT] {msg}'
-        self._status_pub.publish(status_msg)
+        self._status_pub.publish(String(data=f'[ROBOT] {msg}'))
 
     def _broadcast_status_periodically(self):
         """1Hz 주기로 HMI 상태 채널에 현재 상태를 브로드캐스트하여 오케스트레이터 등의 기동 타이밍 이슈를 방지한다."""

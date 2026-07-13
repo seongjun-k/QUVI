@@ -10,7 +10,7 @@ inspect_node:
     # ─── 표면 특징 분석 임계값 ───
     solidity_min: 0.85                # Solidity 최소 (워핑 감지)
     solidity_max: 1.00
-    feature_area_ratio_min: 0.90      # 면적 비율 최소 (미출력 감지)
+    feature_area_ratio_min: 0.80      # 면적 비율 최소 (미출력 감지) — 폭² 정규화 후 프레임 잘림 경계 케이스 허용, 2026-07-13
     feature_area_ratio_max: 1.50
     hole_count_max: 2                 # 최대 구멍 개수 (레이어 분리)
     hole_area_ratio_max: 0.05         # 구멍 면적 비율 최대 5%
