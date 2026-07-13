@@ -1672,6 +1672,11 @@ class RobotControlNode(Node):
 
         self._teleop_running = True
 
+        # 직전 동작(홈 1200ms·시퀀스 2000ms)의 프로파일 누수 제거 — 남아 있으면
+        # 50Hz 목표를 모터가 1.2~2초에 걸쳐 추종해 리더를 뒤늦게 따라온다.
+        # ACT 경로(P3 C6)와 동일하게 텔레옵도 50ms 프로파일을 명시 설정한다.
+        self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
+
         if self._use_real_hardware and self._leader and self._follower:
             try:
                 self.get_logger().info('텔레옵 시작 전 리더-팔로워 위치 정렬 중...')
