@@ -196,6 +196,16 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 
 ---
 
+## 레퍼런스
+
+- **LeRobot** — Hugging Face의 로봇 모방학습 프레임워크. 본 프로젝트는 OMX 지원 브랜치인 [ROBOTIS-GIT/lerobot](https://github.com/ROBOTIS-GIT/lerobot) 포크를 서브모듈로 사용 (원본: [huggingface/lerobot](https://github.com/huggingface/lerobot))
+- **ACT** — Zhao et al., ["Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware"](https://arxiv.org/abs/2304.13705) (RSS 2023) — 파지 모방학습 정책
+- **ROBOTIS OpenMANIPULATOR-X (OMX)** — [ROBOTIS-GIT/open_manipulator](https://github.com/ROBOTIS-GIT/open_manipulator) — 로봇팔 하드웨어 및 [DYNAMIXEL SDK](https://github.com/ROBOTIS-GIT/DynamixelSDK)
+- **PatchCore** — Roth et al., ["Towards Total Recall in Industrial Anomaly Detection"](https://arxiv.org/abs/2106.08265) (CVPR 2022) — 이상탐지 알고리즘
+- **micro-ROS** — [micro-ROS-Agent](https://github.com/micro-ROS/micro-ROS-Agent), [micro_ros_platformio](https://github.com/micro-ROS/micro_ros_platformio) — ESP32-S3 ↔ ROS 2 통신
+
+---
+
 ## 라이선스
 
 이 프로젝트는 [MIT License](LICENSE)에 따라 라이선스가 부여됩니다.
