@@ -6,15 +6,19 @@
 
 ---
 
-## 개요
+## 문제 정의
 
-3D 프린터에서 출력을 완료한 제품을 로봇팔이 자동으로 파지(Pickup)하여, 검사 챔버의 턴테이블에서 4방향 촬영 후 머신비전으로 품질을 분석(양불 판정)하고, 결과에 따라 합격(PASS)과 불량(FAIL) 스테이션으로 분류 적재하는 3D 프린팅 후처리 자동화 시스템(Smart Cell)입니다.
+3D 프린팅은 출력 후 **사람이 직접 결과물을 떼어내고, 눈으로 불량(워핑·레이어 분리·스트링잉·미출력)을 확인해 분류**해야 합니다. 이 후처리 과정은 프린트 팜 규모가 커질수록 반복 노동과 검사 편차(사람마다 다른 기준, 피로에 따른 놓침)가 누적되는 병목입니다.
+
+QUVI는 이 문제를 **파지(모방학습 로봇팔) → 검사(머신비전) → 분류(자동 적재)** 전 과정을 무인화한 Smart Cell로 해결합니다. 출력 완료 제품을 로봇팔이 자동으로 파지하여 검사 챔버의 턴테이블에서 4방향 촬영 후 품질을 분석(양불 판정)하고, 결과에 따라 합격(PASS)과 불량(FAIL) 스테이션으로 분류 적재합니다.
 
 전 과정은 유한상태머신(FSM) 오케스트레이터가 자율 제어하며, 파지는 LeRobot ACT 모방학습, 검사는 표면 특징 룰 판정 + PatchCore 이상탐지(섀도우 모드)로 수행됩니다.
 
 ---
 
-## 시스템 구성
+## 아키텍처
+
+### 시스템 구성
 
 | 구성 요소 | 기술 사양 | 역할 및 특징 |
 | :--- | :--- | :--- |
@@ -24,9 +28,7 @@
 | **카메라** | USB UVC 카메라 × 2 | 사이드캠(Zone 1: 파지 영역), 검사캠(Zone 2: 품질 검사 챔버) |
 | **AI 및 알고리즘** | LeRobot ACT + OpenCV + PatchCore | 모방학습 파지 제어, 표면 특징 룰 판정, ML 이상탐지(섀도우 모드) |
 
----
-
-## 검사 방식
+### 검사 방식
 
 검사캠이 턴테이블 4방향(0°/90°/180°/270°) 이미지를 캡처하여 두 갈래로 분석합니다.
 
@@ -41,9 +43,7 @@
 
 기준 이미지는 HMI의 기준 이미지 캡처 모드로 정상품을 실촬영하여 생성합니다.
 
----
-
-## ROS 2 패키지 및 노드 구조
+### ROS 2 패키지 및 노드 구조
 
 | 패키지명 | 실행 노드명 | 주요 역할 |
 | :--- | :--- | :--- |
@@ -56,9 +56,7 @@
 
 토픽 이름은 `quvi_robot_control/topics.py`에서 일원 관리합니다.
 
----
-
-## Web HMI 주요 기능 (대시보드)
+### Web HMI 주요 기능 (대시보드)
 
 * **실시간 시스템 상태 모니터링**
   * 로봇 관절 각도 시각화 (`/robot/joint_states` 실시간 게이지)
@@ -72,9 +70,7 @@
   * ACT 모델 스캔·선택(핫스왑), 장치 매핑(카메라·시리얼 포트) 설정 및 재시작
   * 기준 이미지 캡처 모드, ML 정상품 데이터셋 촬영 모드
 
----
-
-## 프로젝트 폴더 구조
+### 프로젝트 폴더 구조
 
 ```
 QUVI/
@@ -95,7 +91,17 @@ QUVI/
 
 ---
 
-## 빠른 시작 (Docker Environment)
+## 사용 스택
+
+* **Operating System**: Ubuntu 24.04 LTS
+* **Middleware**: ROS 2 Jazzy + micro-ROS (ESP32-S3)
+* **Vision & AI**: OpenCV, PyTorch (numpy <2 고정), Hugging Face LeRobot (ACT), PatchCore(WideResNet50)
+* **Web HMI**: Flask, Flask-SocketIO (threading 모드), Vanilla JS, HTML5/CSS3 (Industrial Dark Theme)
+* **Embedded**: ESP32-S3, TB6600, Dynamixel SDK (Protocol 2.0), PlatformIO
+
+---
+
+## 실행 방법 (Docker Environment)
 
 ### 1. 리포지토리 클론 및 서브모듈 초기화
 ```bash
@@ -123,16 +129,6 @@ docker compose up -d
 ```bash
 docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 ```
-
----
-
-## 개발 기술 스택
-
-* **Operating System**: Ubuntu 24.04 LTS
-* **Middleware**: ROS 2 Jazzy + micro-ROS (ESP32-S3)
-* **Vision & AI**: OpenCV, PyTorch (numpy <2 고정), Hugging Face LeRobot (ACT), PatchCore(WideResNet50)
-* **Web HMI**: Flask, Flask-SocketIO (threading 모드), Vanilla JS, HTML5/CSS3 (Industrial Dark Theme)
-* **Embedded**: ESP32-S3, TB6600, Dynamixel SDK (Protocol 2.0), PlatformIO
 
 ---
 
@@ -193,6 +189,17 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 ## 팀 정보
 
 - **서울로봇고등학교 졸업작품 돼지껍데기 팀**
+
+---
+
+## AI 사용 내역 (외부 사용 내역 공개)
+
+투명성 원칙에 따라 본 프로젝트 제작에 활용한 AI, 오픈소스, 외부 도움을 공개합니다.
+
+- **개발 지원 AI**: Anthropic **Claude Code** (Claude Opus·Sonnet·Haiku 모델) — 코드 작성·리뷰·디버깅 보조. 최종 설계 판단과 실기 검증은 팀이 직접 수행
+- **제품에 탑재된 AI 모델**: **ACT** 파지 정책 (LeRobot으로 자체 텔레오퍼레이션 데이터 수집 후 직접 학습), **PatchCore** 이상탐지 (WideResNet50 백본, 자체 정상품 이미지로 메모리뱅크 구축)
+- **오픈소스**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO 등 — 상세 출처는 아래 [레퍼런스](#레퍼런스) 참조
+- **외부 자문**: 없음 (지도교사 지도 외 외부 기관·업체 자문 없음)
 
 ---
 
