@@ -721,17 +721,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         hmi_node.send_turntable_command(angle)
         return jsonify({'ok': True, 'angle': angle})
 
-    @app.route('/api/led/toggle', methods=['POST'])
-    def api_led_toggle():
-        """LED 현재 상태를 반전하여 발행."""
-        if blocked := _manual_guard('수동 LED 제어를'):
-            return blocked
-        with hmi_node._lock:
-            current = hmi_node._system_status.get('led_state', False)
-        new_state = not current
-        hmi_node.send_led_command(new_state)
-        return jsonify({'ok': True, 'led': new_state})
-
     @app.route('/api/led/<action>', methods=['POST'])
     def api_led_action(action):
         """LED 명시적 ON/OFF."""

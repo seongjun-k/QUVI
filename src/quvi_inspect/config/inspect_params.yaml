@@ -2,7 +2,6 @@ inspect_node:
   ros__parameters:
     # ─── 카메라 설정 ───
     camera_topic: "/camera2/image_raw/compressed"   # 고정 카메라 (검사 챔버)
-    use_compressed: true
 
     # ─── 기준 이미지 경로 ───
     reference_image_dir: "/workspace/data/reference_images"
@@ -22,7 +21,6 @@ inspect_node:
     capture_settle_sec: 1.5                # 회전 후 안정화 대기 시간 — 데이터셋 촬영(1.5s)과 정합 유지
 
     # ─── 이미지 전처리 ───
-    roi_margin: 20                    # ROI 마진 (px)
     gaussian_blur_ksize: 5            # 가우시안 블러 커널 크기
     binary_threshold: 127             # 이진화 임계값
 

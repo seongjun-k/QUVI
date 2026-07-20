@@ -26,7 +26,7 @@ QUVI ROBOT_CONTROL_NODE
 
 ROS 2 인터페이스 (Subscriber, 토픽명은 topics.py SSoT — 일부 예외는 quvi_hmi/hmi_node.py 자체 상수):
   <sidecam_topic 파라미터>   sensor_msgs/(Compressed)Image  사이드캠 이미지 (기본 /camera1/image_raw/compressed)
-  /robot/grasp_command       quvi_msgs/GraspGoal            파지 트리거 (좌표는 참고용, ACT는 이미지로 추론)
+  /robot/grasp_command       quvi_msgs/GraspGoal            파지 트리거 (ACT는 이미지로 추론)
   /robot/rail_command        std_msgs/Int32                 레일 목표 위치 코드 (0=BED,1=INSPECT,2=PASS,3=FAIL)
   /motor/rail_done           std_msgs/Bool                  ESP32 레일 이동 완료 (MOVING_RAIL 중에만 수락)
   /robot/release_command     std_msgs/Bool                  웨이포인트 시퀀스(P1~P6) 실행
@@ -43,7 +43,6 @@ ROS 2 인터페이스 (Publisher):
   /robot/joint_states           sensor_msgs/JointState       현재 관절 각도 (10 Hz)
   /motor/rail                   std_msgs/Int32               레일 목표 위치 steps (→ ESP32)
   /robot/status                 std_msgs/String              상태 문자열 (1 Hz 주기 브로드캐스트 포함)
-  /robot/act_done               std_msgs/Bool                ACT/룰베이스 파지 완료 신호
   /robot/grasp_done             std_msgs/Bool                파지 완료 신호
   /robot/release_done           std_msgs/Bool                웨이포인트 시퀀스 완료 신호
   /robot/home_done              std_msgs/Bool                홈 복귀 완료 신호
@@ -81,7 +80,7 @@ from std_msgs.msg import Bool, Int32, String
 from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
-from quvi_robot_control.utils import decode_compressed, decode_raw
+from quvi_robot_control.utils import decode_compressed
 
 from quvi_msgs.msg import GraspGoal
 
@@ -89,8 +88,6 @@ from quvi_msgs.msg import GraspGoal
 import os
 possible_paths = [
     '/workspace/lerobot/src',
-    str(Path(__file__).resolve().parents[3] / 'lerobot' / 'src'),
-    str(Path(__file__).resolve().parents[4] / 'lerobot' / 'src'),
     '/home/ksj/QUVI/lerobot/src'
 ]
 for p in possible_paths:
@@ -125,7 +122,6 @@ class RobotState(IntEnum):
     ACT_GRASPING  = 4
     PLACING       = 5
     RELEASING     = 6
-    TURNTABLE     = 7
     TELEOPING     = 8
     ERROR         = 99
 
@@ -344,7 +340,6 @@ class RobotControlNode(Node):
         self.declare_parameter('use_act', False)
         self.declare_parameter('act_model_path',
             '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
-        self.declare_parameter('act_chunk_size', 20)
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
         # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
         self.declare_parameter('act_models_root',
@@ -361,7 +356,6 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_mm_fail',    125.0)
         # 카메라
         self.declare_parameter('sidecam_topic', '/camera1/image_raw/compressed')
-        self.declare_parameter('use_compressed', True)
         # 동작 타임아웃 (초)
         self.declare_parameter('rail_move_timeout_sec', 30.0)
         self.declare_parameter('grasp_timeout_sec', 20.0)
@@ -373,7 +367,6 @@ class RobotControlNode(Node):
         self._leader_port_name  = self.get_parameter('leader_dxl_port').value
         self._use_act           = self.get_parameter('use_act').value
         self._act_model_path    = self.get_parameter('act_model_path').value
-        self._act_chunk_size    = self.get_parameter('act_chunk_size').value
         self._act_device        = self.get_parameter('act_device').value
         self._act_models_root   = self.get_parameter('act_models_root').value
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
@@ -386,7 +379,6 @@ class RobotControlNode(Node):
             RailPosition.FAIL:    self.get_parameter('rail_mm_fail').value,
         }
         self._sidecam_topic  = self.get_parameter('sidecam_topic').value
-        self._use_compressed = self.get_parameter('use_compressed').value
         self._rail_timeout   = self.get_parameter('rail_move_timeout_sec').value
         self._grasp_timeout  = self.get_parameter('grasp_timeout_sec').value
         self._home_timeout   = self.get_parameter('home_timeout_sec').value
@@ -653,15 +645,9 @@ class RobotControlNode(Node):
 
     def _setup_subscribers(self):
         # ── Subscribers ──
-        if self._use_compressed:
-            self._sidecam_sub = self.create_subscription(
-                CompressedImage, self._sidecam_topic,
-                self._sidecam_callback, 10)
-        else:
-            from sensor_msgs.msg import Image
-            self._sidecam_sub = self.create_subscription(
-                Image, self._sidecam_topic,
-                self._sidecam_callback_raw, 10)
+        self._sidecam_sub = self.create_subscription(
+            CompressedImage, self._sidecam_topic,
+            self._sidecam_callback, 10)
 
         self._grasp_cmd_sub = self.create_subscription(
             GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
@@ -738,9 +724,6 @@ class RobotControlNode(Node):
         self._status_pub = self.create_publisher(
             String, topics.TOPIC_ROBOT_STATUS, 10)
 
-        self._act_done_pub = self.create_publisher(
-            Bool, topics.TOPIC_ROBOT_ACT_DONE, 10)
-
         self._grasp_done_pub = self.create_publisher(
             Bool, topics.TOPIC_ROBOT_GRASP_DONE, 10)
 
@@ -782,12 +765,6 @@ class RobotControlNode(Node):
     # ─────────────────────────────────────────────
     def _sidecam_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
-        if frame is not None:
-            with self._sidecam_lock:
-                self._latest_sidecam = frame
-
-    def _sidecam_callback_raw(self, msg):
-        frame = decode_raw(msg)
         if frame is not None:
             with self._sidecam_lock:
                 self._latest_sidecam = frame
@@ -879,9 +856,7 @@ class RobotControlNode(Node):
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
         self.get_logger().info(
-            f'파지 목표 수신(참고): idx={msg.object_index} '
-            f'x={msg.target_x:.1f} y={msg.target_y:.1f} '
-            f'(ACT visuomotor 추론 사용, 좌표는 직접 미사용)')
+            f'파지 목표 수신: idx={msg.object_index} (ACT visuomotor 추론)')
         self._try_start_command(RobotState.ACT_GRASPING, self._execute_act_grasp)
 
     def _rail_cmd_callback(self, msg: Int32):
@@ -994,7 +969,6 @@ class RobotControlNode(Node):
             # 그리퍼는 물체를 쥐어 목표(GRIPPER_CLOSE)에 도달 못 하므로 대기 대상에서 제외 — 안 하면 매 회 10s 풀타임아웃.
             self._wait_motion_done(_arm_only(p1_pose))
 
-            self._act_done_pub.publish(Bool(data=True))
             self._grasp_done_pub.publish(Bool(data=True))
 
             self._set_state_if_current(RobotState.IDLE, gen)
@@ -1140,7 +1114,6 @@ class RobotControlNode(Node):
             total_time = time.time() - start
             self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s | 청크 수={chunk_count}')
 
-            self._act_done_pub.publish(Bool(data=True))
             self._grasp_done_pub.publish(Bool(data=True))
 
             self._set_state_if_current(RobotState.IDLE, gen)
@@ -1758,7 +1731,6 @@ class RobotControlNode(Node):
 
     def _teleop_loop(self):
         dt = 1.0 / 50.0
-        sim_angle = 0.0
 
         while self._teleop_running and rclpy.ok():
             if self._should_abort():   # STOP/ESTOP → 루프 종료 (RESET 후 급작동 방지) (#1)
@@ -1772,7 +1744,7 @@ class RobotControlNode(Node):
                     with self._dxl_io_lock:
                         action = self._leader.get_action()
                     
-                    if hasattr(self, '_teleop_offsets') and self._teleop_offsets:
+                    if self._teleop_offsets:
                         action = dict(action)
                         for joint, offset in self._teleop_offsets.items():
                             key = f"{joint}.pos"
@@ -1788,17 +1760,6 @@ class RobotControlNode(Node):
                         self._follower.bus.port_handler.is_using = False
                     if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
                         self._leader.bus.port_handler.is_using = False
-            else:
-                sim_angle += 0.05
-                sim_pose = {
-                    'shoulder_pan': 2048 + int(500 * math.sin(sim_angle)),
-                    'shoulder_lift': 1800 + int(300 * math.cos(sim_angle)),
-                    'elbow_flex': 1200 + int(200 * math.sin(sim_angle * 1.5)),
-                    'wrist_flex': 2048,
-                    'wrist_roll': 2048,
-                    'gripper': GRIPPER_OPEN if math.sin(sim_angle * 0.5) > 0 else GRIPPER_CLOSE,
-                }
-                self._write_raw_position(sim_pose)
 
             elapsed = time.time() - start_time
             sleep_time = dt - elapsed

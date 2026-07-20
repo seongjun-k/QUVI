@@ -18,7 +18,6 @@ TOPIC_ROBOT_GRASP_CMD = '/robot/grasp_command'
 TOPIC_ROBOT_RESET_CMD = '/robot/reset_command'
 
 TOPIC_ROBOT_STATUS = '/robot/status'
-TOPIC_ROBOT_ACT_DONE = '/robot/act_done'
 TOPIC_ROBOT_GRASP_DONE = '/robot/grasp_done'
 TOPIC_ROBOT_RELEASE_DONE = '/robot/release_done'
 TOPIC_ROBOT_HOME_DONE = '/robot/home_done'

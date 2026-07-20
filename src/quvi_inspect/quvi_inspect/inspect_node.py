@@ -28,7 +28,7 @@ from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
-from quvi_robot_control.utils import decode_compressed, decode_raw, BinaryCache, encode_bgr
+from quvi_robot_control.utils import decode_compressed, BinaryCache, encode_bgr
 from quvi_robot_control import topics
 from quvi_inspect.ml_preprocess import preprocess_for_ml
 
@@ -52,14 +52,9 @@ class InspectNode(Node):
         self._init_anomaly()
 
         # ─── ROS 통신 ───
-        if self._use_compressed:
-            self._img_sub = self.create_subscription(
-                CompressedImage, self._camera_topic,
-                self._image_callback, 10)
-        else:
-            self._img_sub = self.create_subscription(
-                Image, self._camera_topic,
-                self._image_callback_raw, 10)
+        self._img_sub = self.create_subscription(
+            CompressedImage, self._camera_topic,
+            self._image_callback, 10)
 
         self._turntable_done_sub = self.create_subscription(
             Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE,
@@ -138,7 +133,6 @@ class InspectNode(Node):
         """모든 파라미터를 선언하고 로컬 멤버 변수로 로드합니다."""
         params = [
             ('camera_topic',            '/camera2/image_raw/compressed',    '_camera_topic'),
-            ('use_compressed',          True,                               '_use_compressed'),
             ('reference_image_dir',     '/workspace/data/reference_images',  '_ref_dir'),
             # ─── 표면 특징 분석 임계값 ───
             ('solidity_min',            0.85,                               '_sol_min'),
@@ -155,7 +149,6 @@ class InspectNode(Node):
             ('capture_settle_sec',      1.5,                                '_capture_settle'),
             # 한 바퀴 캡처 ≈ 20s(각도당 ~5s) + LED 안정화 5s + 여유 — 12s는 270° 캡처 전에 판정을 강행했다
             ('inspection_finalize_sec', 45.0,                               '_finalize_sec'),
-            ('roi_margin',              20,                                 '_roi_margin'),
             ('gaussian_blur_ksize',     5,                                  '_blur_k'),
             ('binary_threshold',        127,                                '_bin_thresh'),
             ('alignment_enabled',       True,                               '_align_enabled'),
@@ -266,12 +259,6 @@ class InspectNode(Node):
     # ─────────────────────────────────────────────
     def _image_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
-        if frame is not None:
-            # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10) → 동시 -1
-            self._latest_frame = cv2.flip(frame, -1)
-
-    def _image_callback_raw(self, msg: Image):
-        frame = decode_raw(msg)
         if frame is not None:
             # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10) → 동시 -1
             self._latest_frame = cv2.flip(frame, -1)

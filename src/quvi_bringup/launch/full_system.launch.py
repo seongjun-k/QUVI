@@ -145,10 +145,8 @@ def generate_launch_description():
             'use_act': LaunchConfiguration('use_act'),
             'dxl_port': LaunchConfiguration('dxl_port'),
             'leader_dxl_port': LaunchConfiguration('leader_dxl_port'),
-            'dxl_baudrate': 1000000,
             'act_device': 'cpu',
             'sidecam_topic': '/camera1/image_raw/compressed',
-            'use_compressed': True,
         }],
         output='screen',
     )
@@ -160,7 +158,6 @@ def generate_launch_description():
         name='main_orchestrator_node',
         parameters=[{
             'use_act': LaunchConfiguration('use_act'),
-            'target_z': 15.0,
             # 검사 settle 2.0s 캡처와 다음 회전 명령 레이스 방지 (계획서 Phase 2 페이싱)
             'step_delay_sec': 3.0,
             'loop_rate_hz': 10.0,

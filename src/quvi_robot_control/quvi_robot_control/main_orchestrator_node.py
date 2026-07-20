@@ -63,7 +63,6 @@ class MainOrchestratorNode(Node):
 
         # ─── 파라미터 선언 ───
         self.declare_parameter('use_act', False)
-        self.declare_parameter('target_z', 15.0)
         self.declare_parameter('step_delay_sec', 2.0)
         self.declare_parameter('loop_rate_hz', 10.0)
         self.declare_parameter('grasp_timeout_sec', 20.0)
@@ -78,7 +77,6 @@ class MainOrchestratorNode(Node):
 
         # ─── 파라미터 로드 ───
         self._use_act = self.get_parameter('use_act').value
-        self._target_z = self.get_parameter('target_z').value
         self._step_delay = self.get_parameter('step_delay_sec').value
         self._loop_rate = self.get_parameter('loop_rate_hz').value
         self._grasp_timeout = self.get_parameter('grasp_timeout_sec').value
@@ -94,7 +92,6 @@ class MainOrchestratorNode(Node):
         self._error_msg = ""
 
         # 작업 대상 객체 관련 데이터
-        self._current_object_idx = 0
         self._total_objects = 0
         self._processed_count = 0
         self._pass_count = 0
@@ -178,7 +175,6 @@ class MainOrchestratorNode(Node):
         self.create_subscription(MotorStatus, topics.TOPIC_MOTOR_STATUS, self._motor_status_cb, 10)
 
         # 로봇 피드백 완료 토픽 구독
-        self.create_subscription(Bool, topics.TOPIC_ROBOT_ACT_DONE, self._robot_act_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_GRASP_DONE, self._robot_grasp_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_RELEASE_DONE, self._robot_release_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_ROBOT_HOME_DONE, self._robot_home_done_cb, 10)
@@ -289,10 +285,6 @@ class MainOrchestratorNode(Node):
             # 피드백 루프가 발생해 ERROR 로그가 무한 반복된다 (2026-07-08 발견).
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
-
-    def _robot_act_done_cb(self, msg: Bool):
-        if msg.data and self._state == FsmState.GRASPING_WAIT:
-            self._robot_grasp_done = True
 
     def _robot_grasp_done_cb(self, msg: Bool):
         # 파지 완료 전용
@@ -459,14 +451,10 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.GRASPING_TRIGGER:
             self._total_objects += 1
-            self._current_object_idx = 0
-            
+
             goal = GraspGoal()
             goal.header.stamp = self.get_clock().now().to_msg()
             goal.header.frame_id = "camera_sidecam"
-            goal.target_x = 0.0
-            goal.target_y = 0.0
-            goal.target_z = float(self._target_z)
             goal.object_index = 0
 
             self.get_logger().info('로봇 ACT 파지 명령 발행')
@@ -628,7 +616,6 @@ class MainOrchestratorNode(Node):
             if self._robot_release_done:
                 self.get_logger().info('적재 및 그리퍼 해제 완료')
                 self._processed_count += 1
-                self._current_object_idx += 1
                 # 놓은 직후 팔부터 기본 자세로 복귀 — 팔이 분류함 위에 뻗은 채
                 # 레일이 움직이지 않도록 팔 홈 → 레일 베드 순서로 진행한다.
                 self._state = FsmState.HOMING_ARM_TRIGGER
