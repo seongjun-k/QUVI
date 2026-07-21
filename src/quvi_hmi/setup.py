@@ -39,6 +39,7 @@ setup(
     entry_points={
         'console_scripts': [
             'hmi_node = quvi_hmi.hmi_node:main',
+            'demo_controller = quvi_hmi.demo_controller:main',
         ],
     },
 )

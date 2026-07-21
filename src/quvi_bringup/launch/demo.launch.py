@@ -5,11 +5,16 @@
 (docs/demo_dashboard.md 참고). 데모 판단(전체 뷰 패널·안내 모달)은 hmi_node가
 static/demo/robot_overview.mp4 존재 여부로 스스로 한다.
 """
+import os
+
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, ExecuteProcess
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+
+DEMO_BAG_DIR = '/workspace/data/demo_bags'
+ACT_RRD_PATH = os.path.join(DEMO_BAG_DIR, 'act.rrd')
 
 
 def generate_launch_description():
@@ -34,7 +39,22 @@ def generate_launch_description():
         output='screen',
     )
 
-    return LaunchDescription([
-        hmi_port_arg,
-        hmi_node,
-    ])
+    demo_controller = Node(
+        package='quvi_hmi',
+        executable='demo_controller',
+        name='demo_controller',
+        parameters=[{'bag_dir': DEMO_BAG_DIR}],
+        output='screen',
+    )
+
+    actions = [hmi_port_arg, hmi_node, demo_controller]
+
+    # act.rrd 가 있을 때만 rerun 웹 뷰어로 재서빙 (없으면 조용히 생략 — 평시 무영향)
+    if os.path.exists(ACT_RRD_PATH):
+        actions.append(ExecuteProcess(
+            cmd=['rerun', '--serve-web', ACT_RRD_PATH,
+                 '--web-viewer-port', '9090', '--ws-server-port', '9877'],
+            output='screen',
+        ))
+
+    return LaunchDescription(actions)
