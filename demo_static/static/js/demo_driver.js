@@ -85,7 +85,7 @@
     let timers = [];
     let currentState = 'IDLE';
     let errorMessage = '';
-    let joints = J_HOME, rail = RAIL.HOME, turn = 0, led = false;
+    let joints = J_HOME, rail = RAIL.HOME, turn = 0, led = false, teleopActive = false;
 
     function statsPayload() {
         const total = stats.passed + stats.failed;
@@ -99,7 +99,7 @@
             pass_count: stats.passed,
             fail_count: stats.failed,
             grasp_ready: true, inspect_ready: true, motor_ready: true,
-            teleop_active: false,
+            teleop_active: teleopActive,
             error_message: errorMessage,
             joint_positions: joints,
             rail_position: rail,
@@ -115,6 +115,7 @@
             if (partial.rail !== undefined) rail = partial.rail;
             if (partial.turn !== undefined) turn = partial.turn;
             if (partial.led !== undefined) led = partial.led;
+            if (partial.teleop !== undefined) teleopActive = partial.teleop;
             if (partial.error !== undefined) errorMessage = partial.error;
         }
         fire('status_update', { status: status(), stats: statsPayload(), latest_inspection: latest });
@@ -240,6 +241,46 @@
         if (u === '/api/status') return jsonResponse(status());
         if (u === '/api/inspection/history') return jsonResponse(history);
         if (u === '/api/inspection/stats') return jsonResponse(statsPayload());
+
+        // ─── 수동 제어 (데모에서 실제 반영) ───
+        if (u === '/api/rail/move' || u === '/api/turntable/move') {
+            let body = {};
+            try { body = JSON.parse((opts && opts.body) || '{}'); } catch (e) { /* 무시 */ }
+            if (u === '/api/rail/move') emit({ rail: Number(body.mm) || 0 });
+            else emit({ turn: Number(body.angle) || 0 });
+            return jsonResponse({ ok: true });
+        }
+        if (u === '/api/led/on' || u === '/api/led/off') {
+            const on = u.endsWith('/on');
+            emit({ led: on });
+            return jsonResponse({ ok: true, led: on });
+        }
+
+        // ─── 텔레옵: 활성화하면 녹화 영상 재생, 끝나면 자동 OFF ───
+        if (u === '/api/teleop/on' || u === '/api/teleop/off') {
+            const on = u.endsWith('/on');
+            const tv = document.getElementById('teleopVideo');
+            if (tv) {
+                if (on) {
+                    tv.src = './assets/teleop.mp4';
+                    tv.loop = false;
+                    tv.play().catch(() => {});
+                    tv.onended = () => {
+                        const tog = document.getElementById('teleopToggle');
+                        if (tog) tog.checked = false;
+                        window.fetch('/api/teleop/off', { method: 'POST' });
+                        if (typeof setTeleopBadge === 'function') setTeleopBadge('off');
+                    };
+                } else {
+                    tv.onended = null;
+                    tv.src = './assets/sidecam.mp4';
+                    tv.loop = true;
+                    tv.play().catch(() => {});
+                }
+            }
+            emit({ teleop: on });
+            return jsonResponse({ ok: true, teleop: on });
+        }
 
         toast('데모 모드 — 실기에서만 동작합니다');
         return jsonResponse({ ok: true, result: 'demo' });
