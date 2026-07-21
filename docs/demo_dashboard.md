@@ -14,12 +14,16 @@
 # 1. 영상 배치 (세로 촬영 mp4)
 cp <촬영본>.mp4 src/quvi_hmi/quvi_hmi/static/demo/robot_overview.mp4
 
-# 2. 빌드 — static/demo/ 가 처음 생긴 경우에만 필요 (install 심링크 생성)
+# 2. 빌드 — static/demo/ 나 demo.launch.py 가 처음 생긴 경우에만 필요
 ./build.sh
 
-# 3. 실행 후 http://localhost:5000 접속
-./run.sh
+# 3. 데모 실행(UI 전용) 후 http://localhost:5000 접속
+./demo.sh
 ```
+
+`demo.sh` → `demo.launch.py` 는 **hmi_node만** 기동한다. 로봇 구동 계열(robot_control,
+orchestrator, micro-ROS, vision, inspect)은 띄우지 않는다 — 카메라 패널은 No Signal이
+정상이고, 추후 bag 재생이 해당 토픽을 공급한다. 실기 전체 기동은 기존 `./run.sh`.
 
 확인 항목:
 
@@ -36,6 +40,9 @@ cp <촬영본>.mp4 src/quvi_hmi/quvi_hmi/static/demo/robot_overview.mp4
 
 ## 남은 작업 (데모 완성까지)
 
-1. 실기 원테이크: 폰 **세로** 촬영 + `ros2 bag record`(카메라·`/hmi/status` 등 대시보드 구독 토픽) + rerun `.rrd` 저장 — 같은 런을 동시에 기록
-2. 데모 실행 스크립트: `ros2 bag play --loop` + rerun rrd 재서빙(설치 버전의 CLI 옵션 확인 필요) + hmi_node
-3. 촬영본으로 `robot_overview.mp4` 교체
+1. 실기 테이크 2개 녹화: **양품 1사이클 + 불량품 1사이클** 각각 `ros2 bag record`
+   (카메라·`/hmi/status` 등 대시보드 구독 토픽) + rerun `.rrd` 저장 — 같은 런을 동시에 기록
+2. 데모 컨트롤러: HMI "▶ 시작" 토픽 구독 → 누를 때마다 PASS/FAIL bag 을 교대로
+   `ros2 bag play` (재생 중 재클릭 무시). demo.launch.py 에 추가
+3. rerun rrd 재서빙(설치 버전의 CLI 옵션 확인 필요)을 demo.launch.py 에 추가
+4. 폰 **세로** 촬영본(양품+불량 두 사이클 이어붙인 한 편)으로 `robot_overview.mp4` 교체
