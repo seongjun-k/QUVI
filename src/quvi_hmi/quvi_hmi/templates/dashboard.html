@@ -4,48 +4,65 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>QUVI — Quality Vision Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/dashboard.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
 </head>
 <body>
 
+<!-- ═══════════════════════════════════════════════
+     파일 구조 안내
+     [고정 셸 — 수정 빈도 낮음] 사이드바 내비게이션, 헤더
+     [콘텐츠 — 수정 빈도 높음] 탭 1 대시보드 / 탭 2 텔레옵 / 탭 3 시스템 상태 / 탭 4 검사 상세
+     · 탭 추가 시: 사이드바 nav-item + tab-pane 쌍으로 추가 (dashboard.js switchTab 참조)
+     · 스크립트 로직은 /static/js/dashboard.js (상단 상수 구획부터 볼 것)
+     ═══════════════════════════════════════════════ -->
+
 <!-- ═══ 전체 컨테이너 ═══ -->
 <div class="app-container">
 
+    <!-- [고정 셸] 수정 빈도 낮음 -->
     <!-- 사이드바 네비게이션 -->
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar">
         <div class="logo">QUVI<span>Quality Vision</span></div>
         <nav class="nav-menu">
-            <a href="#" id="menu-dashboard" class="nav-item active" onclick="switchTab('dashboard')">
+            <a href="#" id="menu-dashboard" class="nav-item active" onclick="switchTab('dashboard')" title="대시보드">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <rect x="3" y="3" width="7" height="9" rx="1"/>
                     <rect x="14" y="3" width="7" height="5" rx="1"/>
                     <rect x="14" y="12" width="7" height="9" rx="1"/>
                     <rect x="3" y="16" width="7" height="5" rx="1"/>
                 </svg>
-                대시보드
+                <span class="nav-item-label">대시보드</span>
             </a>
-            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')">
+            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')" title="리더 암 조종 (Teleop)">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2a10 10 0 0 0-10 10c0 5.523 4.477 10 10 10s10-4.477 10-10A10 10 0 0 0 12 2zm1 14h-2v-6h2v6zm0-8h-2V6h2v2z"/>
                 </svg>
-                리더 암 조종 (Teleop)
+                <span class="nav-item-label">리더 암 조종 (Teleop)</span>
             </a>
-            <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')">
+            <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')" title="시스템 상태">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
                     <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
                     <line x1="12" y1="22.08" x2="12" y2="12"/>
                 </svg>
-                시스템 상태
+                <span class="nav-item-label">시스템 상태</span>
             </a>
-            <a href="#" id="menu-inspection" class="nav-item" onclick="switchTab('inspection')">
+            <a href="#" id="menu-inspection" class="nav-item" onclick="switchTab('inspection')" title="검사 상세 내역">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M2 12C2 6.48 6.48 2 12 2s10 4.48 10 10-4.48 10-10 10S2 17.52 2 12zm10 6c3.31 0 6-2.69 6-6s-2.69-6-6-6-6 2.69-6 6 2.69 6 6 6z"/>
                 </svg>
-                검사 상세 내역
+                <span class="nav-item-label">검사 상세 내역</span>
             </a>
         </nav>
+        <button type="button" id="sidebarToggle" class="sidebar-toggle" onclick="toggleSidebar()" title="사이드바 접기/펼치기">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="15 18 9 12 15 6"/>
+            </svg>
+        </button>
     </aside>
 
     <!-- 메인 컨텐츠 영역 -->
@@ -90,15 +107,6 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
                     리셋
                 </button>
-                <div class="control-divider"></div>
-                <button class="btn" onclick="triggerDetection()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v2m0 18v2m-9-11h2m18 0h2"/></svg>
-                    수동 탐지
-                </button>
-                <button class="btn" onclick="triggerInspection()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
-                    수동 검사
-                </button>
             </div>
 
             <!-- 메인 그리드 -->
@@ -130,22 +138,24 @@
                 <!-- 카메라 스트림 -->
                 <div class="camera-grid">
                     <div class="camera-feed">
-                        <img src="/stream/camera1" alt="핸드캠" loading="lazy">
-                        <div class="camera-label">📷 핸드캠 — Zone 1 (Pickup)</div>
-                        <div class="camera-status" id="cam1Status"></div>
+                        <img src="/stream/sidecam" alt="사이드캠" loading="lazy">
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>사이드캠 — Zone 1 (Pickup)</div>
+                        <div class="camera-status" id="sidecamStatus"></div>
                     </div>
                     <div class="camera-feed">
                         <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
-                        <div class="camera-label">📷 고정캠 — Zone 2 (Inspection)</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>검사캠 — Zone 2 (Inspection)</div>
                         <div class="camera-status" id="cam2Status"></div>
                     </div>
                     <div class="camera-feed">
-                        <img src="/stream/yolo_debug" alt="YOLO 탐지" loading="lazy">
-                        <div class="camera-label">🔍 YOLO 탐지 결과</div>
-                    </div>
-                    <div class="camera-feed">
                         <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
-                        <div class="camera-label">🔬 검사 판정 결과</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 판정 결과</div>
+                    </div>
+                    <!-- ACT 추론 실시간 모니터링(rerun 웹 뷰어) — 발표용, robot_control_node의 rerun_enable=true일 때만 데이터 표시 -->
+                    <div class="camera-feed" id="rerunPanelBody" style="grid-column:1 / -1;">
+                        <iframe id="rerunViewerFrame" src="about:blank" style="width:100%;min-height:480px;border:0;" title="rerun 뷰어"></iframe>
+                        <div class="camera-label">ACT 추론 모니터링 (rerun) <button id="rerunToggleBtn" type="button" style="cursor:pointer;margin-left:8px;">접기</button></div>
+                        <div id="rerunFallbackMsg" style="display:none;position:absolute;top:45%;width:100%;text-align:center;color:var(--text-secondary,#888);font-size:13px;">rerun 뷰어 연결 실패 — robot_control_node의 rerun_enable 파라미터가 켜져 있는지 확인하세요.</div>
                     </div>
                 </div>
 
@@ -187,13 +197,6 @@
                                     <div class="metric-value" id="mTime">—</div>
                                 </div>
                             </div>
-
-                            <div class="ssim-bar-container" style="margin-top:16px;">
-                                <div style="font-size:11px;color:var(--text-secondary);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">
-                                    SSIM (4방향) — 임계값 0.85
-                                </div>
-                                <div id="ssimBars"></div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -206,10 +209,6 @@
                         </div>
                         <div class="card-body">
                             <div class="subsystem-grid">
-                                <div class="subsystem-item">
-                                    <div class="subsystem-dot" id="subYolo"></div>
-                                    <span class="subsystem-name">YOLO 탐지</span>
-                                </div>
                                 <div class="subsystem-item">
                                     <div class="subsystem-dot" id="subGrasp"></div>
                                     <span class="subsystem-name">ACT 파지</span>
@@ -267,7 +266,6 @@
                                     <th>#</th>
                                     <th>시간</th>
                                     <th>판정</th>
-                                    <th>SSIM (평균)</th>
                                     <th>Solidity</th>
                                     <th>구멍</th>
                                     <th>텍스처</th>
@@ -277,7 +275,7 @@
                             </thead>
                             <tbody id="historyBody">
                                 <tr>
-                                    <td colspan="9" style="text-align:center;color:var(--text-muted);padding:24px;">
+                                    <td colspan="8" style="text-align:center;color:var(--text-muted);padding:24px;">
                                         검사 기록이 없습니다
                                     </td>
                                 </tr>
@@ -297,6 +295,7 @@
                 </div>
 
                 <div class="teleop-grid">
+                    <!-- 제어 카드 -->
                     <div class="card teleop-control-card">
                         <div class="card-header">
                             <span class="card-title">텔레옵 조작 패널</span>
@@ -316,25 +315,30 @@
                                 </label>
                             </div>
 
+                            <button class="btn btn-estop" style="width:100%;margin-top:12px;padding:12px 0;font-size:15px;" onclick="sendCommand('estop')">
+                                ⊘ E-STOP (비상 정지)
+                            </button>
+
                             <div class="warning-box">
-                                <strong>⚠️ 안전 조작 및 주의사항</strong>
+                                <strong><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>안전 조작 및 주의사항</strong>
                                 <ul>
                                     <li><strong>충돌 조심</strong>: 팔로워 로봇이 리더 로봇의 급격한 동작을 그대로 따라 하므로, 조작 반경 내 장애물을 사전에 확인해 주세요.</li>
-                                    <li><strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 화면 상단 또는 컨트롤러의 <strong>E-STOP</strong> 버튼을 클릭하십시오.</li>
+                                    <li><strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 위의 빨간 E-STOP 버튼(또는 화면 상단 E-STOP)을 클릭하십시오.</li>
                                     <li><strong>안전 종료</strong>: 텔레옵 비활성화 시 리더 암의 토크가 다시 강하게 켜지며 고정됩니다. 툭 떨어지지 않게 손으로 가볍게 잡은 채 OFF 버튼을 눌러주십시오.</li>
                                 </ul>
                             </div>
                         </div>
                     </div>
 
+                    <!-- 스트림 모니터링 카드 -->
                     <div class="card teleop-video-card">
                         <div class="card-header">
-                            <span class="card-title">Zone 1 핸드캠 스트림</span>
+                            <span class="card-title">Zone 1 사이드캠 스트림</span>
                         </div>
                         <div class="card-body" style="padding:16px;">
                             <div class="camera-feed main-teleop-feed">
-                                <img src="/stream/camera1" alt="핸드캠" loading="lazy">
-                                <div class="camera-label">📷 조종용 실시간 핸드캠 피드</div>
+                                <img src="/stream/sidecam" alt="사이드캠" loading="lazy">
+                                <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>조종용 실시간 사이드캠 피드</div>
                             </div>
                         </div>
                     </div>
@@ -345,15 +349,17 @@
         <!-- ═══ 탭 3: 시스템 상태 뷰 ═══ -->
         <div id="tab-status" class="tab-pane">
             <div class="status-tab-container">
+                <!-- 상단 카드 그리드 -->
                 <div class="status-grid">
                     <!-- 로봇암 관절 상태 카드 -->
                     <div class="card status-card">
                         <div class="card-header">
-                            <span class="card-title">🤖 로봇암 관절 각도 (6축)</span>
+                            <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>로봇암 관절 각도 (6축)</span>
                             <span class="card-subtitle-addon" id="jointSyncTime">정상</span>
                         </div>
                         <div class="card-body status-card-body">
                             <div class="joint-list">
+                                <!-- Joint 1 (Base) -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 1 (Base)</span>
@@ -365,6 +371,7 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+                                <!-- Joint 2 (Shoulder) -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 2 (Shoulder)</span>
@@ -376,6 +383,7 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+                                <!-- Joint 3 (Elbow) -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 3 (Elbow)</span>
@@ -387,6 +395,7 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+                                <!-- Joint 4 (Wrist Pitch) -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 4 (Wrist Pitch)</span>
@@ -398,6 +407,7 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+                                <!-- Joint 5 (Wrist Roll) -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 5 (Wrist Roll)</span>
@@ -409,6 +419,8 @@
                                         <div class="joint-limit-label right">+180°</div>
                                     </div>
                                 </div>
+                                <!-- Joint 6 (Gripper) -->
+                                <!-- 그리퍼 라벨 1800/2300 ticks 는 robot_control_node.py GRIPPER_CLOSE/OPEN 과 일치 -->
                                 <div class="joint-item">
                                     <div class="joint-info">
                                         <span class="joint-name">Joint 6 (Gripper)</span>
@@ -424,55 +436,63 @@
                         </div>
                     </div>
 
-                    <!-- 오른쪽: 레일 + 턴테이블 -->
+                    <!-- 오른쪽 영역: 레일 + 턴테이블 -->
                     <div class="status-right-column">
+                        <!-- 리니어 레일 상태 카드 -->
                         <div class="card status-card">
                             <div class="card-header">
-                                <span class="card-title">🚊 리니어 레일 (Linear Rail)</span>
+                                <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" y1="18" x2="22" y2="18"/><rect x="7" y="8" width="10" height="8" rx="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="19" r="1"/></svg>리니어 레일 (Linear Rail)</span>
                             </div>
                             <div class="card-body">
                                 <div class="rail-track-container">
+                                    <!-- 레일 트랙 선 -->
                                     <div class="rail-track">
                                         <div class="rail-carriage" id="railCarriage">
-                                            <div class="carriage-icon">🤖</div>
+                                            <div class="carriage-icon">
+                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4a2 2 0 0 0 1-1.73V8z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                                            </div>
                                         </div>
                                     </div>
+                                    <!-- 구역 표시핀들 -->
+                                    <!-- SSoT: 스테이션 이름·mm 값은 hmi_node.py RAIL_STATION_MAP 과 일치해야 한다 (JS가 rail_station_map 수신 시 라벨을 동적 갱신) -->
                                     <div class="rail-stations">
-                                        <div class="rail-station" id="station_bed">
-                                            <span class="station-dot"></span>
-                                            <span class="station-name">BED (D)</span>
-                                            <span class="station-step">0</span>
-                                        </div>
                                         <div class="rail-station" id="station_inspect">
                                             <span class="station-dot"></span>
                                             <span class="station-name">INSPECT (A)</span>
-                                            <span class="station-step">—</span>
+                                            <span class="station-step">12.5 mm</span>
                                         </div>
                                         <div class="rail-station" id="station_pass">
                                             <span class="station-dot"></span>
                                             <span class="station-name">PASS (B)</span>
-                                            <span class="station-step">—</span>
+                                            <span class="station-step">25 mm</span>
                                         </div>
                                         <div class="rail-station" id="station_fail">
                                             <span class="station-dot"></span>
                                             <span class="station-name">FAIL (C)</span>
-                                            <span class="station-step">—</span>
+                                            <span class="station-step">125 mm</span>
+                                        </div>
+                                        <div class="rail-station" id="station_bed">
+                                            <span class="station-dot"></span>
+                                            <span class="station-name">BED (D)</span>
+                                            <span class="station-step">381.25 mm</span>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="rail-info-box" style="margin-top:16px;">
                                     <span class="info-label">현재 목표 레일 위치:</span>
-                                    <span class="info-value" id="railStepsText">BED (0 steps)</span>
+                                    <span class="info-value" id="railStepsText">BED (381.25 mm)</span>
                                 </div>
                             </div>
                         </div>
 
+                        <!-- 턴테이블 상태 카드 -->
                         <div class="card status-card">
                             <div class="card-header">
-                                <span class="card-title">🔄 턴테이블 회전 (Turntable)</span>
+                                <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>턴테이블 회전 (Turntable)</span>
                             </div>
                             <div class="card-body turntable-card-body">
                                 <div class="turntable-visual">
+                                    <!-- 원형 나침반/다이얼 디자인 -->
                                     <div class="turntable-dial" id="turntableDial">
                                         <div class="dial-arrow">▲</div>
                                         <div class="dial-ticks">
@@ -492,12 +512,246 @@
                     </div>
                 </div>
 
-                <!-- FSM 순서도 -->
-                <div class="card status-card" style="margin-top:16px;">
+                <!-- 장치 설정 + ACT 모델 선택 (같은 행에 나란히 — 세로 공간 절약) -->
+                <div style="display:flex; gap:16px; margin-top:16px; flex-wrap:wrap;">
+
+                <!-- 장치 설정 카드 (카메라/로봇/ESP USB) -->
+                <div class="card status-card" style="flex:1 1 360px; margin-top:0;" id="device-config-panel">
                     <div class="card-header">
-                        <span class="card-title">⛓️ 시스템 상태 시퀀스 (FSM Flow)</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2v6M15 2v6M6 8h12l-1 5a5 5 0 0 1-10 0z"/><line x1="12" y1="17" x2="12" y2="22"/></svg>장치 설정 (USB)</span>
+                        <span style="font-size:11px;color:var(--text-muted);">저장 시 시스템 재시작 필요</span>
                     </div>
                     <div class="card-body">
+                        <div id="deviceRolesGrid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;">
+                            <div style="color:var(--text-muted);font-size:12px;">장치 목록 로딩 중...</div>
+                        </div>
+                        <div style="margin-top:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <button class="btn manual-exec-btn" id="deviceApplyBtn" onclick="applyDeviceConfig()">저장 및 재시작</button>
+                            <button class="btn" onclick="refreshDevices()">새로고침</button>
+                            <span id="deviceMsg" style="font-size:11px;color:#7bd;"></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ACT 모델 선택 카드 (장치 설정 옆) -->
+                <div class="card status-card" style="flex:1 1 360px; margin-top:0;" id="act-model-panel">
+                    <div class="card-header">
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>ACT 모델 선택</span>
+                        <span style="font-size:11px;color:var(--text-muted);">IDLE 상태에서만 적용</span>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:12px; align-items:end;">
+                            <!-- 1칸: 모델 선택 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">모델</div>
+                                <select id="actModelSelect" style="width:100%;padding:6px;box-sizing:border-box;">
+                                    <option value="">로딩 중...</option>
+                                </select>
+                            </div>
+                            <!-- 2칸: 로드 버튼 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">적용</div>
+                                <button id="actModelLoadBtn" class="btn manual-exec-btn" style="width:100%;" onclick="loadActModel()">로드</button>
+                            </div>
+                            <!-- 3칸: 현재 모델 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">현재 모델</div>
+                                <div id="actCurrentModel" style="font-size:13px;font-weight:600;">-</div>
+                            </div>
+                            <!-- 4칸: 상태 / ACT 사용 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;">상태</div>
+                                <div style="font-size:13px;">
+                                    <span id="actModelState">-</span>
+                                    <span style="color:var(--text-muted);"> · ACT </span>
+                                    <span id="actUseState">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="actModelMsg" style="margin-top:8px;font-size:11px;color:#7bd;"></div>
+                    </div>
+                </div>
+
+                </div><!-- /장치+ACT 행 -->
+
+                <!-- 수동 제어 패널 카드 -->
+                <div class="card status-card" style="margin-top:16px;" id="manual-control-panel">
+                    <div class="card-header">
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3"/><line x1="12" y1="10" x2="12" y2="19"/><line x1="7" y1="19" x2="17" y2="19"/></svg>수동 제어 패널</span>
+                        <span style="font-size:11px;color:var(--text-muted);">IDLE / FINISHED 상태에서만 동작</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="manual-control-grid">
+
+                            <!-- 레일 이동 -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                    리니어 레일
+                                </div>
+                                <div class="manual-ctrl-hint" id="railCurrentDisp">현재: — mm</div>
+                                <div class="manual-ctrl-row">
+                                    <input type="number" id="railMmInput" class="manual-input"
+                                        min="0" max="420" step="0.5" placeholder="0 ~ 420 mm"
+                                        oninput="clampInput(this, 0, 420)">
+                                    <span class="manual-input-unit">mm</span>
+                                    <button class="btn manual-exec-btn" id="railExecBtn" onclick="execRailMove()">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        이동
+                                    </button>
+                                </div>
+                                <!-- SSoT: hmi_node.py RAIL_STATION_MAP — data-mm 은 status.rail_station_map 수신 시 dashboard.js 가 동적 갱신한다 -->
+                                <div class="manual-preset-row">
+                                    <button class="preset-chip" onclick="setRailPreset(0)">홈(0)</button>
+                                    <button class="preset-chip" id="railPreset_0" data-mm="12.5" onclick="setRailPreset(this.dataset.mm)">INSPECT</button>
+                                    <button class="preset-chip" id="railPreset_1" data-mm="25" onclick="setRailPreset(this.dataset.mm)">PASS</button>
+                                    <button class="preset-chip" id="railPreset_2" data-mm="125" onclick="setRailPreset(this.dataset.mm)">FAIL</button>
+                                    <button class="preset-chip" id="railPreset_3" data-mm="381.25" onclick="setRailPreset(this.dataset.mm)">BED</button>
+                                </div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- 턴테이블 회전 -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                                    턴테이블
+                                </div>
+                                <div class="manual-ctrl-hint" id="turnCurrentDisp">현재: 0°</div>
+                                <div class="manual-ctrl-row">
+                                    <input type="number" id="turnAngleInput" class="manual-input"
+                                        min="0" max="360" step="1" placeholder="0 ~ 360°"
+                                        oninput="clampInput(this, 0, 360)">
+                                    <span class="manual-input-unit">°</span>
+                                    <button class="btn manual-exec-btn" id="turnExecBtn" onclick="execTurnMove()">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        회전
+                                    </button>
+                                </div>
+                                <div class="manual-preset-row">
+                                    <button class="preset-chip" onclick="setTurnPreset(0)">0°</button>
+                                    <button class="preset-chip" onclick="setTurnPreset(90)">90°</button>
+                                    <button class="preset-chip" onclick="setTurnPreset(180)">180°</button>
+                                    <button class="preset-chip" onclick="setTurnPreset(270)">270°</button>
+                                </div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- LED 토글 -->
+                            <div class="manual-control-section manual-led-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                                    턴테이블 LED
+                                </div>
+                                <div class="led-toggle-container">
+                                    <div class="led-state-indicator" id="ledIndicator">
+                                        <div class="led-glow" id="ledGlow"></div>
+                                        <span id="ledStateText">OFF</span>
+                                    </div>
+                                    <label class="switch led-switch">
+                                        <input type="checkbox" id="ledToggle" onchange="toggleLed(this.checked)">
+                                        <span class="slider round"></span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- 기준 이미지 캡쳐 -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="3" x2="12" y2="1"/></svg>
+                                    기준 이미지 캡쳐
+                                </div>
+                                <div class="manual-ctrl-hint">정상품을 턴테이블에 올린 후 시작하세요</div>
+                                <div class="manual-ctrl-row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <label style="font-size:11px;color:var(--text-muted);">딜레이(초)</label>
+                                    <input type="number" id="refCaptureDelay" class="manual-input"
+                                        min="0.5" max="10" step="0.5" value="1.5"
+                                        style="width:70px;" oninput="clampInput(this, 0.5, 10)">
+                                    <button class="btn manual-exec-btn" id="refCaptureStartBtn"
+                                            onclick="startRefCapture()"
+                                            style="background:var(--accent-green);">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        캡쳐 시작
+                                    </button>
+                                    <button class="btn manual-exec-btn" id="refCaptureStopBtn"
+                                            onclick="stopRefCapture()"
+                                            style="background:var(--accent-red);">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+                                        중단
+                                    </button>
+                                </div>
+                                <div id="refCaptureStatus" class="manual-ctrl-hint" style="color:var(--text-muted);">대기 중</div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- 데이터셋 촬영 (ML 정상품 수집) -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="12" cy="12" r="4"/><line x1="12" y1="3" x2="12" y2="1"/></svg>
+                                    데이터셋 촬영
+                                </div>
+                                <div class="manual-ctrl-hint">정상품을 턴테이블에 올린 후 시작하세요 (ML 학습용 원본 저장)</div>
+                                <div class="manual-ctrl-row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <label style="font-size:11px;color:var(--text-muted);">안정화(초)</label>
+                                    <input type="number" id="dsCaptureSettle" class="manual-input"
+                                        min="0.5" max="10" step="0.5" value="2.0"
+                                        style="width:70px;" oninput="clampInput(this, 0.5, 10)">
+                                    <label style="font-size:11px;color:var(--text-muted);">반복(바퀴)</label>
+                                    <input type="number" id="dataset_rounds" class="manual-input"
+                                        min="1" max="50" step="1" value="1"
+                                        style="width:70px;" oninput="clampInput(this, 1, 50)">
+                                    <button class="btn manual-exec-btn" id="dsCaptureStartBtn"
+                                            onclick="startDatasetCapture()"
+                                            style="background:var(--accent-green);">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        촬영 시작
+                                    </button>
+                                    <button class="btn manual-exec-btn" id="dsCaptureStopBtn"
+                                            onclick="stopDatasetCapture()"
+                                            style="background:var(--accent-red);">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+                                        중단
+                                    </button>
+                                </div>
+                                <div id="dsCaptureStatus" class="manual-ctrl-hint" style="color:var(--text-muted);">대기 중</div>
+                            </div>
+
+                            <div class="manual-ctrl-divider"></div>
+
+                            <!-- 검사 단독 테스트 (로봇/FSM 없이 검사 사이클만 실행) -->
+                            <div class="manual-control-section">
+                                <div class="manual-ctrl-title">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/></svg>
+                                    검사 단독 테스트
+                                </div>
+                                <div class="manual-ctrl-hint">물체를 턴테이블에 올린 후 시작하세요 (로봇/FSM 없이 검사만 실행)</div>
+                                <div class="manual-ctrl-row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <button class="btn manual-exec-btn" id="btn_inspect_test"
+                                            onclick="startInspectionTest()"
+                                            style="background:var(--accent-green);">
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                                        검사 테스트
+                                    </button>
+                                </div>
+                                <div id="inspectTestStatus" class="manual-ctrl-hint" style="color:var(--text-muted);">대기 중</div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 하단 FSM 순서도 카드 -->
+                <div class="card status-card" style="margin-top:16px;">
+                    <div class="card-header">
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>시스템 상태 시퀀스 (FSM Flow)</span>
+                    </div>
+                    <div class="card-body">
+                        <!-- SSoT: FSM 노드는 main_orchestrator_node.py FsmState 발원 — 변경 시 hmi_node.py FSM_DISPLAY_STATES·dashboard.js FSM_NODES/STAGE_LABELS 와 3파일 동시 수정 -->
                         <div class="fsm-flow-container">
                             <div class="fsm-node" id="fsm_INIT">
                                 <div class="fsm-node-circle">INIT</div>
@@ -507,11 +761,6 @@
                             <div class="fsm-node" id="fsm_IDLE">
                                 <div class="fsm-node-circle">IDLE</div>
                                 <div class="fsm-node-label">대기 중</div>
-                            </div>
-                            <div class="fsm-arrow">➔</div>
-                            <div class="fsm-node" id="fsm_DETECTING">
-                                <div class="fsm-node-circle">DETECT</div>
-                                <div class="fsm-node-label">출력물 탐지</div>
                             </div>
                             <div class="fsm-arrow">➔</div>
                             <div class="fsm-node" id="fsm_GRASPING">
@@ -569,7 +818,7 @@
             <div class="inspection-tab-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">📷 턴테이블 캡쳐 원본 (Live)</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>턴테이블 캡쳐 원본 (Live)</span>
                     </div>
                     <div class="card-body">
                         <div class="camera-feed" style="height: auto;">
@@ -579,7 +828,7 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title">🔬 검사 결과 디버그 뷰</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 결과 디버그 뷰</span>
                     </div>
                     <div class="card-body">
                         <div class="camera-feed" style="height: auto;">
@@ -587,10 +836,9 @@
                         </div>
                     </div>
                 </div>
-
                 <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
-                        <span class="card-title">📝 상세 판정 기준 및 결과</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>상세 판정 기준 및 결과</span>
                         <span id="detailBadge" class="result-badge" style="display:none;">—</span>
                     </div>
                     <div class="card-body">
@@ -602,7 +850,8 @@
                                 <h3 style="color: var(--text-primary); margin-bottom: 8px; font-size: 14px;">불합격 사유 (Fail Reason)</h3>
                                 <div id="detailFailReason" style="color: var(--accent-red); font-weight: bold; background: rgba(248,81,73,0.1); padding: 12px; border-radius: 6px; border: 1px solid rgba(248,81,73,0.2);">—</div>
                             </div>
-
+                            
+                            <!-- 기준값 텍스트는 dashboard.js THRESHOLDS 상수(표시용)와 일치 유지 -->
                             <table class="history-table" style="width: 100%;">
                                 <thead>
                                     <tr>
@@ -622,13 +871,13 @@
                                     <tr>
                                         <td style="text-align: left;">면적 비율 (미출력/수축)</td>
                                         <td id="detAreaRatio">—</td>
-                                        <td>0.90 ~ 1.10</td>
+                                        <td>0.80 ~ 1.50</td>
                                         <td id="detAreaRatioEval">—</td>
                                     </tr>
                                     <tr>
                                         <td style="text-align: left;">구멍 개수 (레이어 분리/파손)</td>
                                         <td id="detHoleCount">—</td>
-                                        <td>0 ~ 2 개</td>
+                                        <td>0 개</td>
                                         <td id="detHoleCountEval">—</td>
                                     </tr>
                                     <tr>
@@ -645,10 +894,6 @@
                                     </tr>
                                 </tbody>
                             </table>
-
-                            <h3 style="color: var(--text-primary); margin-top: 24px; margin-bottom: 12px; font-size: 14px;">외곽선 유사도 (SSIM - 4방향)</h3>
-                            <div id="detailSsimBars" class="ssim-bar-container"></div>
-                            <div style="font-size: 12px; color: var(--text-muted); margin-top: 8px;">* 임계값 0.85 이상 시 정상</div>
                         </div>
                     </div>
                 </div>

@@ -20,10 +20,10 @@
   #include <rcl/error_handling.h>
   #include <rclc/rclc.h>
   #include <rclc/executor.h>
-  #include <std_msgs/msg/float32.h>
   #include <std_msgs/msg/int32.h>
   #include <std_msgs/msg/bool.h>
   #include <quvi_msgs/msg/motor_status.h>
+  #include <rmw_microros/rmw_microros.h>   // 에이전트 생존 확인(ping)용
 #endif
 
 // =============================================================================
@@ -43,15 +43,30 @@ Adafruit_NeoPixel statusLed(1, ONBOARD_LED_PIN, NEO_GRB + NEO_KHZ800);
 // STATE & SAFETY VARIABLES
 // =============================================================================
 volatile bool isEmergencyStopped = false;
-volatile bool isHomingCompleted = false;
+volatile bool isHomingCompleted  = false;
+
+// [fix] vCommTask → vMotorTask 위임용 플래그
+// vMotorTask(Core 0)가 단독으로 homing을 실행해 update() 루프와의
+// 레이스 컨디션을 원천 제거한다.
+volatile bool homingRequested = false;
+volatile bool isHoming        = false;  // homing 진행 중 LED 블링크 간섭 방지
+
+// [fix] vCommTask → vMotorTask 위임용 이동 목표 플래그 (AccelStepper 크로스코어 동시접근 방지)
+// setTargetPosition()은 내부적으로 moveTo()(speed/step 재계산)를 수행해 thread-safe하지 않다.
+// vCommTask는 목표값 계산만 하고, 실제 setTargetPosition() 호출은 vMotorTask(Core 0)가 단독 수행한다.
+volatile bool railTargetPending = false;
+volatile long railPendingTarget = 0;
+volatile bool turnTargetPending = false;
+volatile long turnPendingTarget = 0;
+volatile bool stopAllRequested  = false;   // ESTOP 소프트 정지 — 현재 위치로 목표 재설정
 
 // Color presets for status visualization
-const uint32_t COLOR_OFF    = 0x00000000;
-const uint32_t COLOR_BLUE   = 0x00000064;   // Idle / Safe
-const uint32_t COLOR_YELLOW = 0x00646400;   // Homing in progress
-const uint32_t COLOR_GREEN  = 0x00006400;   // Operation complete / Calibration OK
-const uint32_t COLOR_RED    = 0x00780000;   // Emergency Stop / Error
-const uint32_t COLOR_PURPLE = 0x00500050;   // Connection pending
+const uint32_t COLOR_OFF    = statusLed.Color(0, 0, 0);
+const uint32_t COLOR_BLUE   = statusLed.Color(0, 0, 100);    // Idle / Safe
+const uint32_t COLOR_YELLOW = statusLed.Color(100, 100, 0);  // Homing in progress
+const uint32_t COLOR_GREEN  = statusLed.Color(0, 100, 0);    // Operation complete / Calibration OK
+const uint32_t COLOR_RED    = statusLed.Color(120, 0, 0);    // Emergency Stop / Error
+const uint32_t COLOR_PURPLE = statusLed.Color(80, 0, 80);    // Connection pending
 
 // =============================================================================
 // MICRO-ROS SETUP
@@ -61,10 +76,10 @@ const uint32_t COLOR_PURPLE = 0x00500050;   // Connection pending
   rcl_subscription_t turn_sub;
   rcl_subscription_t turn_led_sub;
   rcl_subscription_t estop_sub;
-  std_msgs__msg__Float32 rail_msg;  // Rail: mm 단위 Float32
-  std_msgs__msg__Int32   turn_msg;
-  std_msgs__msg__Bool    turn_led_msg;
-  std_msgs__msg__Bool    estop_msg;
+  std_msgs__msg__Int32 rail_msg;
+  std_msgs__msg__Int32 turn_msg;
+  std_msgs__msg__Bool turn_led_msg;
+  std_msgs__msg__Bool estop_msg;
   rcl_publisher_t rail_done_pub;
   std_msgs__msg__Bool rail_done_msg;
   rcl_publisher_t turn_done_pub;
@@ -76,8 +91,6 @@ const uint32_t COLOR_PURPLE = 0x00500050;   // Connection pending
   rcl_allocator_t allocator;
   rcl_node_t node;
 
-  // done 플래그 보호용 critical section mutex
-  portMUX_TYPE doneMux = portMUX_INITIALIZER_UNLOCKED;
   volatile bool rail_done_pending = false;
   volatile bool turn_done_pending = false;
 
@@ -191,12 +204,42 @@ void vMotorTask(void *pvParameters) {
             continue;
         }
 
+        // [fix] homing 요청을 vMotorTask(Core 0) 단독으로 처리
+        // vCommTask에서 직접 호출하면 update() 루프와 같은 모터 객체에
+        // 동시 접근하는 레이스 컨디션이 발생하므로, 플래그로 위임한다.
+        if (homingRequested) {
+            homingRequested = false;
+            performHomingCalibration();
+            lastAppliedColor = 0xFFFFFFFF; // LED 강제 재적용
+            continue;
+        }
+
+        // [fix] vCommTask가 위임한 이동 목표를 Core 0 단독으로 적용 (stop 우선, pending 무효화)
+        if (stopAllRequested) {
+            stopAllRequested = false;
+            railMotor.setTargetPosition(railMotor.getCurrentPosition());
+            turnMotor.setTargetPosition(turnMotor.getCurrentPosition());
+            railTargetPending = false;
+            turnTargetPending = false;
+        }
+        if (railTargetPending) {
+            railMotor.setTargetPosition(railPendingTarget);
+            railTargetPending = false;
+        }
+        if (turnTargetPending) {
+            turnMotor.setTargetPosition(turnPendingTarget);
+            turnTargetPending = false;
+        }
+
         // Handle step calculations for both motors in parallel
         bool railMoving = railMotor.update();
         bool turnMoving = turnMotor.update();
 
         // Dynamic Status visual feedback
-        if (!isHomingCompleted) {
+        if (isHoming) {
+            // homing 진행 중: LED는 performHomingCalibration() 내부에서 제어
+            // vMotorTask의 블링크 코드가 간섭하지 않도록 건너뜀
+        } else if (!isHomingCompleted) {
             // Blinking yellow if not calibrated
             static unsigned long lastBlink = 0;
             static bool blinkState = false;
@@ -250,6 +293,7 @@ void performHomingCalibration() {
     if (isEmergencyStopped) return;
 
     isHomingCompleted = false;
+    isHoming = true;
     setLedColor(COLOR_YELLOW);
 
     #ifndef USE_MICRO_ROS
@@ -257,7 +301,7 @@ void performHomingCalibration() {
     #endif
 
     // Calibrate linear rail (towards motor on left)
-    railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF);
+    bool railHomed = railMotor.home(RAIL_HOMING_DIR, RAIL_HOME_COARSE_SPD, RAIL_HOME_FINE_SPD, RAIL_HOME_BACKOFF, RAIL_ACCELERATION);
 
     // Restore operating speed & acceleration profiles which were overridden during homing sequence
     railMotor.setMaxSpeed(RAIL_MAX_SPEED);
@@ -265,14 +309,31 @@ void performHomingCalibration() {
     turnMotor.setMaxSpeed(TURN_MAX_SPEED);
     turnMotor.setAcceleration(TURN_ACCELERATION);
 
+    // 호밍 실패(ESTOP/타임아웃) — 완료 처리·rail_done 발행 금지. isHomingCompleted가
+    // false로 남아 이동 명령이 게이트되고, orchestrator는 STARTUP_RAIL_HOME_WAIT에 머문다.
+    if (!railHomed) {
+        isHoming = false;
+        setLedColor(COLOR_RED);
+        #ifndef USE_MICRO_ROS
+            Serial0.println("[ERROR] Homing failed (E-stop or timeout). Rail NOT homed.");
+        #endif
+        return;
+    }
+
     // Calibrate turntable (optional - reset absolute zero position on boot)
     turnMotor.setCurrentPosition(0);
     
     railMotor.enable();
     turnMotor.enable();
 
+    isHoming = false;
     isHomingCompleted = true;
     setLedColor(COLOR_BLUE);
+
+    // homing 완료 후 rail_done 신호 발행 — orchestrator STARTUP_RAIL_HOME_WAIT 해제용
+    #ifdef USE_MICRO_ROS
+        rail_done_pending = true;
+    #endif
 
     #ifndef USE_MICRO_ROS
         Serial0.println("[SUCCESS] Homing complete. Position set to absolute 0.");
@@ -285,45 +346,47 @@ void performHomingCalibration() {
 // TASK 2: COMMUNICATION & COMMAND PARSING (CORE 1)
 // =============================================================================
 #ifdef USE_MICRO_ROS
-// ─── micro-ROS 콜백 ───────────────────────────────────────────────────────────
-
+// micro-ROS Subscriptions callback functions
 void rail_subscription_callback(const void * msin) {
-    const std_msgs__msg__Float32 * msg = (const std_msgs__msg__Float32 *)msin;
+    const std_msgs__msg__Int32 * msg = (const std_msgs__msg__Int32 *)msin;
     if (isEmergencyStopped || !isHomingCompleted) return;
 
-    // mm 단위 수신 → 스텝 변환
-    float target_mm = msg->data;
+    long target_steps = msg->data;
 
-    if (target_mm >= RAIL_MIN_LIMIT_MM && target_mm <= RAIL_MAX_LIMIT_MM) {
-        long target_steps = (long)(target_mm * RAIL_STEPS_PER_MM);
-        railMotor.setTargetPosition(target_steps);
-        taskENTER_CRITICAL(&doneMux);
-        rail_done_pending = true;
-        taskEXIT_CRITICAL(&doneMux);
-    }
+    // Soft Limit: 범위 밖 명령은 조용히 버리면 상위가 done 대기로 행 걸린다.
+    // 리밋으로 클램프해 실행하고 done 을 발행한다 (리밋 값이 물리 안전 경계).
+    long clamped = constrain(target_steps, (long)RAIL_MIN_LIMIT, (long)RAIL_MAX_LIMIT);
+    // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임
+    railPendingTarget = clamped;
+    railTargetPending = true;
+    rail_done_pending = true;
 }
 
 void turn_subscription_callback(const void * msin) {
     const std_msgs__msg__Int32 * msg = (const std_msgs__msg__Int32 *)msin;
     if (isEmergencyStopped || !isHomingCompleted) return;
 
-    // 모든 부동소수점 연산을 double 로 통일
-    double target_angle = (double)msg->data;
-    double currentAngle = (double)turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE;
-    double normCurrent  = fmod(currentAngle, 360.0);
-    if (normCurrent < 0.0) normCurrent += 360.0;
+    double target_angle = msg->data;
+
+    // Shortest-Path Angular Translation algorithm
+    float currentAngle = turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE;
+    double normCurrent = fmod(currentAngle, 360.0);
+    if (normCurrent < 0) normCurrent += 360.0;
 
     double delta = target_angle - normCurrent;
+    
+    // Resolve absolute shortest angular path
     while (delta < -180.0) delta += 360.0;
-    while (delta >  180.0) delta -= 360.0;
+    while (delta > 180.0)  delta -= 360.0;
 
-    long deltaSteps  = lround(delta * TURN_STEPS_PER_DEGREE);
+    long deltaSteps = round(delta * TURN_STEPS_PER_DEGREE);
     long targetSteps = turnMotor.getCurrentPosition() + deltaSteps;
 
-    turnMotor.setTargetPosition(targetSteps);
-    taskENTER_CRITICAL(&doneMux);
+    // [fix] 읽기(getCurrentPosition)는 long 단일 읽기라 레이스가 나도 최대 1스텝 오차로 실용상 안전 —
+    // 쓰기(setTargetPosition)만 vMotorTask(Core 0)에 위임해 크로스코어 동시 접근을 차단한다.
+    turnPendingTarget = targetSteps;
+    turnTargetPending = true;
     turn_done_pending = true;
-    taskEXIT_CRITICAL(&doneMux);
 }
 
 void turn_led_subscription_callback(const void * msin) {
@@ -335,15 +398,7 @@ void turn_led_subscription_callback(const void * msin) {
 void estop_subscription_callback(const void * msin) {
     const std_msgs__msg__Bool * msg = (const std_msgs__msg__Bool *)msin;
     if (msg->data) {
-        // 소프트 E-STOP 발동
         handleEmergencyStop();
-    } else {
-        // 소프트 E-STOP 해제 — 하드웨어 버튼이 눌려있지 않을 때만 허용
-        if (digitalRead(ESTOP_PIN) == HIGH) {
-            isEmergencyStopped = false;
-            railMotor.enable();
-            turnMotor.enable();
-        }
     }
 }
 
@@ -390,7 +445,7 @@ void vCommTask(void *pvParameters) {
         RCCHECK(rclc_subscription_init_default(
             &rail_sub,
             &node,
-            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Float32),  // Float32(mm)
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
             TOPIC_RAIL_CMD
         ));
 
@@ -439,13 +494,15 @@ void vCommTask(void *pvParameters) {
 
         // Create Executor (4 subscriptions)
         RCCHECK(rclc_executor_init(&executor, &support.context, 4, &allocator));
-        RCCHECK(rclc_executor_add_subscription(&executor, &rail_sub,      &rail_msg,      &rail_subscription_callback,     ON_NEW_DATA));
-        RCCHECK(rclc_executor_add_subscription(&executor, &turn_sub,      &turn_msg,      &turn_subscription_callback,     ON_NEW_DATA));
-        RCCHECK(rclc_executor_add_subscription(&executor, &turn_led_sub,  &turn_led_msg,  &turn_led_subscription_callback, ON_NEW_DATA));
-        RCCHECK(rclc_executor_add_subscription(&executor, &estop_sub,     &estop_msg,     &estop_subscription_callback,    ON_NEW_DATA));
+        RCCHECK(rclc_executor_add_subscription(&executor, &rail_sub, &rail_msg, &rail_subscription_callback, ON_NEW_DATA));
+        RCCHECK(rclc_executor_add_subscription(&executor, &turn_sub, &turn_msg, &turn_subscription_callback, ON_NEW_DATA));
+        RCCHECK(rclc_executor_add_subscription(&executor, &turn_led_sub, &turn_led_msg, &turn_led_subscription_callback, ON_NEW_DATA));
+        RCCHECK(rclc_executor_add_subscription(&executor, &estop_sub, &estop_msg, &estop_subscription_callback, ON_NEW_DATA));
 
-        // Trigger Auto Homing Calibration upon connection
-        performHomingCalibration();
+        // [fix] micro-ROS 에이전트 연결 완료 후 homing을 vMotorTask(Core 0)에 위임
+        // 기존: performHomingCalibration() 직접 호출 → vMotorTask update()와 레이스 컨디션 발생
+        // 수정: homingRequested 플래그 세트 → vMotorTask가 Core 0에서 단독 실행
+        homingRequested = true;
 
         // micro-ROS Loop Executor
         for (;;) {
@@ -455,39 +512,49 @@ void vCommTask(void *pvParameters) {
             }
             RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)));
 
-            // done 플래그 읽기/쓰기 모두 critical section 으로 보호
-            bool publish_rail_done = false;
-            bool publish_turn_done = false;
-
-            taskENTER_CRITICAL(&doneMux);
-            if (rail_done_pending && !railMotor.isMoving()) {
-                rail_done_pending  = false;
-                publish_rail_done  = true;
+            // 에이전트 생존 감시: 런타임에 agent 가 죽으면 재연결 수단이 없어
+            // 노드가 유령 상태로 남는다. 3회 연속 ping 실패 시 모터를 세우고
+            // 재부팅해 상단의 연결 재시도 + 재호밍 경로를 재사용한다.
+            // (ESTOP 중에는 위 분기에서 continue 되므로 여기 도달하지 않는다 —
+            //  재부팅으로 isEmergencyStopped 가 소실되는 상황 방지)
+            static unsigned long last_ping = 0;
+            static int ping_fail_count = 0;
+            if (millis() - last_ping > 2000) {
+                last_ping = millis();
+                if (rmw_uros_ping_agent(100, 1) == RMW_RET_OK) {
+                    ping_fail_count = 0;
+                } else if (++ping_fail_count >= 3) {
+                    // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임.
+                    // ESP.restart() 전 vMotorTask 루프 1회(최대 delayMicroseconds(10) 수준) 이내에
+                    // 적용되므로 재부팅 지연 관점에서 무시 가능한 지연이다.
+                    stopAllRequested = true;
+                    setLedColor(COLOR_PURPLE);
+                    ESP.restart();
+                }
             }
-            if (turn_done_pending && !turnMotor.isMoving()) {
-                turn_done_pending  = false;
-                publish_turn_done  = true;
-            }
-            taskEXIT_CRITICAL(&doneMux);
 
-            if (publish_rail_done) {
+            // [fix] railTargetPending/turnTargetPending 미적용 상태에서 isMoving()==false를 보고
+            // done을 조기 발행하지 않도록 pending 미적용 조건을 추가한다.
+            if (rail_done_pending && !railTargetPending && !railMotor.isMoving()) {
                 rail_done_msg.data = true;
                 RCSOFTCHECK(rcl_publish(&rail_done_pub, &rail_done_msg, NULL));
-            }
-            if (publish_turn_done) {
-                turn_done_msg.data = true;
-                RCSOFTCHECK(rcl_publish(&turn_done_pub, &turn_done_msg, NULL));
+                rail_done_pending = false;
             }
 
-            // 100ms 주기 상태 퍼블리시
+            if (turn_done_pending && !turnTargetPending && !turnMotor.isMoving()) {
+                turn_done_msg.data = true;
+                RCSOFTCHECK(rcl_publish(&turn_done_pub, &turn_done_msg, NULL));
+                turn_done_pending = false;
+            }
+            
             static unsigned long last_status_pub = 0;
             if (millis() - last_status_pub > 100) {
-                status_msg.rail_position    = railMotor.getCurrentPosition();
-                status_msg.rail_target      = railMotor.getTargetPosition();
-                status_msg.turntable_angle  = (float)((double)turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE);
-                status_msg.is_moving        = railMotor.isMoving() || turnMotor.isMoving();
-                status_msg.homed            = isHomingCompleted;
-                status_msg.estop            = isEmergencyStopped;
+                status_msg.rail_position = railMotor.getCurrentPosition();
+                status_msg.rail_target = railMotor.getTargetPosition();
+                status_msg.turntable_angle = turnMotor.getCurrentPosition() / (float)TURN_STEPS_PER_DEGREE;
+                status_msg.is_moving = railMotor.isMoving() || turnMotor.isMoving();
+                status_msg.homed = isHomingCompleted;
+                status_msg.estop = isEmergencyStopped;
                 RCSOFTCHECK(rcl_publish(&status_pub, &status_msg, NULL));
                 last_status_pub = millis();
             }
@@ -502,43 +569,23 @@ void vCommTask(void *pvParameters) {
         Serial0.println("Communication Mode: UART Serial0");
         Serial0.println("Commands:");
         Serial0.println("  H            - Trigger Homing Calibration");
-        Serial0.println("  R <mm>       - Move Linear Rail to absolute position (mm)");
+        Serial0.println("  R <steps>    - Move Linear Rail to absolute step");
         Serial0.println("  T <degrees>  - Rotate Turntable to absolute angle");
         Serial0.println("  S            - Show System Position & Limit Switch Status");
         Serial0.println("  E            - EMERGENCY STOP");
-        Serial0.println("  C            - Clear E-STOP (software unlock, hardware must be released)");
         Serial0.println("  L <0 or 1>   - Turntable LED Ring Relay (0:OFF, 1:ON)");
         Serial0.println("=================================================");
 
-        // Automatically trigger homing calibration on boot in serial mode
-        performHomingCalibration();
+        // [fix] Serial 모드도 homingRequested 플래그로 vMotorTask에 위임
+        homingRequested = true;
 
         String inputBuffer = "";
 
         for (;;) {
             if (isEmergencyStopped) {
-                while (Serial0.available()) {
-                    char ch = Serial0.read();
-                    if (ch == '\n' || ch == '\r') {
-                        inputBuffer.trim();
-                        // E-STOP 상태에서 'C' 커맨드만 허용
-                        if (inputBuffer.length() > 0 && toupper(inputBuffer.charAt(0)) == 'C') {
-                            if (digitalRead(ESTOP_PIN) == HIGH) {
-                                isEmergencyStopped = false;
-                                railMotor.enable();
-                                turnMotor.enable();
-                                Serial0.println("[CLEAR] E-STOP cleared. Re-homing required.");
-                                performHomingCalibration();
-                            } else {
-                                Serial0.println("[ERROR] Hardware E-STOP button still pressed.");
-                            }
-                        } else if (inputBuffer.length() > 0) {
-                            Serial0.println("[EMERGENCY] Send 'C' to clear E-STOP after releasing hardware button.");
-                        }
-                        inputBuffer = "";
-                    } else {
-                        inputBuffer += ch;
-                    }
+                if (Serial0.available()) {
+                    String clr = Serial0.readStringUntil('\n');
+                    Serial0.println("[EMERGENCY] Hardware locked. Reset board to recover.");
                 }
                 vTaskDelay(pdMS_TO_TICKS(200));
                 continue;
@@ -549,62 +596,59 @@ void vCommTask(void *pvParameters) {
                 if (ch == '\n' || ch == '\r') {
                     inputBuffer.trim();
                     if (inputBuffer.length() > 0) {
-                        char cmd = toupper(inputBuffer.charAt(0));
+                        // Parse CLI command
+                        char cmd = inputBuffer.charAt(0);
+                        cmd = toupper(cmd);
 
                         if (cmd == 'H') {
-                            performHomingCalibration();
+                            homingRequested = true;
                         }
                         else if (cmd == 'R') {
-                            // mm 단위 수신 → 스텝 변환
-                            float target_mm = inputBuffer.substring(2).toFloat();
-                            if (target_mm >= RAIL_MIN_LIMIT_MM && target_mm <= RAIL_MAX_LIMIT_MM) {
-                                long target_steps = (long)(target_mm * RAIL_STEPS_PER_MM);
-                                Serial0.print("[MOVE] Rail -> ");
-                                Serial0.print(target_mm);
-                                Serial0.print(" mm (");
-                                Serial0.print(target_steps);
-                                Serial0.println(" steps)");
-                                railMotor.setTargetPosition(target_steps);
+                            long steps = inputBuffer.substring(2).toInt();
+                            if (steps >= RAIL_MIN_LIMIT && steps <= RAIL_MAX_LIMIT) {
+                                Serial0.print("[MOVE] Linear Rail set to target steps: ");
+                                Serial0.println(steps);
+                                // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임
+                                railPendingTarget = steps;
+                                railTargetPending = true;
                             } else {
-                                Serial0.print("[ERROR] mm value out of soft-limits (0 - ");
-                                Serial0.print(RAIL_MAX_LIMIT_MM);
-                                Serial0.println(" mm)");
+                                Serial0.print("[ERROR] Step value out of soft-limits (0 - ");
+                                Serial0.print(RAIL_MAX_LIMIT);
+                                Serial0.println(")");
                             }
                         }
                         else if (cmd == 'T') {
-                            // 모든 연산 double 로 통일
-                            double angle      = (double)inputBuffer.substring(2).toFloat();
-                            double currentAngle = (double)turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE;
-                            double normCurrent  = fmod(currentAngle, 360.0);
-                            if (normCurrent < 0.0) normCurrent += 360.0;
+                            double angle = inputBuffer.substring(2).toFloat();
+                            Serial0.print("[MOVE] Turntable set to target degrees: ");
+                            Serial0.println(angle);
+
+                            // Shortest path logic
+                            float currentAngle = turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE;
+                            double normCurrent = fmod(currentAngle, 360.0);
+                            if (normCurrent < 0) normCurrent += 360.0;
 
                             double delta = angle - normCurrent;
                             while (delta < -180.0) delta += 360.0;
-                            while (delta >  180.0) delta -= 360.0;
+                            while (delta > 180.0)  delta -= 360.0;
 
-                            long deltaSteps  = lround(delta * TURN_STEPS_PER_DEGREE);
+                            long deltaSteps = round(delta * TURN_STEPS_PER_DEGREE);
                             long targetSteps = turnMotor.getCurrentPosition() + deltaSteps;
 
-                            Serial0.print("[MOVE] Turntable -> ");
-                            Serial0.print(angle);
-                            Serial0.println(" deg");
-                            turnMotor.setTargetPosition(targetSteps);
+                            // [fix] setTargetPosition() 직접 호출 금지 — vMotorTask(Core 0)에 위임
+                            turnPendingTarget = targetSteps;
+                            turnTargetPending = true;
                         }
                         else if (cmd == 'S') {
-                            double currentAngleDeg = (double)turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE;
                             Serial0.println("----------------------------------------");
-                            Serial0.print("Rail Position:     "); Serial0.print((float)(railMotor.getCurrentPosition() / RAIL_STEPS_PER_MM)); Serial0.println(" mm");
-                            Serial0.print("Rail Target:       "); Serial0.print((float)(railMotor.getTargetPosition()  / RAIL_STEPS_PER_MM)); Serial0.println(" mm");
+                            Serial0.print("Rail Position:   "); Serial0.print(railMotor.getCurrentPosition()); Serial0.println(" steps");
+                            Serial0.print("Rail Target:     "); Serial0.print(railMotor.getTargetPosition()); Serial0.println(" steps");
                             Serial0.print("Rail Limit Switch: "); Serial0.println(railMotor.isLimitPressed() ? "ACTIVE (PRESSED)" : "INACTIVE");
-                            Serial0.print("Turntable Steps:   "); Serial0.print(turnMotor.getCurrentPosition()); Serial0.println(" steps");
-                            Serial0.print("Turntable Angle:   "); Serial0.print((float)currentAngleDeg); Serial0.println(" deg");
+                            Serial0.print("Turntable Steps: "); Serial0.print(turnMotor.getCurrentPosition()); Serial0.println(" steps");
+                            Serial0.print("Turntable Angle: "); Serial0.print(turnMotor.getCurrentPosition() / TURN_STEPS_PER_DEGREE); Serial0.println(" deg");
                             Serial0.println("----------------------------------------");
                         }
                         else if (cmd == 'E') {
                             handleEmergencyStop();
-                        }
-                        else if (cmd == 'C') {
-                            Serial0.println("[INFO] No active E-STOP to clear.");
                         }
                         else if (cmd == 'L') {
                             int state = inputBuffer.substring(2).toInt();
@@ -632,8 +676,6 @@ void vCommTask(void *pvParameters) {
 
 // =============================================================================
 // EMERGENCY STOP HANDLER (INTERRUPT DRIVEN)
-// 주의: ISR 내부에서 setLedColor() 를 절대 호출하지 말 것.
-//       NeoPixel 라이브러리는 ISR-safe 하지 않음. 플래그만 세울 것.
 // =============================================================================
 void IRAM_ATTR handleEmergencyStop() {
     isEmergencyStopped = true;
@@ -644,7 +686,6 @@ void IRAM_ATTR handleEmergencyStop() {
 }
 
 // Set WS2812B Color
-// 주의: ISR 컨텍스트에서 호출 금지 (NeoPixel ISR-safe 하지 않음)
 void setLedColor(uint32_t color) {
     statusLed.setPixelColor(0, color);
     statusLed.show();

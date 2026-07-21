@@ -1,0 +1,11 @@
+[TYPECHECK]
+# cv2: 네이티브 모듈이라 pylint가 멤버를 못 본다 (기존 CLI 플래그를 rc로 이관).
+# _* 목록: inspect_node.py가 파라미터 선언 루프에서 setattr로 동적 생성하는
+# 인스턴스 속성 — 정적 분석이 못 보는 E1101 오탐 29종. 속성 추가 시 여기도 갱신.
+generated-members=cv2.*,
+    _align_enabled,_align_max_dim,_align_min_area,_align_padding,
+    _angles,_anomaly_device,_anomaly_enabled,_anomaly_model_dir,
+    _bin_thresh,_blur_k,_camera_topic,_capture_settle,_debug_topic,
+    _ds_dir,_ds_settle_sec,_f_area_max,_f_area_min,_finalize_sec,
+    _hole_area_max,_hole_max,_log_dir,_min_hole_px,_pub_debug,
+    _ref_dir,_save_images,_sol_max,_sol_min,_tex_var_max,_use_compressed

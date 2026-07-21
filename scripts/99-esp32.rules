@@ -1,0 +1,3 @@
+# ESP32-S3 (LOLIN S3 등 CP210X 및 CH340 계열 USB Serial) 규칙
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="ttyESP32", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="ttyESP32", MODE="0666"
