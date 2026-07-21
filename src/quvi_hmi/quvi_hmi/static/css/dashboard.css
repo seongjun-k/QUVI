@@ -494,6 +494,58 @@ select:focus-visible,
     aspect-ratio: auto;
 }
 
+/* ─── 데모 안내 모달 ─── */
+.demo-notice-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.65);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.demo-notice-box {
+    background: var(--bg-card, #101725);
+    border: 1px solid var(--border, #263047);
+    border-radius: var(--radius, 8px);
+    max-width: 520px;
+    width: calc(100% - 48px);
+    padding: 28px 32px;
+    line-height: 1.7;
+}
+
+.demo-notice-box h2 {
+    margin-bottom: 12px;
+}
+
+.demo-notice-box ul {
+    margin: 12px 0;
+    padding-left: 20px;
+}
+
+.demo-notice-hint {
+    margin-top: 12px;
+}
+
+.demo-notice-start {
+    color: #2ecc71;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.demo-notice-box button {
+    display: block;
+    margin: 20px auto 0;
+    padding: 10px 28px;
+    border: 0;
+    border-radius: var(--radius, 8px);
+    background: #2ecc71;
+    color: #06121f;
+    font-weight: 700;
+    cursor: pointer;
+}
+
 .camera-feed img,
 .camera-feed video {
     width: 100%;

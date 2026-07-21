@@ -1096,6 +1096,17 @@ refreshDevices();
         panel.style.display = '';
         rerunPanel.style.gridColumn = '2 / -1';
         video.play().catch(() => {});
+
+        // 데모 영상이 있으면 데모 모드로 간주 — 세션당 1회 안내 모달 표시
+        const overlay = document.getElementById('demoNoticeOverlay');
+        const closeBtn = document.getElementById('demoNoticeCloseBtn');
+        if (overlay && closeBtn && !sessionStorage.getItem('demoNoticeSeen')) {
+            overlay.style.display = '';
+            closeBtn.addEventListener('click', () => {
+                overlay.style.display = 'none';
+                sessionStorage.setItem('demoNoticeSeen', '1');
+            });
+        }
     });
 })();
 

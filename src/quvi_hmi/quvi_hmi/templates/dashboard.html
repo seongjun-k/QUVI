@@ -151,6 +151,22 @@
                         <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
                         <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 판정 결과</div>
                     </div>
+                    <!-- 데모 안내 모달 — 데모 영상이 존재할 때(=데모 모드) 첫 접속 시 JS가 표시 -->
+                    <div id="demoNoticeOverlay" class="demo-notice-overlay" style="display:none;">
+                        <div class="demo-notice-box">
+                            <h2>QUVI 데모 페이지 안내</h2>
+                            <p>3D 프린트 출력물 자동 검사 시스템 <strong>QUVI</strong>의 대시보드입니다.<br>
+                               실제 장비 구동을 녹화한 데이터를 재생 중입니다.</p>
+                            <ul>
+                                <li><strong>로봇 전체 뷰</strong> — 로봇암·리니어 레일·턴테이블 실제 구동 영상</li>
+                                <li><strong>사이드캠 / 검사캠</strong> — 픽업 구역과 검사 구역 카메라 피드</li>
+                                <li><strong>ACT 추론 모니터링</strong> — 로봇 제어 신경망(ACT)의 실시간 추론 시각화</li>
+                                <li><strong>검사 히스토리</strong> — 합격/불합격 판정 결과 누적</li>
+                            </ul>
+                            <p class="demo-notice-hint">상단의 <span class="demo-notice-start">▶ 시작</span> 버튼을 누르면 검사 사이클이 실행됩니다.</p>
+                            <button id="demoNoticeCloseBtn" type="button">둘러보기 시작</button>
+                        </div>
+                    </div>
                     <!-- 로봇 전체 뷰 (데모 영상) — static/demo/robot_overview.mp4 가 있을 때만 JS가 표시 -->
                     <div class="camera-feed" id="overviewPanel" style="display:none;">
                         <video id="overviewVideo" src="/static/demo/robot_overview.mp4" autoplay muted loop playsinline preload="metadata"></video>
