@@ -37,11 +37,11 @@
                 </svg>
                 <span class="nav-item-label">대시보드</span>
             </a>
-            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')" title="리더 암 조종 (Teleop)">
+            <a href="#" id="menu-teleop" class="nav-item" onclick="switchTab('teleop')" title="텔레오퍼레이션">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <path d="M12 2a10 10 0 0 0-10 10c0 5.523 4.477 10 10 10s10-4.477 10-10A10 10 0 0 0 12 2zm1 14h-2v-6h2v6zm0-8h-2V6h2v2z"/>
                 </svg>
-                <span class="nav-item-label">리더 암 조종 (Teleop)</span>
+                <span class="nav-item-label">텔레오퍼레이션</span>
             </a>
             <a href="#" id="menu-status" class="nav-item" onclick="switchTab('status')" title="시스템 상태">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -75,7 +75,7 @@
                     <div class="status-dot"></div>
                     <span id="stateText">IDLE</span>
                 </div>
-                <div id="stageText" class="stage-pill">진행 단계 대기</div>
+                <div id="stageText" class="stage-pill">대기 중</div>
             </div>
             <div class="header-right">
                 <div id="errorMsg" class="header-error" style="display:none;"></div>
@@ -139,12 +139,12 @@
                 <div class="camera-grid">
                     <div class="camera-feed">
                         <img src="/stream/sidecam" alt="사이드캠" loading="lazy">
-                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>사이드캠 — Zone 1 (Pickup)</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>사이드캠 (픽업 구역)</div>
                         <div class="camera-status"></div>
                     </div>
                     <div class="camera-feed">
                         <img src="/stream/camera2" alt="검사 카메라" loading="lazy">
-                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>검사캠 — Zone 2 (Inspection)</div>
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>검사캠 (검사 구역)</div>
                         <div class="camera-status"></div>
                     </div>
                     <div class="camera-feed">
@@ -154,7 +154,7 @@
                     <!-- ACT 추론 실시간 모니터링(rerun 웹 뷰어) — 발표용, robot_control_node의 rerun_enable=true일 때만 데이터 표시 -->
                     <div class="camera-feed" id="rerunPanelBody" style="grid-column:1 / -1;">
                         <iframe id="rerunViewerFrame" src="about:blank" style="width:100%;min-height:480px;border:0;" title="rerun 뷰어"></iframe>
-                        <div class="camera-label">ACT 추론 모니터링 (rerun) <button id="rerunToggleBtn" type="button" style="cursor:pointer;margin-left:8px;">접기</button></div>
+                        <div class="camera-label">ACT 추론 시각화 <button id="rerunToggleBtn" type="button" style="cursor:pointer;margin-left:8px;">접기</button></div>
                         <div id="rerunFallbackMsg" style="display:none;position:absolute;top:45%;width:100%;text-align:center;color:var(--text-secondary,#888);font-size:13px;">rerun 뷰어 연결 실패 — robot_control_node의 rerun_enable 파라미터가 켜져 있는지 확인하세요.</div>
                     </div>
                 </div>
@@ -290,22 +290,22 @@
         <div id="tab-teleop" class="tab-pane">
             <div class="teleop-container">
                 <div class="teleop-header">
-                    <h2>리더-팔로워 텔레오퍼레이션 (Leader-Follower Teleop)</h2>
-                    <p>토크가 비활성화된 리더 로봇암을 수동 조작하여, 토크가 켜진 팔로워 로봇암을 1:1 실시간 30Hz 제어합니다.</p>
+                    <h2>텔레오퍼레이션</h2>
+                    <p>리더 암을 움직이면 팔로워 암이 실시간으로 따라 움직입니다.</p>
                 </div>
 
                 <div class="teleop-grid">
                     <!-- 제어 카드 -->
                     <div class="card teleop-control-card">
                         <div class="card-header">
-                            <span class="card-title">텔레옵 조작 패널</span>
+                            <span class="card-title">조작 패널</span>
                         </div>
                         <div class="card-body teleop-control-body">
                             <div class="teleop-status-display">
                                 <span class="status-label">동작 상태:</span>
                                 <span id="teleopStateBadge" class="teleop-state-badge off">OFF</span>
                             </div>
-                            <div id="teleopHint" class="teleop-hint">리더 암을 연결한 뒤 토글을 켜세요.</div>
+                            <div id="teleopHint" class="teleop-hint">토글을 켜면 텔레오퍼레이션이 시작됩니다.</div>
 
                             <div class="toggle-container">
                                 <span class="toggle-label">텔레오퍼레이션 활성화</span>
@@ -333,12 +333,12 @@
                     <!-- 스트림 모니터링 카드 -->
                     <div class="card teleop-video-card">
                         <div class="card-header">
-                            <span class="card-title">Zone 1 사이드캠 스트림</span>
+                            <span class="card-title">사이드캠</span>
                         </div>
                         <div class="card-body" style="padding:16px;">
                             <div class="camera-feed main-teleop-feed">
                                 <img src="/stream/sidecam" alt="사이드캠" loading="lazy">
-                                <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>조종용 실시간 사이드캠 피드</div>
+                                <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>사이드캠</div>
                             </div>
                         </div>
                     </div>
@@ -818,7 +818,7 @@
             <div class="inspection-tab-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>턴테이블 캡쳐 원본 (Live)</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>턴테이블 촬영 화면</span>
                     </div>
                     <div class="card-body">
                         <div class="camera-feed" style="height: auto;">
@@ -828,7 +828,7 @@
                 </div>
                 <div class="card">
                     <div class="card-header">
-                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>검사 결과 디버그 뷰</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg>판정 분석 화면</span>
                     </div>
                     <div class="card-body">
                         <div class="camera-feed" style="height: auto;">
@@ -838,7 +838,7 @@
                 </div>
                 <div class="card" style="grid-column: 1 / -1;">
                     <div class="card-header">
-                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>상세 판정 기준 및 결과</span>
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>판정 기준·결과</span>
                         <span id="detailBadge" class="result-badge" style="display:none;">—</span>
                     </div>
                     <div class="card-body">
