@@ -303,7 +303,7 @@ function setTeleopBadge(mode) {
     } else {
         badge.textContent = 'OFF';
         badge.className = 'teleop-state-badge off';
-        if (hint) hint.textContent = '리더 암을 연결한 뒤 토글을 켜세요.';
+        if (hint) hint.textContent = '토글을 켜면 텔레오퍼레이션이 시작됩니다.';
     }
 }
 
