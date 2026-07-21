@@ -120,7 +120,6 @@ class RobotState(IntEnum):
     HOMING        = 1
     MOVING_RAIL   = 2
     ACT_GRASPING  = 4
-    PLACING       = 5
     RELEASING     = 6
     TELEOPING     = 8
     ERROR         = 99

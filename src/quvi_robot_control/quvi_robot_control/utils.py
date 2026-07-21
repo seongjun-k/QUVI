@@ -46,6 +46,72 @@ def encode_bgr(frame: np.ndarray) -> Image:
 
 
 # ─────────────────────────────────────────────
+# 각도 정규화 + 역회전 크롭 (그레이/컬러 공용)
+# ─────────────────────────────────────────────
+
+def compute_aligned_crop(
+    contours_external: list,
+    source_img: np.ndarray,
+    padding_pct: float = 0.15,
+    min_area: int = 500,
+) -> Optional[np.ndarray]:
+    """윤곽의 minAreaRect 각도로 source_img를 역회전 후 크롭한다.
+
+    BinaryCache.get_aligned_roi(그레이스케일)와 ml_preprocess.preprocess_for_ml
+    (컬러)이 동일한 각도 정규화 + 크롭 로직을 공유하기 위한 헬퍼.
+    리사이즈/레터박스는 호출자 책임(그레이/컬러로 후처리가 다름).
+
+    Args:
+        contours_external: RETR_EXTERNAL 윤곽 리스트.
+        source_img: 역회전을 적용할 원본 이미지 (그레이 또는 BGR).
+        padding_pct: 크롭 시 여유 마진 비율.
+        min_area: 정렬을 수행할 최소 윤곽 면적(픽셀). 미만이면 None 반환.
+
+    Returns:
+        역회전 + 크롭된 이미지. 윤곽이 없거나 면적 미달, 크롭 결과가
+        비어있으면 None.
+    """
+    if not contours_external:
+        return None
+
+    largest = max(contours_external, key=cv2.contourArea)
+    area = cv2.contourArea(largest)
+    if area < min_area:
+        return None
+
+    # ── minAreaRect → 각도 / 중심 / (w, h) ──
+    (cx, cy), (w, h), angle = cv2.minAreaRect(largest)
+
+    # 각도 정규화 [-45, 45]: 가로축을 장축으로 통일
+    if w < h:
+        angle += 90
+        w, h = h, w
+    if angle > 45:
+        angle -= 90
+
+    # ── 원본에 역회전 ──
+    img_h, img_w = source_img.shape[:2]
+    M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
+    rotated = cv2.warpAffine(
+        source_img, M, (img_w, img_h),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+
+    # ── 종횡비 보존 크롭 + 경계 클램핑 ──
+    pad_w = int(w * (1 + padding_pct))
+    pad_h = int(h * (1 + padding_pct))
+    x1 = max(0, int(cx - pad_w / 2))
+    y1 = max(0, int(cy - pad_h / 2))
+    x2 = min(img_w, x1 + pad_w)
+    y2 = min(img_h, y1 + pad_h)
+
+    cropped = rotated[y1:y2, x1:x2]
+    if cropped.size == 0:
+        return None
+    return cropped
+
+
+# ─────────────────────────────────────────────
 # 이진화 캐시
 # ─────────────────────────────────────────────
 
@@ -168,42 +234,9 @@ class BinaryCache:
         if self._aligned_cache is not None:
             return self._aligned_cache
 
-        if not self.contours_external:
-            return None
-
-        largest = max(self.contours_external, key=cv2.contourArea)
-        area = cv2.contourArea(largest)
-        if area < min_area:
-            return None
-
-        # ── minAreaRect → 각도 / 중심 / (w, h) ──
-        (cx, cy), (w, h), angle = cv2.minAreaRect(largest)
-
-        # 각도 정규화 [-45, 45]: 가로축을 장축으로 통일
-        if w < h:
-            angle += 90
-            w, h = h, w
-        if angle > 45:
-            angle -= 90
-
-        # ── 원본 그레이스케일에 역회전 ──
-        img_h, img_w = self.gray.shape[:2]
-        M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
-        rotated = cv2.warpAffine(
-            self.gray, M, (img_w, img_h),
-            flags=cv2.INTER_CUBIC,
-            borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-
-        # ── 종횡비 보존 크롭 + 경계 클램핑 ──
-        pad_w = int(w * (1 + padding_pct))
-        pad_h = int(h * (1 + padding_pct))
-        x1 = max(0, int(cx - pad_w / 2))
-        y1 = max(0, int(cy - pad_h / 2))
-        x2 = min(img_w, x1 + pad_w)
-        y2 = min(img_h, y1 + pad_h)
-
-        cropped = rotated[y1:y2, x1:x2]
-        if cropped.size == 0:
+        cropped = compute_aligned_crop(
+            self.contours_external, self.gray, padding_pct, min_area)
+        if cropped is None:
             return None
 
         # 장축 기준 종횡비 보존 리사이즈

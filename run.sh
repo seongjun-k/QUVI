@@ -9,61 +9,15 @@ CONTAINER_NAME="quvi-dev"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 COMPOSE_FILE="${SCRIPT_DIR}/docker/docker-compose.yml"
 
-# docker compose 커맨드 자동 확인
-if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-else
-    echo "❌ 오류: docker compose 또는 docker-compose 명령을 찾을 수 없습니다."
-    exit 1
-fi
+source "${SCRIPT_DIR}/docker/find_or_start_container.sh"
 
-# 1. 먼저 실행 중인 컨테이너가 있는지 확인
-TARGET_CONTAINER=$(docker ps -q --filter "name=${CONTAINER_NAME}" | head -n 1)
-
-if [ -z "${TARGET_CONTAINER}" ]; then
-    echo "🔄 [QUVI] '${CONTAINER_NAME}' 컨테이너가 실행 중이 아닙니다."
-    
-    # 2. 존재하지만 멈춰있는 컨테이너가 있는지 확인
-    EXISTING_CONTAINER_ID=$(docker ps -aq --filter "name=${CONTAINER_NAME}" | head -n 1)
-    
-    if [ -n "${EXISTING_CONTAINER_ID}" ]; then
-        echo "🔄 [QUVI] 기존에 생성된 컨테이너(${EXISTING_CONTAINER_ID})를 시작합니다..."
-        docker start "${EXISTING_CONTAINER_ID}"
-        if [ $? -ne 0 ]; then
-            echo "❌ 오류: 컨테이너 시작 실패."
-            exit 1
-        fi
-        echo "⏳ 컨테이너가 준비될 때까지 잠시 대기합니다..."
-        sleep 2
-        TARGET_CONTAINER="${EXISTING_CONTAINER_ID}"
-    else
-        # 3. 아예 존재하지 않는 경우에만 docker compose 구동
-        echo "🔄 [QUVI] 새 컨테이너를 구동합니다..."
-        if [ -f "${COMPOSE_FILE}" ]; then
-            $DOCKER_COMPOSE -f "${COMPOSE_FILE}" up -d
-            if [ $? -ne 0 ]; then
-                echo "❌ 오류: docker compose 구동 실패."
-                exit 1
-            fi
-            echo "⏳ 컨테이너가 부팅될 때까지 잠시 대기합니다..."
-            sleep 2
-            TARGET_CONTAINER=$(docker ps -q --filter "name=${CONTAINER_NAME}" | head -n 1)
-        else
-            echo "❌ 오류: '${COMPOSE_FILE}' 설정 파일을 찾을 수 없습니다."
-            exit 1
-        fi
-    fi
-fi
-
-echo "🚀 [QUVI] 컨테이너(${TARGET_CONTAINER}) 내부에서 메인 프로그램 실행 중..."
+echo "[QUVI] 컨테이너(${TARGET_CONTAINER}) 내부에서 메인 프로그램 실행 중..."
 if [ -t 0 ]; then
     docker exec -it "${TARGET_CONTAINER}" bash -c "
         source /opt/ros/jazzy/setup.bash
         [ -f /uros_ws/install/setup.bash ] && source /uros_ws/install/setup.bash
         if [ ! -f /workspace/install/setup.bash ]; then
-            echo '⚠️  /workspace/install/setup.bash 없음 — 빌드가 필요합니다.'
+            echo '/workspace/install/setup.bash 없음 — 빌드가 필요합니다.'
             echo '   → build.sh 를 먼저 실행하여 ROS 2 워크스페이스를 빌드하세요.'
             exit 1
         fi
@@ -75,7 +29,7 @@ if [ -t 0 ]; then
             launch_status=\$?
             [ -f /workspace/data/.restart_requested ] || exit \$launch_status
             rm -f /workspace/data/.restart_requested
-            echo '🔁 장치 설정 변경 — 시스템 재기동'
+            echo '장치 설정 변경 — 시스템 재기동'
             sleep 2
         done
     "
@@ -84,7 +38,7 @@ else
         source /opt/ros/jazzy/setup.bash
         [ -f /uros_ws/install/setup.bash ] && source /uros_ws/install/setup.bash
         if [ ! -f /workspace/install/setup.bash ]; then
-            echo '⚠️  /workspace/install/setup.bash 없음 — build.sh 를 먼저 실행하세요.'
+            echo '/workspace/install/setup.bash 없음 — build.sh 를 먼저 실행하세요.'
             exit 1
         fi
         source /workspace/install/setup.bash
@@ -94,13 +48,13 @@ else
             launch_status=\$?
             [ -f /workspace/data/.restart_requested ] || exit \$launch_status
             rm -f /workspace/data/.restart_requested
-            echo '🔁 장치 설정 변경 — 시스템 재기동'
+            echo '장치 설정 변경 — 시스템 재기동'
             sleep 2
         done
     "
 fi
 
 if [ $? -ne 0 ]; then
-    echo "❌ 오류: 메인 프로그램 실행 실패."
+    echo "오류: 메인 프로그램 실행 실패."
     exit 1
 fi

@@ -474,41 +474,16 @@ function renderHistoryTable() {
     tbody.innerHTML = rows;
 }
 
-// ─── 도넛 차트 ───
+// ─── 도넛 차트 (CSS conic-gradient) ───
 function drawDonut(pass, fail) {
-    const canvas = document.getElementById('donutChart');
-    const ctx = canvas.getContext('2d');
+    const el = document.getElementById('donutChart');
     const total = pass + fail;
-    const cx = 70, cy = 70, r = 55, lw = 14;
-    ctx.clearRect(0, 0, 140, 140);
-
     if (total === 0) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-        ctx.lineWidth = lw;
-        ctx.stroke();
+        el.style.background = 'conic-gradient(rgba(255, 255, 255, 0.06) 0% 100%)';
         return;
     }
-
-    const passAngle = (pass / total) * Math.PI * 2;
-    const startAngle = -Math.PI / 2;
-
-    ctx.beginPath();
-    ctx.arc(cx, cy, r, startAngle, startAngle + passAngle);
-    ctx.strokeStyle = '#3fb950';
-    ctx.lineWidth = lw;
-    ctx.lineCap = 'round';
-    ctx.stroke();
-
-    if (fail > 0) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, startAngle + passAngle, startAngle + Math.PI * 2);
-        ctx.strokeStyle = '#f85149';
-        ctx.lineWidth = lw;
-        ctx.lineCap = 'round';
-        ctx.stroke();
-    }
+    const passPct = (pass / total) * 100;
+    el.style.background = `conic-gradient(var(--accent-green) 0% ${passPct}%, var(--accent-red) ${passPct}% 100%)`;
 }
 
 // ─── 제어 API ───

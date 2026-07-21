@@ -451,7 +451,6 @@ select:focus-visible,
 .stat-value.blue { color: var(--accent-blue); }
 .stat-value.green { color: var(--accent-green); }
 .stat-value.red { color: var(--accent-red); }
-.stat-value.yellow { color: var(--accent-yellow); }
 .stat-value.purple { color: var(--accent-purple); }
 
 .stat-label {
@@ -664,9 +663,20 @@ select:focus-visible,
     height: 140px;
 }
 
-.donut-wrapper canvas {
+.donut-chart {
     width: 100%;
     height: 100%;
+    border-radius: 50%;
+    position: relative;
+    background: conic-gradient(rgba(255, 255, 255, 0.06) 0% 100%);
+}
+
+.donut-chart::after {
+    content: '';
+    position: absolute;
+    inset: 14px;
+    border-radius: 50%;
+    background: var(--bg-card);
 }
 
 .donut-center {

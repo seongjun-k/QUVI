@@ -34,8 +34,6 @@ firmware/quvi_esp32_firmware/extra_packages/
 docker/.env
 
 # Data (large files)
-data/datasets/yolo/images/
-data/datasets/yolo/labels/
 data/datasets/inspection/images/
 *.pt
 *.onnx

@@ -14,7 +14,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
-from quvi_robot_control.utils import BinaryCache
+from quvi_robot_control.utils import BinaryCache, compute_aligned_crop
 
 # 윤곽 면적이 이 값 미만이면 "객체 미검출"로 간주하고 전체 이미지 폴백을 사용한다.
 _MIN_CONTOUR_AREA_PX = 500
@@ -61,39 +61,11 @@ def preprocess_for_ml(
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     cache = BinaryCache(blurred, bin_thresh)
 
-    img_h, img_w = bgr.shape[:2]
-    crop = None
+    # 각도 정규화 + 역회전 크롭 (컬러 원본, get_aligned_roi 와 동일 로직 공유)
+    crop = compute_aligned_crop(
+        cache.contours_external, bgr, padding_pct, _MIN_CONTOUR_AREA_PX)
 
-    if cache.contours_external:
-        largest = max(cache.contours_external, key=cv2.contourArea)
-        area = cv2.contourArea(largest)
-        if area >= _MIN_CONTOUR_AREA_PX:
-            (cx, cy), (w, h), angle = cv2.minAreaRect(largest)
-
-            # 각도 정규화: get_aligned_roi 와 동일하게 가로축을 장축으로 통일
-            if w < h:
-                angle += 90
-                w, h = h, w
-            if angle > 45:
-                angle -= 90
-
-            # 컬러 원본에 역회전 적용 (컬러이므로 INTER_CUBIC 무방)
-            M = cv2.getRotationMatrix2D((cx, cy), angle, 1.0)
-            rotated = cv2.warpAffine(
-                bgr, M, (img_w, img_h),
-                flags=cv2.INTER_CUBIC,
-                borderMode=cv2.BORDER_CONSTANT, borderValue=0)
-
-            pad_w = int(w * (1 + padding_pct))
-            pad_h = int(h * (1 + padding_pct))
-            x1 = max(0, int(cx - pad_w / 2))
-            y1 = max(0, int(cy - pad_h / 2))
-            x2 = min(img_w, x1 + pad_w)
-            y2 = min(img_h, y1 + pad_h)
-            if x2 > x1 and y2 > y1:
-                crop = rotated[y1:y2, x1:x2]
-
-    if crop is None or crop.size == 0:
+    if crop is None:
         # 객체 미검출 또는 윤곽 과소 — 전체 이미지 폴백 (경고는 호출자 몫).
         crop = bgr
 
