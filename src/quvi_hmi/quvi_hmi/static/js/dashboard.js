@@ -1084,6 +1084,21 @@ refreshDevices();
     });
 })();
 
+// ─── 로봇 전체 뷰 (데모 영상) ───
+// static/demo/robot_overview.mp4 가 존재할 때만 패널을 표시하고 rerun 패널을 오른쪽 2칸으로 줄인다
+(function initOverviewPanel() {
+    const panel = document.getElementById('overviewPanel');
+    const video = document.getElementById('overviewVideo');
+    const rerunPanel = document.getElementById('rerunPanelBody');
+    if (!panel || !video || !rerunPanel) return;
+
+    video.addEventListener('loadeddata', () => {
+        panel.style.display = '';
+        rerunPanel.style.gridColumn = '2 / -1';
+        video.play().catch(() => {});
+    });
+})();
+
 // ─── 사이드바 접기/펼치기 ───
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');

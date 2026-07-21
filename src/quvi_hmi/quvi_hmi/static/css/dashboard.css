@@ -489,7 +489,13 @@ select:focus-visible,
     aspect-ratio: 16/9;
 }
 
-.camera-feed img {
+/* 전체 뷰는 옆의 rerun 패널 높이에 맞춰 늘어난다 (16:9 고정 해제, 여백은 검정 배경) */
+#overviewPanel {
+    aspect-ratio: auto;
+}
+
+.camera-feed img,
+.camera-feed video {
     width: 100%;
     height: 100%;
     object-fit: contain;
