@@ -65,6 +65,10 @@ def generate_launch_description():
         'use_act', default_value='false',
         description='ACT 모방학습 정책 로드 여부 (demo/sequence-no-act 에서는 false)')
 
+    rerun_save_path_arg = DeclareLaunchArgument(
+        'rerun_save_path', default_value='',
+        description='설정 시 rerun을 웹 뷰어 대신 rrd 파일로 저장 (데모 녹화용)')
+
     follower_port_arg = DeclareLaunchArgument(
         'dxl_port', default_value=_dev.get('dxl_port', '/dev/ttyFollower'),
         description='팔로워 암 Dynamixel 포트')
@@ -147,6 +151,7 @@ def generate_launch_description():
             'leader_dxl_port': LaunchConfiguration('leader_dxl_port'),
             'act_device': 'cpu',
             'sidecam_topic': '/camera1/image_raw/compressed',
+            'rerun_save_path': LaunchConfiguration('rerun_save_path'),
         }],
         output='screen',
     )
@@ -199,6 +204,7 @@ def generate_launch_description():
         fixed_cam_arg,
         use_real_hardware_arg,
         use_act_arg,
+        rerun_save_path_arg,
         follower_port_arg,
         leader_port_arg,
         sidecam_autoexposure_arg,

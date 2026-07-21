@@ -348,6 +348,8 @@ class RobotControlNode(Node):
         self.declare_parameter('act_max_relative_target', 8.0)
         # 발표용 시각화: ACT 추론 실시간 rerun 웹 뷰어 (실패 시 자동 강등)
         self.declare_parameter('rerun_enable', True)
+        # 데모 녹화용: 설정 시 웹 뷰어 대신 rrd 파일로 저장 (rerun 0.22는 싱크가 단일이라 동시 불가)
+        self.declare_parameter('rerun_save_path', '')
         # 레일 위치 (mm 단위) — 조립 후 캘리브레이션으로 확정
         self.declare_parameter('rail_mm_bed',      381.25)
         self.declare_parameter('rail_mm_inspect', 12.5)
@@ -371,6 +373,7 @@ class RobotControlNode(Node):
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
         self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
         self._rerun_enable      = self.get_parameter('rerun_enable').value
+        self._rerun_save_path   = self.get_parameter('rerun_save_path').value
         self._rail_mm = {
             RailPosition.BED:     self.get_parameter('rail_mm_bed').value,
             RailPosition.INSPECT: self.get_parameter('rail_mm_inspect').value,
@@ -415,11 +418,17 @@ class RobotControlNode(Node):
         try:
             import rerun as rr
             rr.init('quvi_act', spawn=False)
-            rr.serve_web(web_port=9090, ws_port=9877, open_browser=False)
+            if self._rerun_save_path:
+                # rerun 0.22는 RecordingStream당 싱크가 하나뿐 — save와 serve_web 동시 불가
+                rr.save(self._rerun_save_path)
+                self.get_logger().info(
+                    f'rerun 저장 모드 — 웹 뷰어 비활성, 경로={self._rerun_save_path}')
+            else:
+                rr.serve_web(web_port=9090, ws_port=9877, open_browser=False)
+                self.get_logger().info('rerun 웹 뷰어 시작 — http://<host>:9090')
             self._rerun = rr
             threading.Thread(
                 target=self._rerun_log_worker, daemon=True).start()
-            self.get_logger().info('rerun 웹 뷰어 시작 — http://<host>:9090')
         except Exception as e:
             self.get_logger().warn(f'rerun 초기화 실패 — 비활성화: {e}')
             self._rerun_enable = False
