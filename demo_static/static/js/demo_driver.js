@@ -10,7 +10,12 @@
     // ─── 가짜 socket.io — dashboard.js의 on(event,cb) 등록만 지원 ───
     const listeners = {};
     const fakeSocket = {
-        on(event, cb) { (listeners[event] = listeners[event] || []).push(cb); },
+        on(event, cb) {
+            (listeners[event] = listeners[event] || []).push(cb);
+            // dashboard.js 로드가 느리면 아래 setTimeout 발화를 놓친다 —
+            // connect는 등록 즉시 비동기로 한 번 더 전달해 레이스를 제거
+            if (event === 'connect') setTimeout(() => cb(), 0);
+        },
         emit() { /* 데모에서는 서버로 보낼 것이 없음 */ },
     };
     window.io = () => fakeSocket;
