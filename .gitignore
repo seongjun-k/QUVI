@@ -47,6 +47,8 @@ data/inspection_logs/
 data/reference_images/
 data/device_config.json
 data/.restart_requested
+data/act_last_model.json
+data/*.png
 
 # ML 이상탐지 산출물 (백본 가중치 275MB + 뱅크/데이터셋, 학습 재현은 스크립트로)
 data/models/
