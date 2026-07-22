@@ -137,8 +137,8 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 # 사전 정의 자세 — raw Dynamixel 위치값 (0~4095 = 0~360°)
 # dict 형태로 lerobot bus에 직접 전달 (normalize=False)
 
-# ── 티칭 웨이포인트 (teach_pendant.py 로 기록 후 여기에 붙여넣기) ──────────────
-# scripts/teach_pendant.py 실행 → 원하는 자세로 이동 → 1~6 키 → 's' 로 출력
+# ── 티칭 웨이포인트 (test_sequence.py 티칭 모드로 기록 후 여기에 붙여넣기) ─────
+# scripts/test_sequence.py 실행 → 't' 티칭 모드 → 자세 잡고 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
 POSE_P1 = {'shoulder_pan': 2053, 'shoulder_lift':  978, 'elbow_flex': 3050, 'wrist_flex': 3056, 'wrist_roll': 2029, 'gripper': 2100}  # 베드 위 대기
 POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
@@ -147,7 +147,7 @@ POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wri
 POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
 
-# 홈 자세는 P1과 동일하되 그리퍼는 완전 개방 — ACT 파지 시작 자세 (2026-07-10 사용자 지정)
+# 홈 자세는 P1과 동일하되 그리퍼는 완전 개방 — ACT 파지 시작 자세
 POSE_HOME = dict(POSE_P1, gripper=GRIPPER_OPEN)
 
 # ── Dynamixel 프로파일 (⚠️ 시간기반 프로파일 모드) ───────────────────────────
@@ -156,7 +156,7 @@ POSE_HOME = dict(POSE_P1, gripper=GRIPPER_OPEN)
 #   Profile_Acceleration = 가속 시간(ms)
 # 값이 "작을수록 빠르고", "클수록 느리고 부드럽다". 제약: 가속시간 ≤ 이동시간/2.
 # (과거 코드는 이를 속도(0.229 RPM)로 오해해 vel=1~8 을 '저속'으로 썼으나
-#  실제로는 1~8ms = 사실상 최대속도였다. 시퀀스 난폭 동작의 원인. 계획서 C7.)
+#  실제로는 1~8ms = 사실상 최대속도였다. 시퀀스 난폭 동작의 원인.)
 # ※ 아래 ms 값은 보수적 초기값이며 하드웨어에서 미세조정한다.
 #
 # 일반 동작 (빈 손: 검사장 이동, 홈 복귀 등)
@@ -173,7 +173,7 @@ PROFILE_ACCEL_SEQ     = 600    # 가속시간 ms
 PROFILE_VELOCITY_ACT  = 50     # 이동시간 ms
 PROFILE_ACCEL_ACT     = 25     # 가속시간 ms
 
-# 그리퍼 개폐 대기 (#2). 그리퍼는 전류기반 위치제어라 물체를 쥐면 목표 위치에
+# 그리퍼 개폐 대기. 그리퍼는 전류기반 위치제어라 물체를 쥐면 목표 위치에
 # 도달하지 못하므로 위치 수렴 폴링 대신 고정 시간만 대기한다.
 GRIPPER_SETTLE_SEC    = 1.2
 
@@ -184,7 +184,7 @@ ACT_CONTROL_HZ = 30
 # 재기동 시 파라미터 기본값 대신 이 경로를 우선 복원한다.
 ACT_LAST_MODEL_FILE = '/workspace/data/act_last_model.json'
 
-# ── 관절 안전 범위 (P1: ACT/시퀀스 폭주 방지) ────────────────────────────────
+# ── 관절 안전 범위 (ACT/시퀀스 폭주 방지) ───────────────────────────────────
 # 정규화 단위 안전 범위 — send_action 경로(ACT·텔레옵).
 #   shoulder_pan, wrist_roll : DEGREES 모드. 1회전이 [-180°, +180°] 에 매핑되며
 #     EXTENDED_POSITION 이라 unnormalize 시 클램프가 없어 다회전 폭주가 가능하다.
@@ -255,7 +255,7 @@ class RobotControlNode(Node):
         # 명령 세대 토큰 — RESET/ESTOP 후 잔존 동작 스레드가 상태를 덮어쓰지 못하게 함
         self._cmd_gen = 0
 
-        # STOP/ESTOP 소프트 중단 이벤트 (#1/#3). 진행 중 동작 스레드가 이 이벤트를
+        # STOP/ESTOP 소프트 중단 이벤트. 진행 중 동작 스레드가 이 이벤트를
         # 확인하고 즉시 빠져나온다. 새 명령 수락 시 해제.
         self._abort_event = threading.Event()
 
@@ -343,7 +343,7 @@ class RobotControlNode(Node):
         # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
         self.declare_parameter('act_models_root',
             '/physical_ai_tools/lerobot/outputs/train')
-        # 안전(P1): send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
+        # 안전: send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
         # 발표용 시각화: ACT 추론 실시간 rerun 웹 뷰어 (실패 시 자동 강등)
@@ -394,7 +394,7 @@ class RobotControlNode(Node):
             follower_config = OmxFollowerConfig(
                 port=self._dxl_port_name,
                 id='quvi_follower',
-                # 안전(P1 C2): send_action 1스텝 상대이동 캡. ACT 이상치·첫 추론
+                # 안전: send_action 1스텝 상대이동 캡. ACT 이상치·첫 추론
                 # 슬램을 하드웨어 직전에서 차단. sync_write 직접 경로(시퀀스)에는 영향 없음.
                 max_relative_target=self._act_max_rel_target,
             )
@@ -706,7 +706,7 @@ class RobotControlNode(Node):
             self._on_act_model_select, 10,
             callback_group=self._cb_group)
 
-        # HMI 명령 수신 → STOP/ESTOP 시 진행 중 동작 소프트 중단 (#1)
+        # HMI 명령 수신 → STOP/ESTOP 시 진행 중 동작 소프트 중단
         self._hmi_cmd_sub = self.create_subscription(
             String, topics.TOPIC_HMI_COMMAND,
             self._hmi_command_callback, 10,
@@ -778,14 +778,14 @@ class RobotControlNode(Node):
                 self._latest_sidecam = frame
 
     def _esp32_rail_done_callback(self, msg: Bool):
-        # 레일 이동 중일 때만 done 을 수락한다 (#7). 오케스트레이터가 STARTUP 에서
+        # 레일 이동 중일 때만 done 을 수락한다. 오케스트레이터가 STARTUP 에서
         # /motor/rail 로 직접 보낸 이동의 done 이 robot_control 의 플래그를 엉뚱하게
         # 세팅하는 것을 방지한다. (그 경우는 오케스트레이터가 직접 처리한다.)
         if msg.data and self._get_state() == RobotState.MOVING_RAIL:
             self._esp32_rail_done = True
 
     # ─────────────────────────────────────────────
-    # 소프트 중단 (STOP) 처리 (#1/#3)
+    # 소프트 중단 (STOP) 처리
     # ─────────────────────────────────────────────
     def _hmi_command_callback(self, msg: String):
         """HMI 명령 수신. STOP/ESTOP 시 진행 중 동작을 소프트 중단한다.
@@ -831,7 +831,7 @@ class RobotControlNode(Node):
             self.get_logger().error(estop_msg)
             self._safe_estop_cleanup()
             return True
-        if self._abort_event.is_set():   # 소프트 STOP (#1)
+        if self._abort_event.is_set():   # 소프트 STOP
             self.get_logger().warn('STOP 감지 — ACT 파지 중단 (토크 유지)')
             self._soft_stop()
             self._set_state(RobotState.IDLE)
@@ -900,7 +900,7 @@ class RobotControlNode(Node):
     def _estop_cmd_callback(self, msg: Bool):
         if msg.data:
             self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 전환')
-            self._abort_event.set()   # _should_abort가 보는 이벤트 — state==ERROR만으로 커버 안 되는 가드 보강 (#7)
+            self._abort_event.set()   # _should_abort가 보는 이벤트 — state==ERROR만으로 커버 안 되는 가드 보강
             self._safe_estop_cleanup()
 
     def _reset_cmd_callback(self, msg: Bool):
@@ -1034,10 +1034,10 @@ class RobotControlNode(Node):
 
         try:
             import torch
-            # P2: 이전 파지 에피소드의 낡은 액션 큐를 비운다. reset() 없이는 두 번째
+            # 이전 파지 에피소드의 낡은 액션 큐를 비운다. reset() 없이는 두 번째
             # 파지부터 직전 관측 기반의 남은 액션이 먼저 실행돼 예기치 않게 움직인다.
             self._act_policy.reset()
-            # P3(C6): ACT용 프로파일을 명시적으로 설정해 직전 동작(시퀀스=2000ms 등)의
+            # ACT용 프로파일을 명시적으로 설정해 직전 동작(시퀀스=2000ms 등)의
             # 프로파일 누수를 제거한다. 학습 녹화 시 configure() 기본값(50ms)이 적용됐으므로
             # 동일하게 맞춰 학습 동역학과 일치시킨다.
             self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
@@ -1212,7 +1212,7 @@ class RobotControlNode(Node):
         self.get_logger().info('홈 복귀 시작')
 
         # 수동 배치·정지 후 토크가 꺼져 있을 수 있어 홈 이동 전 전 관절 토크 인가
-        # (2026-07-10: START 시 토크 오프 상태면 홈 이동이 무시돼 ACT 파지 실패)
+        # (START 시 토크 오프 상태면 홈 이동이 무시돼 ACT 파지 실패)
         if self._use_real_hardware and self._dxl_ready:
             try:
                 with self._dxl_io_lock:
@@ -1226,8 +1226,7 @@ class RobotControlNode(Node):
         success = self._write_raw_position(POSE_HOME)
         self._wait_motion_done(_arm_only(POSE_HOME))
         self._wait_gripper()
-        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
-
+        success = success and not self._should_abort()   # abort 시 실패로 보고
         self._home_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
@@ -1244,7 +1243,7 @@ class RobotControlNode(Node):
         self._write_raw_position(_arm_only(POSE_P1), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P1))
 
-        time.sleep(2.0)  # 대기
+        time.sleep(2.0)  # 파지물 흔들림 안정화 후 회전 진입
 
         self._write_raw_position(_arm_only(POSE_P2), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P2))
@@ -1261,8 +1260,7 @@ class RobotControlNode(Node):
         # 검사 동안 팔은 P3에서 후퇴 대기
         success = self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P3))
-        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
-
+        success = success and not self._should_abort()   # abort 시 실패로 보고
         self._place_chamber_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
@@ -1291,8 +1289,7 @@ class RobotControlNode(Node):
 
         success = self._write_raw_position(_arm_only(POSE_P5), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
         self._wait_motion_done(_arm_only(POSE_P5))  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
-        success = success and not self._should_abort()   # abort 시 실패로 보고 (#5)
-
+        success = success and not self._should_abort()   # abort 시 실패로 보고
         self._pick_chamber_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
@@ -1300,7 +1297,7 @@ class RobotControlNode(Node):
         return success
 
     def _clip_safe_targets(self, positions: dict, is_raw: bool) -> dict:
-        """관절 목표값을 안전 범위로 클램프한다 (P1 C3·C4).
+        """관절 목표값을 안전 범위로 클램프한다.
 
         is_raw=False : send_action 정규화 입력(ACT·텔레옵). DEGREES 관절
                        (shoulder_pan, wrist_roll)의 다회전 폭주를 ±178° 로 차단.
@@ -1354,14 +1351,14 @@ class RobotControlNode(Node):
               부하 자세에서 I게인 0으로 정상상태 오차가 20틱을 넘을 수 있다.
 
         주의: 그리퍼(전류기반 위치제어)는 물체를 쥐면 목표에 도달하지 못하므로
-        이 함수로 대기하면 안 된다. 그리퍼는 _wait_gripper() 를 사용할 것 (#2).
+        이 함수로 대기하면 안 된다. 그리퍼는 _wait_gripper() 를 사용할 것.
         """
         if not self._use_real_hardware or not self._dxl_ready:
             return
         time.sleep(0.05)  # Goal_Position 반영 여유
         deadline = time.time() + timeout
         while time.time() < deadline:
-            if self._should_abort():   # STOP/ESTOP (#1/#3)
+            if self._should_abort():   # STOP/ESTOP
                 self._soft_stop()
                 return
             positions = self._read_raw_positions()
@@ -1380,7 +1377,7 @@ class RobotControlNode(Node):
             f'[_wait_motion_done] {timeout}s 타임아웃 — 강제 진행 | 오차 초과 관절(현재-목표): {off}')
 
     def _wait_gripper(self, settle: float = GRIPPER_SETTLE_SEC):
-        """그리퍼 개폐 완료 대기 — 고정 지연 (#2).
+        """그리퍼 개폐 완료 대기 — 고정 지연.
 
         그리퍼는 전류기반 위치제어라 물체를 쥐면 목표 위치에 도달하지 못한다.
         따라서 위치 수렴 폴링(_wait_motion_done) 대신 고정 시간만 대기한다.
@@ -1400,7 +1397,7 @@ class RobotControlNode(Node):
                             accel: int = PROFILE_ACCEL,
                             grip_velocity: int = PROFILE_VELOCITY_GRIP,
                             grip_accel: int = PROFILE_ACCEL_GRIP) -> bool:
-        # STOP/ESTOP 중에는 새 목표를 쓰지 않는다 (#1/#3). 홈/안착/재파지 등
+        # STOP/ESTOP 중에는 새 목표를 쓰지 않는다. 홈/안착/재파지 등
         # 모든 선형 시퀀스가 이 경로를 쓰므로 여기서 일괄 차단한다.
         # (_soft_stop 은 bus.sync_write 를 직접 호출하므로 이 가드의 영향을 받지 않는다.)
         if self._abort_event.is_set():
@@ -1497,7 +1494,7 @@ class RobotControlNode(Node):
             self._publish_status(self._get_state().name)
 
     def _safe_estop_cleanup(self):
-        self._teleop_running = False   # 텔레옵 루프 즉시 종료 (ESTOP 중 send_action 지속 방지) (#1)
+        self._teleop_running = False   # 텔레옵 루프 즉시 종료 (ESTOP 중 send_action 지속 방지)
         try:
             if self._dxl_ready and self._follower:
                 if hasattr(self._follower, 'bus'):
@@ -1514,7 +1511,7 @@ class RobotControlNode(Node):
 
     def _execute_reset(self) -> bool:
         self._cmd_gen += 1
-        self._abort_event.clear()   # 리셋 시 이전 STOP 중단 해제 (#1)
+        self._abort_event.clear()   # 리셋 시 이전 STOP 중단 해제
         with self._dxl_io_lock:
             if self._follower:
                 try:
@@ -1550,7 +1547,7 @@ class RobotControlNode(Node):
         _execute_pick_from_chamber 로 이전돼 중복 제거)
         """
         def move_arm(pose: dict, label: str) -> bool:
-            if self._should_abort():   # STOP/ESTOP 시 새 목표 발행 안 함 (#1/#3)
+            if self._should_abort():   # STOP/ESTOP 시 새 목표 발행 안 함
                 self.get_logger().warn(f'시퀀스 중단 감지 — {label} 생략')
                 return False
             self.get_logger().info(f'이동: {label}')
@@ -1655,7 +1652,7 @@ class RobotControlNode(Node):
 
         # 직전 동작(홈 1200ms·시퀀스 2000ms)의 프로파일 누수 제거 — 남아 있으면
         # 50Hz 목표를 모터가 1.2~2초에 걸쳐 추종해 리더를 뒤늦게 따라온다.
-        # ACT 경로(P3 C6)와 동일하게 텔레옵도 50ms 프로파일을 명시 설정한다.
+        # ACT 경로와 동일하게 텔레옵도 50ms 프로파일을 명시 설정한다.
         self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
 
         if self._use_real_hardware and self._leader and self._follower:
@@ -1741,7 +1738,7 @@ class RobotControlNode(Node):
         dt = 1.0 / 50.0
 
         while self._teleop_running and rclpy.ok():
-            if self._should_abort():   # STOP/ESTOP → 루프 종료 (RESET 후 급작동 방지) (#1)
+            if self._should_abort():   # STOP/ESTOP → 루프 종료 (RESET 후 급작동 방지)
                 self.get_logger().warn('텔레옵 중단 감지 (STOP/ESTOP) — 루프 종료')
                 self._teleop_running = False
                 break

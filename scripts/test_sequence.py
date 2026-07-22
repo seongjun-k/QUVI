@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """
-웨이포인트 시퀀스 단독 테스트 스크립트 (판정 알고리즘 없이)
-소프트웨어 보간(interpolation)으로 천천히 단계적 이동
+웨이포인트 도구 — 시퀀스 테스트 + 티칭 (구 teach_pendant.py 통합)
+
+이동: 소프트웨어 보간(interpolation)으로 천천히 단계적 이동.
+티칭: 't' 모드에서 토크를 끄고 손으로 자세를 잡은 뒤 1~6 키로 저장,
+      's' 로 robot_control_node.py POSE_P* 붙여넣기 형식 출력.
 
 dynamixel_sdk 로 /dev/ttyFollower 를 직접 제어 — ROS 노드를 거치지 않는다.
 실행 위치: quvi-dev 컨테이너 (privileged 로 시리얼 포트 접근).
@@ -9,13 +12,12 @@ dynamixel_sdk 로 /dev/ttyFollower 를 직접 제어 — ROS 노드를 거치지
 """
 
 import sys
+import termios
 import time
+import tty
 
 try:
-    from dynamixel_sdk import (
-        PortHandler, PacketHandler, GroupSyncWrite, GroupSyncRead,
-        COMM_SUCCESS
-    )
+    from dynamixel_sdk import PortHandler, PacketHandler, GroupSyncWrite
 except ImportError:
     print("dynamixel_sdk 미설치: pip install dynamixel-sdk --break-system-packages")
     sys.exit(1)
@@ -225,6 +227,68 @@ POSES = {
 }
 
 
+# ── 티칭 모드 (구 teach_pendant.py) ───────────────────────────────────────────
+def _getch():
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        return sys.stdin.read(1)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def _print_positions(positions: dict):
+    print("\n현재 관절 raw 값 (0~4095):")
+    for name, val in positions.items():
+        bar = "█" * int(max(0, val) / 4095 * 20)
+        print(f"  {name:<15}: {val:4d}  {bar}")
+
+
+def _fmt_pose(label: str, positions: dict) -> str:
+    items = ", ".join(f"'{k}': {v}" for k, v in positions.items())
+    return f"POSE_{label} = {{{items}}}"
+
+
+def teach_mode(port, pkt):
+    """토크를 끄고 손으로 자세를 잡아 1~6 키로 저장. 나가면 토크 복구."""
+    print("\n[티칭 모드] 1~6: 현재 자세 저장 | p: 저장 목록 | s: 코드 출력 | c: 현재 값 | q: 복귀")
+    set_torque(port, pkt, False)
+    waypoints: dict = {}
+    all_motors = list(MOTORS.keys())
+    try:
+        while True:
+            key = _getch()
+            if key in "123456":
+                label = f"P{key}"
+                pos = read_positions(port, pkt, all_motors)
+                waypoints[label] = pos
+                print(f"\n[저장] {label} ({POSES[key][1].strip()}):")
+                _print_positions(pos)
+                print(f"  → {_fmt_pose(label, pos)}")
+            elif key == 'p':
+                print("\n[저장된 포인트]")
+                if not waypoints:
+                    print("  (없음)")
+                for label, pos in waypoints.items():
+                    print(f"  {label}: {pos}")
+            elif key == 's':
+                print("\n" + "=" * 55)
+                print("# robot_control_node.py 에 붙여넣기:")
+                for label, pos in sorted(waypoints.items()):
+                    print(_fmt_pose(label, pos))
+                if not waypoints:
+                    print("  (저장된 포인트 없음 — 먼저 1~6 키로 저장하세요)")
+                print("=" * 55)
+            elif key == 'c':
+                _print_positions(read_positions(port, pkt, all_motors))
+            elif key in ('q', '\x03'):
+                break
+    finally:
+        set_torque(port, pkt, True)
+        print("[티칭 모드 종료 — 토크 복구]")
+
+
 def main():
     print("=" * 55)
     print("  웨이포인트 테스트 (소프트웨어 보간 모드)")
@@ -238,6 +302,7 @@ def main():
     print("  1~6 : 해당 포즈로 단독 이동")
     print("  o/c : 그리퍼 열기/닫기")
     print("  a   : 전체 시퀀스 실행")
+    print("  t   : 티칭 모드 (토크 OFF, 자세 저장)")
     print("  q   : 종료 (Ctrl+C 동일)")
     print("=" * 55)
 
@@ -247,7 +312,7 @@ def main():
     try:
         while True:
             try:
-                key = input("\n명령 (1~6/o/c/a/q) > ").strip().lower()
+                key = input("\n명령 (1~6/o/c/a/t/q) > ").strip().lower()
             except (KeyboardInterrupt, EOFError):
                 print("\n[종료]")
                 break
@@ -268,6 +333,8 @@ def main():
                     run_sequence(port, pkt)
                 except KeyboardInterrupt:
                     print("\n[중단]")
+            elif key == 't':
+                teach_mode(port, pkt)
             elif key == 'q':
                 print("[종료]")
                 break
