@@ -504,8 +504,8 @@ class RobotControlNode(Node):
                 self.get_logger().info(f'마지막 선택 ACT 모델 복원: {saved}')
                 return True
             self.get_logger().warn(f'저장된 ACT 모델 경로 소실 — 기본값 사용: {saved}')
-        except (OSError, KeyError, ValueError):
-            pass  # 최초 기동 등 파일 없음 — 기본값 사용
+        except (OSError, KeyError, ValueError, TypeError):
+            pass  # 최초 기동 등 파일 없음/손상 — 기본값 사용
         return False
 
     def _save_last_act_model(self, path: str):
