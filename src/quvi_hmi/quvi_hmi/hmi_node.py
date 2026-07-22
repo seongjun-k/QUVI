@@ -224,7 +224,7 @@ class HmiNode(Node):
         self._inspection_result_event = threading.Event()
 
         # 자율 시퀀스(P1~P6)는 오케스트레이터 + robot_control_node 단일 경로가 담당한다.
-        # HMI는 모터를 직접 제어하지 않는다 (이중 제어 제거: docs/act_sequence_fix_plan.md P0).
+        # HMI는 모터를 직접 제어하지 않는다 (이중 제어 방지).
 
         self.get_logger().info(
             f'HMI_NODE 초기화 완료 | http://{self._host}:{self._port}')
@@ -285,7 +285,7 @@ class HmiNode(Node):
         if frame is None:
             return
         if key == 'camera2':
-            frame = cv2.flip(frame, -1)  # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10)
+            frame = cv2.flip(frame, -1)  # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전
         _, jpeg = cv2.imencode('.jpg', frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         with self._lock:
@@ -296,7 +296,7 @@ class HmiNode(Node):
         self._cmd_pub.publish(String(data=command))
         self.get_logger().info(f'HMI 명령: {command}')
         # 명령은 /hmi/command 로만 발행한다. 실제 모터 시퀀스는 오케스트레이터가
-        # 단독으로 구동한다 (이중 제어 제거: docs/act_sequence_fix_plan.md P0).
+        # 단독으로 구동한다 (이중 제어 방지).
 
     def send_rail_command(self, mm: float):
         """레일 목표 위치 발행 (Int32, steps 단위).
@@ -461,8 +461,6 @@ class HmiNode(Node):
         with self._hmi_busy_lock:
             self._hmi_busy_name = None
 
-
-
     def trigger_inspection(self, enable: bool) -> bool:
         """수동 검사 트리거. FSM 이 자율 시퀀스 중이면 거부하고 False 반환."""
         if enable and not self._manual_trigger_allowed():
@@ -483,8 +481,6 @@ class HmiNode(Node):
     def get_status(self) -> dict:
         with self._lock:
             return self._system_status.copy()
-
-
 
     def get_inspection_history(self) -> list:
         with self._lock:
@@ -595,8 +591,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     def api_status():
         return jsonify(hmi_node.get_status())
 
-
-
     # ─── ACT 모델 선택 API ───
     @app.route('/api/act/models')
     def api_act_models():
@@ -687,8 +681,6 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             return jsonify({'ok': True, 'teleop': 'off'})
         else:
             return jsonify({'error': f'Invalid teleop action: {action}'}), 400
-
-
 
     # ─── Rail 이동 API ───
     @app.route('/api/rail/move', methods=['POST'])
@@ -806,7 +798,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                     # inspect_node가 한 바퀴(4장) 저장 후 모드를 스스로 끄므로 매 바퀴 재활성화 필요
                     hmi_node.send_capture_dataset_command(True)
                     time.sleep(0.3)
-                    # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전 (사용자 요구 타이밍)
+                    # 정지 → settle_sec 후 캡처 → post_capture_sec 후 다음 회전
                     _run_turntable_sequence(
                         hmi_node, angles, settle_sec + post_capture_sec + 5.0,
                         post_wait_sec=settle_sec + post_capture_sec, timeout_label='데이터셋 캡처')

@@ -82,7 +82,7 @@ def generate_launch_description():
 
     fixed_cam_exposure_arg = DeclareLaunchArgument(
         'fixed_cam_exposure', default_value='110',
-        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — 2026-07-10 ACT 학습 데이터 밝기 기준 실측 튜닝')
+        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — ACT 학습 데이터 밝기 기준 실측 튜닝')
 
     anomaly_enabled_arg = DeclareLaunchArgument(
         'anomaly_enabled', default_value='true',

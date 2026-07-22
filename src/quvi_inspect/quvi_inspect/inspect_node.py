@@ -93,13 +93,13 @@ class InspectNode(Node):
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
         # MultiThreadedExecutor에서 _capture_angle과 _watchdog_cb가 동시에
-        # _run_inspection에 진입할 수 있어 이중 판정을 막는 락 (#12).
+        # _run_inspection에 진입할 수 있어 이중 판정을 막는 락.
         self._inspection_lock = threading.Lock()
         self._ref_capture_active = False
         self._dataset_capture_active = False
         self._current_object_index = 0
 
-        # ─── 캡처 안정화 타이머 (T4) ───
+        # ─── 캡처 안정화 타이머 ───
         # 턴테이블 done 직후 기구 진동·카메라 노출이 안정될 때까지 잠깐 대기 후 캡처한다.
         # 콜백을 blocking sleep 하면 이미지 갱신도 멈춰 오래된 프레임을 잡으므로,
         # 비차단 일회성 타이머로 지연시킨다. 재사용을 위해 생성 후 즉시 취소해 둔다.
@@ -115,7 +115,7 @@ class InspectNode(Node):
             max(0.05, float(self._ds_settle_sec)), self._on_dataset_settle_elapsed)
         self._ds_settle_timer.cancel()
 
-        # ─── 검사 워치독 (#4) ───
+        # ─── 검사 워치독 ───
         # turntable_done 누락(예: 0°에서 0°로 '이동' 시 done 미발행)으로 캡처가
         # 4장을 못 채우면 판정이 영영 실행되지 않아 오케스트레이터가 타임아웃/ERROR
         # 로 빠진다. 검사 활성 후 일정 시간 내 미완료면 확보된 캡처로 마무리한다.
@@ -145,7 +145,7 @@ class InspectNode(Node):
             ('min_hole_area_px',        50,                                 '_min_hole_px'),
             # ─── 턴테이블 / 전처리 ───
             ('turntable_angles',        [0, 90, 180, 270],                  '_angles'),
-            # 데이터셋 촬영(1.5s 노출 안정)과 실검사 노출 조건 정합 — train/infer skew 방지 (계획서 Phase 2)
+            # 데이터셋 촬영(1.5s 노출 안정)과 실검사 노출 조건 정합 — train/infer skew 방지
             ('capture_settle_sec',      1.5,                                '_capture_settle'),
             # 한 바퀴 캡처 ≈ 20s(각도당 ~5s) + LED 안정화 5s + 여유 — 12s는 270° 캡처 전에 판정을 강행했다
             ('inspection_finalize_sec', 45.0,                               '_finalize_sec'),
@@ -260,7 +260,7 @@ class InspectNode(Node):
     def _image_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
         if frame is not None:
-            # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전(2026-07-10) → 동시 -1
+            # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전 → 동시 -1
             self._latest_frame = cv2.flip(frame, -1)
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
@@ -268,7 +268,7 @@ class InspectNode(Node):
         self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
 
     def _turntable_done_callback(self, msg: Bool):
-        """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약 (T4).
+        """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약한다.
 
         검사 모드(_inspection_active) 캡처는 capture_now 콜백으로 이관됨 —
         0도->0도 무이동 시 done 미발행으로 캡처가 밀리는 문제 방지 목적.
@@ -291,7 +291,7 @@ class InspectNode(Node):
         self._settle_timer.reset()   # capture_settle_sec 후 _on_settle_elapsed 발화
 
     def _capture_now_callback(self, msg: Bool):
-        """오케스트레이터의 명시 캡처 명령 수신 (검사 모드 전용, T4 이관분)."""
+        """오케스트레이터의 명시 캡처 명령 수신 (검사 모드 전용)."""
         if not msg.data:
             return
         if not self._inspection_active:
@@ -339,18 +339,18 @@ class InspectNode(Node):
         """검사 트리거 수신."""
         if msg.data:
             if self._ref_capture_active:
-                # 기준 캡처 중 동시 진입 방지 — _captured_images 공유로 인한 교차 오염 방지 (#15)
+                # 기준 캡처 중 동시 진입 방지 — _captured_images 공유로 인한 교차 오염 방지
                 self.get_logger().warn('기준 이미지 캡처 진행 중 — 검사 트리거 무시')
                 return
             self._inspection_active = True
             self._captured_images.clear()
-            self._inspection_start = time.time()   # 워치독 기준 (#4)
+            self._inspection_start = time.time()   # 워치독 기준
             self.get_logger().info('검사 모드 활성화 — 턴테이블 회전 대기 중')
         else:
             self._inspection_active = False
 
     def _watchdog_cb(self):
-        """검사 완료 워치독 (#4). turntable_done 누락 등으로 캡처가 부족해도
+        """검사 완료 워치독. turntable_done 누락 등으로 캡처가 부족해도
         일정 시간 후 확보된 이미지로 판정을 마무리해 오케스트레이터 정지를 막는다."""
         if not self._inspection_active:
             return
@@ -466,7 +466,7 @@ class InspectNode(Node):
                 return
             try:
                 self._run_inspection_inner()
-            except Exception as e:   # noqa: BLE001 — 분석 예외로 노드가 고착되지 않도록 (#16)
+            except Exception as e:   # noqa: BLE001 — 분석 예외로 노드가 고착되지 않도록
                 self.get_logger().error(f'검사 중 예외 발생 — 검사 상태 해제: {e}')
             finally:
                 self._inspection_active = False
@@ -522,7 +522,7 @@ class InspectNode(Node):
             self._publish_debug_image(final_pass, surface_results)
         if self._save_images:
             self._save_inspection_log(final_pass, surface_results)
-        # 상태 해제는 _run_inspection 의 try/finally 가 일괄 처리 (#16)
+        # 상태 해제는 _run_inspection 의 try/finally 가 일괄 처리
 
     # ─────────────────────────────────────────────
     # 이미지 전처리
@@ -533,7 +533,7 @@ class InspectNode(Node):
         return cv2.GaussianBlur(gray, (self._blur_k, self._blur_k), 0)
 
     # ─────────────────────────────────────────────
-    # 2) 표면 특징 분석
+    # 표면 특징 분석
     # ─────────────────────────────────────────────
     def _surface_analysis(self) -> Dict:
         """4방향 이미지의 표면 특징을 추출하고 worst-case 로 판정한다.
@@ -558,7 +558,7 @@ class InspectNode(Node):
             # 배치 각도가 틀어지면 캡처 뷰가 다른 각도의 기준과 대응하므로,
             # 4개 각도 기준 전부와 비교해 1.0 에 가장 가까운 면적비를 채택한다.
             # 턴테이블 편심으로 물체-카메라 거리가 위상마다 변해 raw 면적이
-            # 거리 제곱으로 흔들리므로(정상품 0.78~1.71 관측, 2026-07-13),
+            # 거리 제곱으로 흔들리므로(정상품 0.78~1.71 실측),
             # 면적/폭² 끼리 비교해 거리 배율을 상쇄한다. 미출력(높이 손실)은
             # 폭 대비 면적이 줄어 여전히 비율 하락으로 검출된다.
             cap_area = cache.largest_external_area()

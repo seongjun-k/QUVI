@@ -5,8 +5,6 @@ QUVI MAIN_ORCHESTRATOR_NODE
 전체 3D 프린터 출력물 자동 양불 판정 시스템의 핵심 두뇌.
 로봇 파지(ACT), 다방향 품질 검사(표면 특징 분석), 분류 레일 제어를
 FSM(유한상태머신)으로 자율 조율 및 통합합니다.
-
-구현 규칙 준수: 이모지 금지, 한국어 주석, 간결한 핵심 논리 중심.
 """
 
 from enum import Enum
@@ -149,7 +147,7 @@ class MainOrchestratorNode(Node):
 
         # 로봇 및 구동부 명령 발행
         self._robot_grasp_pub = self.create_publisher(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD, 10)
-        # 레일 명령 경로는 의도적으로 두 가지다 (#5, 변경 시 주의):
+        # 레일 명령 경로는 의도적으로 두 가지다 (변경 시 주의):
         #   (1) 본 사이클: _robot_rail_pub → /robot/rail_command (RailPosition 코드 0~3)
         #       → robot_control_node 가 mm→steps 변환 후 /motor/rail 발행, done 은 /robot/rail_done.
         #   (2) STARTUP: _startup_rail_pub → /motor/rail 직접(steps). 0mm 홈처럼
@@ -162,13 +160,12 @@ class MainOrchestratorNode(Node):
         self._robot_place_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PLACE_CHAMBER_CMD, 10)
         self._robot_pick_chamber_pub = self.create_publisher(Bool, topics.TOPIC_ROBOT_PICK_CHAMBER_CMD, 10)
 
-        # STARTUP 시퀀스 전용 구동부 퍼블리셔
-        # _turntable_pub 과 동일 토픽이므로 _turntable_pub 을 재사용한다.
+        # 턴테이블 퍼블리셔는 STARTUP 초기화와 검사 회전이 공용으로 사용한다
         self._turntable_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_TURNTABLE_CMD, 10)
         self._startup_rail_pub = self.create_publisher(Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
 
     def _setup_subscribers(self):
-        # 레일/턴테이블 done 구독 (시작 초기화 시) — rail_done 은 단일 콜백에서 상태로 분기 (T3)
+        # 레일/턴테이블 done 구독 (시작 초기화 시) — rail_done 은 단일 콜백에서 상태로 분기
         self.create_subscription(Bool, topics.TOPIC_MOTOR_RAIL_DONE, self._startup_rail_done_cb, 10)
         self.create_subscription(Bool, topics.TOPIC_MOTOR_TURNTABLE_DONE, self._startup_turntable_done_cb, 10)
         self.create_subscription(String, topics.TOPIC_HMI_COMMAND, self._hmi_command_cb, 10)
@@ -282,7 +279,7 @@ class MainOrchestratorNode(Node):
             self.get_logger().error('시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 전환합니다.')
             # 로봇(robot_control_node)은 이미 동일한 /system/estop을 직접 구독하므로
             # 여기서 재발행하지 않는다 — 재발행 시 자기 구독 콜백이 다시 트리거되는
-            # 피드백 루프가 발생해 ERROR 로그가 무한 반복된다 (2026-07-08 발견).
+            # 피드백 루프가 발생해 ERROR 로그가 무한 반복된다.
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
 
@@ -337,7 +334,7 @@ class MainOrchestratorNode(Node):
         self._motor_homed = msg.homed
 
     def _startup_rail_done_cb(self, msg: Bool):
-        """STARTUP 레일 이동 완료 — 홈/검사장 대기 상태에서 수락 (단일 콜백, T3)."""
+        """STARTUP 레일 이동 완료 — 홈/검사장 대기 상태에서 수락 (단일 콜백)."""
         if msg.data and self._state in (
                 FsmState.STARTUP_RAIL_HOME_WAIT, FsmState.STARTUP_INSPECT_WAIT):
             self._startup_rail_done = True
@@ -367,7 +364,7 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter = 0
             self._startup_rail_pub.publish(Int32(data=0))  # 0mm 홈 = 0 steps
             # 레일 홈과 동시에 로봇팔 토크 인가 + 홈(P1) 이동 — ACT 파지 시작
-            # 자세를 보장한다 (2026-07-10). done 은 대기하지 않는다 (레일 done 기준 진행,
+            # 자세를 보장한다. done 은 대기하지 않는다 (레일 done 기준 진행,
             # _robot_home_done_cb 는 HOMING_ARM_WAIT 상태에서만 플래그를 세워 간섭 없음).
             self._robot_home_pub.publish(Bool(data=True))
             self.get_logger().info('[STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행')
@@ -421,7 +418,7 @@ class MainOrchestratorNode(Node):
 
         elif self._state == FsmState.START_RAIL_MOVE_BED_TRIGGER:
             # STARTUP 병행 홈이 끝나기 전 레일 명령을 보내면 robot_control 이
-            # HOMING 상태라 _try_start_command 가 무시한다 (2026-07-10) — done 대기.
+            # HOMING 상태라 _try_start_command 가 무시한다 — done 대기.
             self._state_timer_counter += 1
             if not self._startup_home_done:
                 # STARTUP 발행 시점에 robot_control 이 비-IDLE 이면 홈 명령이
@@ -636,8 +633,8 @@ class MainOrchestratorNode(Node):
             self._state_timer_counter += 1
             if self._robot_rail_done:
                 self.get_logger().info('레일 홈 복귀 완료')
-                # 단일 오브젝트 파이프라인 — _total_objects 는 GRASPING_TRIGGER 에서 항상 1로
-                # 설정돼 순회 재진입 분기가 도달 불가였다 (죽은 코드 제거, 2026-07-08 리뷰 #5)
+                # 단일 오브젝트 파이프라인 — 사이클당 물체 1개를 처리하고 FINISHED 로
+                # 종료한다 (다중 객체 순회 분기는 도달 불가라 제거됨)
                 self._state = FsmState.FINISHED
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                 self.get_logger().error('레일 홈 복귀 대기 타임아웃! ERROR 상태로 전환')
@@ -672,7 +669,7 @@ class MainOrchestratorNode(Node):
 
     # ─── HMI 전송 유틸리티 ───
     def _publish_hmi_status(self):
-        # Dynamically query the ROS 2 graph to check if other nodes are online
+        # ROS 2 그래프에서 퍼블리셔 존재 여부로 하위 노드 온라인 상태를 판별
         inspect_online = self.count_publishers(topics.TOPIC_INSPECTION_RESULT) > 0
         grasp_online = self.count_publishers('/robot/status') > 0
         motor_online = self.count_publishers(topics.TOPIC_MOTOR_STATUS) > 0

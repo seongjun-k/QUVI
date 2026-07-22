@@ -91,7 +91,7 @@ def generate_launch_description():
 
     fixed_cam_exposure_arg = DeclareLaunchArgument(
         'fixed_cam_exposure', default_value='110',
-        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — 2026-07-10 ACT 학습 데이터 밝기 기준 실측 튜닝')
+        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — ACT 학습 데이터 밝기 기준 실측 튜닝')
 
     micro_ros_port_arg = DeclareLaunchArgument(
         'micro_ros_port', default_value=_dev.get('micro_ros_port', '/dev/ttyESP32'),
@@ -163,7 +163,7 @@ def generate_launch_description():
         name='main_orchestrator_node',
         parameters=[{
             'use_act': LaunchConfiguration('use_act'),
-            # 검사 settle 2.0s 캡처와 다음 회전 명령 레이스 방지 (계획서 Phase 2 페이싱)
+            # 검사 settle 2.0s 캡처와 다음 회전 명령 레이스 방지 페이싱
             'step_delay_sec': 3.0,
             'loop_rate_hz': 10.0,
             # micro_ros_port 와 동일한 장치 — 미전달 시 하드리셋이 기본값 포트를 써서 어긋난다

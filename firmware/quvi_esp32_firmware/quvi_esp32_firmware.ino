@@ -204,7 +204,7 @@ void vMotorTask(void *pvParameters) {
             continue;
         }
 
-        // [fix] homing 요청을 vMotorTask(Core 0) 단독으로 처리
+        // homing 요청은 vMotorTask(Core 0)가 단독으로 처리한다.
         // vCommTask에서 직접 호출하면 update() 루프와 같은 모터 객체에
         // 동시 접근하는 레이스 컨디션이 발생하므로, 플래그로 위임한다.
         if (homingRequested) {

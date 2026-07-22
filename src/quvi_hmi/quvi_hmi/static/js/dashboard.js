@@ -128,7 +128,7 @@ function _updateJointStates(status) {
             if (!valEl || !barEl) return;
 
             if (idx === 5) {
-                // 그리퍼 (ID 6, 1800 ~ 2300 ticks)
+                // 그리퍼 (ID 6) — 범위는 GRIPPER.close~open ticks
                 const ticks = Math.round((rad * 4096.0) / (2 * Math.PI));
                 valEl.textContent = `${ticks} ticks`;
 

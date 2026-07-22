@@ -42,7 +42,7 @@ import cv2
 import numpy as np
 
 ANGLES = (0, 90, 180, 270)
-MIN_IMAGES_PER_ANGLE = 20   # Phase 0 게이트 (계획서 §4)
+MIN_IMAGES_PER_ANGLE = 20   # 각도당 최소 학습 이미지 수 — 미달 시 뱅크 구축 중단
 GRID_COLS_MAX = 8
 
 
