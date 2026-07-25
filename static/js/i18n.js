@@ -209,7 +209,7 @@
             'inspection.debugTitle': '판정 분석 화면',
             'inspection.criteriaTitle': '판정 기준·결과',
             'inspection.failReasonTitle': '불합격 사유 (Fail Reason)',
-            'inspection.normal': '정상 (None)',
+            'inspection.normal': '정상 (이상 없음)',
             'inspection.unknown': '불명 (Unknown)',
 
             'th2.item': '검사 항목',
@@ -443,7 +443,7 @@
             'inspection.debugTitle': 'Judgment Analysis View',
             'inspection.criteriaTitle': 'Judgment Criteria & Result',
             'inspection.failReasonTitle': 'Fail Reason',
-            'inspection.normal': 'Normal (None)',
+            'inspection.normal': 'Normal (no defects)',
             'inspection.unknown': 'Unknown',
 
             'th2.item': 'Item',
@@ -677,7 +677,7 @@
             'inspection.debugTitle': '判定分析画面',
             'inspection.criteriaTitle': '判定基準・結果',
             'inspection.failReasonTitle': '不合格理由（Fail Reason）',
-            'inspection.normal': '正常（None）',
+            'inspection.normal': '正常（異常なし）',
             'inspection.unknown': '不明（Unknown）',
 
             'th2.item': '検査項目',
