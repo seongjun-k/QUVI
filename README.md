@@ -21,7 +21,7 @@
 
 QUVI는 이 문제를 **파지(모방학습 로봇팔) → 검사(머신비전) → 분류(자동 적재)** 전 과정을 무인화한 자동 분류 시스템으로 해결합니다. 출력 완료 제품을 로봇팔이 자동으로 파지하여 검사 챔버의 턴테이블에서 4방향 촬영 후 품질을 분석(양불 판정)하고, 결과에 따라 합격(PASS)과 불량(FAIL) 스테이션으로 분류 적재합니다.
 
-전 과정은 유한상태머신(FSM) 오케스트레이터가 자율 제어하며, 파지는 LeRobot ACT 모방학습, 검사는 표면 특징 룰 판정 + PatchCore 이상탐지(섀도우 모드)로 수행됩니다.
+전 과정은 유한상태머신(FSM) 오케스트레이터가 자율 제어하며, 파지는 LeRobot ACT 모방학습, 검사는 표면 특징 룰 판정과 PatchCore 이상탐지를 결합한 하이브리드 방식으로 수행됩니다.
 
 ---
 
@@ -35,22 +35,26 @@ QUVI는 이 문제를 **파지(모방학습 로봇팔) → 검사(머신비전) 
 | **하위 제어** | ESP32-S3 + TB6600 (micro-ROS) | 리니어 레일(스텝 모터)·턴테이블 각도·조명 LED 구동 제어 |
 | **로봇팔** | ROBOTIS OMX 매니퓰레이터 (팔로워) | 다이나믹셀(XL430/XL330) 기반, 리더-팔로워 텔레옵 지원 |
 | **카메라** | USB UVC 카메라 × 2 | 사이드캠(Zone 1: 파지 영역), 검사캠(Zone 2: 품질 검사 챔버) |
-| **AI 및 알고리즘** | LeRobot ACT + OpenCV + PatchCore | 모방학습 파지 제어, 표면 특징 룰 판정, ML 이상탐지(섀도우 모드) |
+| **AI 및 알고리즘** | LeRobot ACT + OpenCV + PatchCore | 모방학습 파지 제어, 표면 특징 룰 판정, ML 이상탐지(하이브리드 결합) |
 
 ### 검사 방식
 
-검사캠이 턴테이블 4방향(0°/90°/180°/270°) 이미지를 캡처하여 두 갈래로 분석합니다.
+검사캠이 턴테이블 4방향(0°/90°/180°/270°) 이미지를 캡처하여 두 갈래로 분석하고, 두 결과를 **하이브리드로 결합**해 최종 판정합니다.
 
-1. **표면 특징 룰 판정 (판정 주체)** — 각도별 worst-case로 PASS/FAIL 결정
+1. **표면 특징 룰 판정** — 각도별 worst-case로 PASS/FAIL 결정
    * Solidity (컨벡스 헐 대비 윤곽 면적 — 워핑 감지)
    * 면적비 (기준 이미지 대비 — 미출력/과출력 감지). 턴테이블 편심에 의한 물체-카메라 거리 변화를 상쇄하기 위해 **면적/폭² 거리 불변 정규화**로 비교
    * 구멍 개수·구멍 면적비 (레이어 분리 감지) — 구멍 1개부터 FAIL
    * 텍스처 분산 (라플라시안 — 스트링잉 감지)
 
    판정 임계값은 `src/quvi_inspect/config/inspect_params.yaml`에서 관리하며, HMI 표시 기준(`dashboard.js` THRESHOLDS)과 동기화를 유지합니다.
-2. **PatchCore 이상탐지 (섀도우 모드)** — WideResNet50 백본 기반 각도별 메모리뱅크로 이상점수를 계산해 로그에만 기록. 판정에는 반영하지 않으며, 룰 판정과의 일치율을 축적해 컷오버 여부를 검증하는 단계입니다 (`scripts/shadow_report.py`).
+2. **PatchCore 이상탐지** — WideResNet50 백본 기반 각도별 메모리뱅크로 이상점수를 계산. 정상품 이미지만으로 학습하므로 불량 샘플 수집·라벨링이 필요 없습니다.
 
-기준 이미지는 HMI의 기준 이미지 캡처 모드로 정상품을 실촬영하여 생성합니다.
+**하이브리드 판정 규칙** — 룰과 ML이 모두 PASS일 때만 최종 PASS입니다. 룰이 PASS로 본 제품이라도 ML이 명시적으로 FAIL을 내면 최종 FAIL로 뒤집습니다. 반대로 ML이 룰의 FAIL을 PASS로 되돌리지는 않습니다. 즉 ML은 판정을 보수적으로 강화하는 방향으로만 작동하며, 불량품이 양품으로 새는 경우(false-accept)를 늘리지 않습니다. ML 모델이 로드되지 않은 환경에서는 룰 단독 판정으로 자동 폴백합니다.
+
+판정 결과에는 `anomaly_score_worst`(4방향 중 최악 이상점수)와 `ml_passed`(-1=미사용 / 0=FAIL / 1=PASS)가 함께 발행되며, HMI 대시보드에 ML 이상 점수로 표시됩니다.
+
+기준 이미지는 HMI의 기준 이미지 캡처 모드로 정상품을 실촬영하여 생성합니다. 룰 판정의 면적비 항목이 기준 이미지를 사용하므로 현재는 여전히 필요하며, 룰 의존을 완전히 걷어내는 것은 향후 과제입니다.
 
 ### ROS 2 패키지 및 노드 구조
 
@@ -58,7 +62,7 @@ QUVI는 이 문제를 **파지(모방학습 로봇팔) → 검사(머신비전) 
 | :--- | :--- | :--- |
 | **`quvi_robot_control`** | `main_orchestrator_node` | 전체 자율 시퀀스 FSM 제어 (파지 → 챔버 안착 → 검사 → 분류 → 홈 복귀) |
 | | `robot_control_node` | 로봇팔 다이나믹셀 제어, LeRobot ACT 파지 추론, 레일/턴테이블 명령 중계, E-STOP 처리 |
-| **`quvi_inspect`** | `inspect_node` | 4방향 표면 특징 분석 양불 판정 + PatchCore 이상탐지(섀도우), 검사 로그 저장, 기준 이미지·ML 데이터셋 캡처 모드 |
+| **`quvi_inspect`** | `inspect_node` | 4방향 표면 특징 분석 + PatchCore 이상탐지 하이브리드 양불 판정, 검사 로그 저장, 기준 이미지·ML 데이터셋 캡처 모드 |
 | **`quvi_hmi`** | `hmi_node` | **Flask + SocketIO 기반 실시간 웹 대시보드** (상태 모니터링, MJPEG 스트리밍, 수동 제어) |
 | **`quvi_msgs`** | - | 커스텀 메시지 (`SystemStatus`, `InspectionResult`, `GraspGoal`, `MotorStatus` 등) |
 | **`quvi_bringup`** | - | 시스템 런치 파일 (`full_system.launch.py`, `vision_pipeline.launch.py`) |
@@ -162,7 +166,7 @@ HMI 대시보드에서 모델 스캔·선택으로 런타임 교체가 가능하
 
 ---
 
-## PatchCore 이상탐지 학습 파이프라인 (섀도우 모드)
+## PatchCore 이상탐지 학습 파이프라인
 
 ```bash
 # 0. HMI 데이터셋 촬영 모드 또는 기존 PASS 검사 로그로 정상품 이미지 수집
@@ -172,7 +176,7 @@ python3 scripts/build_anomaly_dataset.py     # PASS 로그 → 각도별 raw/ �
 # 1. 각도별 메모리뱅크 학습 + 임계값 산정
 python3 scripts/train_anomaly_bank.py        # → data/models/bank_{angle}.pt, thresholds.json
 
-# 2. 섀도우 운영 후 룰 vs ML 일치율 리포트 (컷오버 게이트)
+# 2. 룰 vs ML 일치율 리포트 (판정 신뢰도 점검)
 python3 scripts/shadow_report.py
 ```
 
@@ -197,7 +201,7 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 
 ## 팀 정보
 
-- **서울로봇고등학교 졸업작품 돼지껍데기 팀**
+- **서울로봇고등학교 졸업작품 올라운더 팀**
 
 ---
 
