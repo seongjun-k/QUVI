@@ -1,0 +1,700 @@
+/* ═══════════════════════════════════════════
+   QUVI HMI Dashboard — i18n (ko/en/ja)
+   dashboard.js 보다 먼저 로드되어야 한다 (window.I18N 제공)
+   ═══════════════════════════════════════════ */
+
+(function () {
+    const dict = {
+        ko: {
+            'nav.dashboard': '대시보드',
+            'nav.teleop': '텔레오퍼레이션',
+            'nav.status': '시스템 상태',
+            'nav.inspection': '검사 상세 내역',
+            'sidebar.toggleTitle': '사이드바 접기/펼치기',
+
+            'stage.INIT': '시스템 초기화 중',
+            'stage.IDLE': '대기 중',
+            'stage.GRASPING': 'ACT 파지 진행 중',
+            'stage.INSPECTING': '품질 검사 중',
+            'stage.SORTING': '분류 이동 중',
+            'stage.RELEASING': '출력물 투하 중',
+            'stage.HOMING': '홈 복귀 중',
+            'stage.TELEOPING': '텔레오퍼레이션 동작 중',
+            'stage.FINISHED': '작업 완료',
+            'stage.ERROR': '오류 발생 — 확인 필요',
+            'stage.ESTOP': '비상 정지 — E-STOP 활성',
+
+            'conn.waiting': '서버 연결 대기',
+            'conn.online': '서버 연결됨',
+            'conn.offline': '서버 연결 끊김',
+
+            'control.start': '시작',
+            'control.stop': '정지',
+            'control.estop': 'E-STOP',
+            'control.estopFull': 'E-STOP (비상 정지)',
+            'control.reset': '리셋',
+
+            'stat.total': '총 출력물',
+            'stat.processed': '처리 완료',
+            'stat.pass': '합격 (PASS)',
+            'stat.fail': '불합격 (FAIL)',
+            'stat.passRate': '합격률',
+
+            'cam.sidecam': '사이드캠 (픽업 구역)',
+            'cam.sidecamOnly': '사이드캠',
+            'cam.inspect': '검사캠 (검사 구역)',
+            'cam.result': '검사 판정 결과',
+            'cam.actViz': 'ACT 추론 시각화',
+            'cam.collapse': '접기',
+            'cam.expand': '펼치기',
+            'cam.rerunFallback': 'rerun 뷰어 연결 실패 — robot_control_node의 rerun_enable 파라미터가 켜져 있는지 확인하세요.',
+            'rerun.viewerTitle': 'rerun 뷰어',
+
+            'panel.latestResult': '최신 검사 결과',
+            'panel.noResult': '아직 검사 결과가 없습니다',
+
+            'metric.solidity': 'Solidity (워핑)',
+            'metric.areaRatio': '면적 비율 (미출력)',
+            'metric.holeCount': '구멍 수 (레이어 분리)',
+            'metric.holeArea': '구멍 면적비',
+            'metric.texture': '텍스처 분산 (스트링잉)',
+            'metric.time': '검사 소요시간',
+
+            'panel.subsystem': '서브시스템',
+            'subsystem.grasp': 'ACT 파지',
+            'subsystem.inspect': '검사 판정',
+            'subsystem.motor': '모터 제어',
+
+            'panel.passFailRatio': '합격/불합격 비율',
+
+            'panel.history': '검사 히스토리',
+            'history.countSuffix': '건',
+            'history.empty': '검사 기록이 없습니다',
+
+            'th.index': '#',
+            'th.time': '시간',
+            'th.judgment': '판정',
+            'th.solidity': 'Solidity',
+            'th.hole': '구멍',
+            'th.texture': '텍스처',
+            'th.duration': '소요시간',
+            'th.failReason': '불량 사유',
+
+            'teleop.title': '텔레오퍼레이션',
+            'teleop.subtitle': '리더 암을 움직이면 팔로워 암이 실시간으로 따라 움직입니다.',
+            'teleop.panelTitle': '조작 패널',
+            'teleop.stateLabel': '동작 상태:',
+            'teleop.hintDefault': '토글을 켜면 텔레오퍼레이션이 시작됩니다.',
+            'teleop.hintOn': '리더 암을 움직이면 팔로워가 30Hz로 따라갑니다.',
+            'teleop.hintError': '리더 암 연결/포트 오류입니다. E-STOP 후 연결을 확인하세요.',
+            'teleop.toggleLabel': '텔레오퍼레이션 활성화',
+            'teleop.warnTitle': '안전 조작 및 주의사항',
+            'teleop.warn1': '<strong>충돌 조심</strong>: 팔로워 로봇이 리더 로봇의 급격한 동작을 그대로 따라 하므로, 조작 반경 내 장애물을 사전에 확인해 주세요.',
+            'teleop.warn2': '<strong>비상 정지</strong>: 로봇의 동작이 오작동하거나 통제 범위를 벗어날 경우, 즉시 위의 빨간 E-STOP 버튼(또는 화면 상단 E-STOP)을 클릭하십시오.',
+            'teleop.warn3': '<strong>안전 종료</strong>: 텔레옵 비활성화 시 리더 암의 토크가 다시 강하게 켜지며 고정됩니다. 툭 떨어지지 않게 손으로 가볍게 잡은 채 OFF 버튼을 눌러주십시오.',
+
+            'status.jointTitle': '로봇암 관절 각도 (6축)',
+            'status.jointSyncNormal': '정상',
+            'status.jointSyncLive': '실시간 (10Hz)',
+
+            'status.railTitle': '리니어 레일 (Linear Rail)',
+            'status.railCurrentLabel': '현재 목표 레일 위치:',
+            'rail.moving': '이동 중...',
+
+            'status.turntableTitle': '턴테이블 회전 (Turntable)',
+            'status.turntableAngleLabel': '회전 각도:',
+
+            'status.deviceTitle': '장치 설정 (USB)',
+            'device.restartNote': '저장 시 시스템 재시작 필요',
+            'device.loading': '장치 목록 로딩 중...',
+            'device.saveBtn': '저장 및 재시작',
+            'device.refreshBtn': '새로고침',
+            'device.loadFailed': '장치 목록 로드 실패',
+            'device.noCandidates': '(후보 없음)',
+            'device.noneSelected': '선택된 장치가 없습니다.',
+            'device.confirmRestart': '장치 설정을 저장하고 5초 뒤 시스템을 재시작합니다.\n계속하시겠습니까?',
+            'device.savedPrefix': '저장됨 — ',
+            'device.savedSuffix': '초 뒤 재시작...',
+            'device.restarting': '재시작 중... 잠시 후 페이지를 새로고침하세요.',
+
+            'common.errorPrefix': '오류: ',
+            'common.unknown': '알 수 없음',
+            'common.networkError': '네트워크 오류',
+            'common.waiting': '대기 중',
+
+            'status.actTitle': 'ACT 모델 선택',
+            'act.applyNote': 'IDLE 상태에서만 적용',
+            'act.modelLabel': '모델',
+            'act.loadingOption': '로딩 중...',
+            'act.applyLabel': '적용',
+            'act.loadBtn': '로드',
+            'act.currentLabel': '현재 모델',
+            'act.stateLabel': '상태',
+            'act.dash': '-',
+            'act.noneSelected': '모델을 선택하세요.',
+            'act.requesting': '로드 요청 전송...',
+            'act.requested': '로드 요청됨 — 로봇이 IDLE일 때만 적용됩니다.',
+            'act.noModels': '사용 가능한 모델 없음',
+            'act.pathSet': '(경로 지정됨)',
+            'act.none': '없음',
+            'act.loadingState': '로딩 중...',
+            'act.ready': '준비됨',
+            'act.notLoaded': '미로드',
+
+            'status.manualTitle': '수동 제어 패널',
+            'manual.note': 'IDLE / FINISHED 상태에서만 동작',
+
+            'manual.railTitle': '리니어 레일',
+            'manual.railCurrentPrefix': '현재: ',
+            'manual.railExec': '이동',
+            'manual.railMoving': '이동 중…',
+            'manual.railPlaceholder': '0 ~ 420 mm',
+            'manual.railAlert': '레일 위치를 0~420mm 범위로 입력해주세요.',
+            'manual.railError': '레일 오류: ',
+            'manual.railCmdFailed': '레일 명령 전송 실패',
+            'manual.presetHome': '홈(0)',
+            'manual.railCommandedPrefix': '명령됨: ',
+
+            'manual.turnTitle': '턴테이블',
+            'manual.turnCurrentPrefix': '현재: ',
+            'manual.turnExec': '회전',
+            'manual.turnMoving': '회전 중…',
+            'manual.turnPlaceholder': '0 ~ 360°',
+            'manual.turnAlert': '각도를 0~360° 범위로 입력해주세요.',
+            'manual.turnError': '턴테이블 오류: ',
+            'manual.turnCmdFailed': '턴테이블 명령 전송 실패',
+            'manual.turnCommandedPrefix': '명령됨: ',
+
+            'manual.ledTitle': '턴테이블 LED',
+
+            'manual.refCapTitle': '기준 이미지 캡쳐',
+            'manual.refCapHint': '정상품을 턴테이블에 올린 후 시작하세요',
+            'manual.delaySec': '딜레이(초)',
+            'manual.capStart': '캡쳐 시작',
+            'manual.capStop': '중단',
+            'manual.refCapProgress': '캡쳐 진행 중... (0° → 90° → 180° → 270°)',
+            'manual.refCapComplete': '캡쳐 완료 ✓',
+            'manual.refCapStopped': '캡쳐 중단됨',
+
+            'manual.dsCapTitle': '데이터셋 촬영',
+            'manual.dsCapHint': '정상품을 턴테이블에 올린 후 시작하세요 (ML 학습용 원본 저장)',
+            'manual.settleSec': '안정화(초)',
+            'manual.rounds': '반복(바퀴)',
+            'manual.dsCapStart': '촬영 시작',
+            'manual.dsCapProgressPrefix': '촬영 진행 중... (0° → 90° → 180° → 270°) ×',
+            'manual.roundsUnit': '바퀴',
+            'manual.dsCapComplete': '촬영 완료 ✓',
+            'manual.dsCapStopped': '촬영 중단됨',
+
+            'manual.inspectTestTitle': '검사 단독 테스트',
+            'manual.inspectTestHint': '물체를 턴테이블에 올린 후 시작하세요 (로봇/FSM 없이 검사만 실행)',
+            'manual.inspectTestBtn': '검사 테스트',
+            'manual.inspectTestProgress': '검사 테스트 진행 중... (0° → 90° → 180° → 270°)',
+            'manual.inspectTestComplete': '검사 테스트 완료 ✓',
+
+            'status.fsmTitle': '시스템 상태 시퀀스 (FSM Flow)',
+            'fsm.init': '초기화',
+            'fsm.inspect': '품질 검사',
+            'fsm.sort': '분류 이동',
+            'fsm.release': '출력물 투하',
+            'fsm.home': '홈 복귀',
+            'fsm.teleop': '수동 조종',
+            'fsm.finished': '완료',
+            'fsm.error': '오류',
+            'fsm.estop': '비상정지',
+
+            'inspection.camTitle': '턴테이블 촬영 화면',
+            'inspection.debugTitle': '판정 분석 화면',
+            'inspection.criteriaTitle': '판정 기준·결과',
+            'inspection.failReasonTitle': '불합격 사유 (Fail Reason)',
+            'inspection.normal': '정상 (None)',
+            'inspection.unknown': '불명 (Unknown)',
+
+            'th2.item': '검사 항목',
+            'th2.measured': '측정 값',
+            'th2.threshold': '합격 기준 (Threshold)',
+
+            'row.solidity': 'Solidity (워핑 휨 현상)',
+            'row.areaRatio': '면적 비율 (미출력/수축)',
+            'row.holeCount': '구멍 개수 (레이어 분리/파손)',
+            'row.texture': '텍스처 분산 (거미줄/스트링잉)',
+
+            'threshold.holeCountUnit': '0 개',
+            'threshold.textureMax': '500 이하',
+        },
+        en: {
+            'nav.dashboard': 'Dashboard',
+            'nav.teleop': 'Teleoperation',
+            'nav.status': 'System Status',
+            'nav.inspection': 'Inspection Detail',
+            'sidebar.toggleTitle': 'Collapse/Expand Sidebar',
+
+            'stage.INIT': 'Initializing System',
+            'stage.IDLE': 'Idle',
+            'stage.GRASPING': 'ACT Grasping',
+            'stage.INSPECTING': 'Inspecting Quality',
+            'stage.SORTING': 'Sorting',
+            'stage.RELEASING': 'Releasing Object',
+            'stage.HOMING': 'Returning Home',
+            'stage.TELEOPING': 'Teleoperation Active',
+            'stage.FINISHED': 'Job Finished',
+            'stage.ERROR': 'Error — Check Required',
+            'stage.ESTOP': 'Emergency Stop — E-STOP Active',
+
+            'conn.waiting': 'Waiting for Server',
+            'conn.online': 'Server Connected',
+            'conn.offline': 'Server Disconnected',
+
+            'control.start': 'Start',
+            'control.stop': 'Stop',
+            'control.estop': 'E-STOP',
+            'control.estopFull': 'E-STOP (Emergency Stop)',
+            'control.reset': 'Reset',
+
+            'stat.total': 'Total Objects',
+            'stat.processed': 'Processed',
+            'stat.pass': 'Pass',
+            'stat.fail': 'Fail',
+            'stat.passRate': 'Pass Rate',
+
+            'cam.sidecam': 'Side Cam (Pickup Zone)',
+            'cam.sidecamOnly': 'Side Cam',
+            'cam.inspect': 'Inspect Cam (Inspection Zone)',
+            'cam.result': 'Inspection Result',
+            'cam.actViz': 'ACT Inference Visualization',
+            'cam.collapse': 'Collapse',
+            'cam.expand': 'Expand',
+            'cam.rerunFallback': 'Failed to connect to rerun viewer — check that robot_control_node\'s rerun_enable parameter is on.',
+            'rerun.viewerTitle': 'rerun viewer',
+
+            'panel.latestResult': 'Latest Inspection Result',
+            'panel.noResult': 'No inspection results yet',
+
+            'metric.solidity': 'Solidity (Warping)',
+            'metric.areaRatio': 'Area Ratio (Underextrusion)',
+            'metric.holeCount': 'Hole Count (Layer Separation)',
+            'metric.holeArea': 'Hole Area Ratio',
+            'metric.texture': 'Texture Variance (Stringing)',
+            'metric.time': 'Inspection Duration',
+
+            'panel.subsystem': 'Subsystems',
+            'subsystem.grasp': 'ACT Grasping',
+            'subsystem.inspect': 'Inspection',
+            'subsystem.motor': 'Motor Control',
+
+            'panel.passFailRatio': 'Pass/Fail Ratio',
+
+            'panel.history': 'Inspection History',
+            'history.countSuffix': ' items',
+            'history.empty': 'No inspection records',
+
+            'th.index': '#',
+            'th.time': 'Time',
+            'th.judgment': 'Result',
+            'th.solidity': 'Solidity',
+            'th.hole': 'Hole',
+            'th.texture': 'Texture',
+            'th.duration': 'Duration',
+            'th.failReason': 'Fail Reason',
+
+            'teleop.title': 'Teleoperation',
+            'teleop.subtitle': 'Move the leader arm and the follower arm mirrors it in real time.',
+            'teleop.panelTitle': 'Control Panel',
+            'teleop.stateLabel': 'Status:',
+            'teleop.hintDefault': 'Turn the toggle on to start teleoperation.',
+            'teleop.hintOn': 'Move the leader arm and the follower follows at 30Hz.',
+            'teleop.hintError': 'Leader arm connection/port error. Press E-STOP and check the connection.',
+            'teleop.toggleLabel': 'Enable Teleoperation',
+            'teleop.warnTitle': 'Safety Precautions',
+            'teleop.warn1': '<strong>Collision caution</strong>: the follower robot mirrors the leader\'s sudden movements exactly, so check for obstacles in the working radius beforehand.',
+            'teleop.warn2': '<strong>Emergency stop</strong>: if the robot malfunctions or moves out of the controlled range, immediately click the red E-STOP button above (or the header E-STOP).',
+            'teleop.warn3': '<strong>Safe shutdown</strong>: when teleoperation is disabled, the leader arm\'s torque turns back on and locks firmly. Hold it lightly so it doesn\'t drop before pressing OFF.',
+
+            'status.jointTitle': 'Robot Arm Joint Angles (6-axis)',
+            'status.jointSyncNormal': 'Normal',
+            'status.jointSyncLive': 'Live (10Hz)',
+
+            'status.railTitle': 'Linear Rail',
+            'status.railCurrentLabel': 'Current Target Rail Position:',
+            'rail.moving': 'Moving...',
+
+            'status.turntableTitle': 'Turntable Rotation',
+            'status.turntableAngleLabel': 'Rotation Angle:',
+
+            'status.deviceTitle': 'Device Settings (USB)',
+            'device.restartNote': 'System restart required after saving',
+            'device.loading': 'Loading device list...',
+            'device.saveBtn': 'Save & Restart',
+            'device.refreshBtn': 'Refresh',
+            'device.loadFailed': 'Failed to load device list',
+            'device.noCandidates': '(no candidates)',
+            'device.noneSelected': 'No device selected.',
+            'device.confirmRestart': 'This will save the device settings and restart the system in 5 seconds.\nContinue?',
+            'device.savedPrefix': 'Saved — restarting in ',
+            'device.savedSuffix': 's...',
+            'device.restarting': 'Restarting... please refresh the page shortly.',
+
+            'common.errorPrefix': 'Error: ',
+            'common.unknown': 'Unknown',
+            'common.networkError': 'Network error',
+            'common.waiting': 'Waiting',
+
+            'status.actTitle': 'ACT Model Selection',
+            'act.applyNote': 'Applies only while IDLE',
+            'act.modelLabel': 'Model',
+            'act.loadingOption': 'Loading...',
+            'act.applyLabel': 'Apply',
+            'act.loadBtn': 'Load',
+            'act.currentLabel': 'Current Model',
+            'act.stateLabel': 'State',
+            'act.dash': '-',
+            'act.noneSelected': 'Select a model.',
+            'act.requesting': 'Sending load request...',
+            'act.requested': 'Load requested — applies only when the robot is IDLE.',
+            'act.noModels': 'No models available',
+            'act.pathSet': '(path set)',
+            'act.none': 'None',
+            'act.loadingState': 'Loading...',
+            'act.ready': 'Ready',
+            'act.notLoaded': 'Not loaded',
+
+            'status.manualTitle': 'Manual Control Panel',
+            'manual.note': 'Works only while IDLE / FINISHED',
+
+            'manual.railTitle': 'Linear Rail',
+            'manual.railCurrentPrefix': 'Current: ',
+            'manual.railExec': 'Move',
+            'manual.railMoving': 'Moving…',
+            'manual.railPlaceholder': '0 ~ 420 mm',
+            'manual.railAlert': 'Enter a rail position between 0 and 420mm.',
+            'manual.railError': 'Rail error: ',
+            'manual.railCmdFailed': 'Failed to send rail command',
+            'manual.presetHome': 'Home(0)',
+            'manual.railCommandedPrefix': 'Commanded: ',
+
+            'manual.turnTitle': 'Turntable',
+            'manual.turnCurrentPrefix': 'Current: ',
+            'manual.turnExec': 'Rotate',
+            'manual.turnMoving': 'Rotating…',
+            'manual.turnPlaceholder': '0 ~ 360°',
+            'manual.turnAlert': 'Enter an angle between 0 and 360°.',
+            'manual.turnError': 'Turntable error: ',
+            'manual.turnCmdFailed': 'Failed to send turntable command',
+            'manual.turnCommandedPrefix': 'Commanded: ',
+
+            'manual.ledTitle': 'Turntable LED',
+
+            'manual.refCapTitle': 'Reference Image Capture',
+            'manual.refCapHint': 'Place a good object on the turntable before starting',
+            'manual.delaySec': 'Delay (s)',
+            'manual.capStart': 'Start Capture',
+            'manual.capStop': 'Stop',
+            'manual.refCapProgress': 'Capturing... (0° → 90° → 180° → 270°)',
+            'manual.refCapComplete': 'Capture complete ✓',
+            'manual.refCapStopped': 'Capture stopped',
+
+            'manual.dsCapTitle': 'Dataset Capture',
+            'manual.dsCapHint': 'Place a good object on the turntable before starting (raw images for ML training)',
+            'manual.settleSec': 'Settle (s)',
+            'manual.rounds': 'Rounds',
+            'manual.dsCapStart': 'Start Capture',
+            'manual.dsCapProgressPrefix': 'Capturing... (0° → 90° → 180° → 270°) ×',
+            'manual.roundsUnit': ' rounds',
+            'manual.dsCapComplete': 'Capture complete ✓',
+            'manual.dsCapStopped': 'Capture stopped',
+
+            'manual.inspectTestTitle': 'Standalone Inspection Test',
+            'manual.inspectTestHint': 'Place an object on the turntable before starting (inspection only, no robot/FSM)',
+            'manual.inspectTestBtn': 'Run Test',
+            'manual.inspectTestProgress': 'Running inspection test... (0° → 90° → 180° → 270°)',
+            'manual.inspectTestComplete': 'Inspection test complete ✓',
+
+            'status.fsmTitle': 'System State Sequence (FSM Flow)',
+            'fsm.init': 'Init',
+            'fsm.inspect': 'Inspecting',
+            'fsm.sort': 'Sorting',
+            'fsm.release': 'Releasing',
+            'fsm.home': 'Homing',
+            'fsm.teleop': 'Teleop',
+            'fsm.finished': 'Finished',
+            'fsm.error': 'Error',
+            'fsm.estop': 'E-STOP',
+
+            'inspection.camTitle': 'Turntable Capture View',
+            'inspection.debugTitle': 'Judgment Analysis View',
+            'inspection.criteriaTitle': 'Judgment Criteria & Result',
+            'inspection.failReasonTitle': 'Fail Reason',
+            'inspection.normal': 'Normal (None)',
+            'inspection.unknown': 'Unknown',
+
+            'th2.item': 'Item',
+            'th2.measured': 'Measured Value',
+            'th2.threshold': 'Threshold',
+
+            'row.solidity': 'Solidity (Warping)',
+            'row.areaRatio': 'Area Ratio (Underextrusion/Shrinkage)',
+            'row.holeCount': 'Hole Count (Layer Separation/Damage)',
+            'row.texture': 'Texture Variance (Stringing)',
+
+            'threshold.holeCountUnit': '0',
+            'threshold.textureMax': '≤ 500',
+        },
+        ja: {
+            'nav.dashboard': 'ダッシュボード',
+            'nav.teleop': 'テレオペレーション',
+            'nav.status': 'システム状態',
+            'nav.inspection': '検査詳細',
+            'sidebar.toggleTitle': 'サイドバーの折りたたみ/展開',
+
+            'stage.INIT': 'システム初期化中',
+            'stage.IDLE': '待機中',
+            'stage.GRASPING': 'ACT把持中',
+            'stage.INSPECTING': '品質検査中',
+            'stage.SORTING': '仕分け移動中',
+            'stage.RELEASING': '排出中',
+            'stage.HOMING': 'ホーム復帰中',
+            'stage.TELEOPING': 'テレオペレーション動作中',
+            'stage.FINISHED': '作業完了',
+            'stage.ERROR': 'エラー発生 — 確認が必要です',
+            'stage.ESTOP': '非常停止 — E-STOP作動中',
+
+            'conn.waiting': 'サーバー接続待機中',
+            'conn.online': 'サーバー接続済み',
+            'conn.offline': 'サーバー接続切断',
+
+            'control.start': '開始',
+            'control.stop': '停止',
+            'control.estop': 'E-STOP',
+            'control.estopFull': 'E-STOP（非常停止）',
+            'control.reset': 'リセット',
+
+            'stat.total': '総出力物',
+            'stat.processed': '処理完了',
+            'stat.pass': '合格 (PASS)',
+            'stat.fail': '不合格 (FAIL)',
+            'stat.passRate': '合格率',
+
+            'cam.sidecam': 'サイドカメラ（ピックアップ区域）',
+            'cam.sidecamOnly': 'サイドカメラ',
+            'cam.inspect': '検査カメラ（検査区域）',
+            'cam.result': '検査判定結果',
+            'cam.actViz': 'ACT推論可視化',
+            'cam.collapse': '折りたたむ',
+            'cam.expand': '展開',
+            'cam.rerunFallback': 'rerunビューアの接続に失敗しました — robot_control_nodeのrerun_enableパラメータが有効か確認してください。',
+            'rerun.viewerTitle': 'rerunビューア',
+
+            'panel.latestResult': '最新検査結果',
+            'panel.noResult': 'まだ検査結果がありません',
+
+            'metric.solidity': 'Solidity（反り）',
+            'metric.areaRatio': '面積比率（未出力）',
+            'metric.holeCount': '穴の数（層剥離）',
+            'metric.holeArea': '穴の面積比',
+            'metric.texture': 'テクスチャ分散（糸引き）',
+            'metric.time': '検査所要時間',
+
+            'panel.subsystem': 'サブシステム',
+            'subsystem.grasp': 'ACT把持',
+            'subsystem.inspect': '検査判定',
+            'subsystem.motor': 'モーター制御',
+
+            'panel.passFailRatio': '合格/不合格比率',
+
+            'panel.history': '検査履歴',
+            'history.countSuffix': '件',
+            'history.empty': '検査履歴がありません',
+
+            'th.index': '#',
+            'th.time': '時刻',
+            'th.judgment': '判定',
+            'th.solidity': 'Solidity',
+            'th.hole': '穴',
+            'th.texture': 'テクスチャ',
+            'th.duration': '所要時間',
+            'th.failReason': '不良理由',
+
+            'teleop.title': 'テレオペレーション',
+            'teleop.subtitle': 'リーダーアームを動かすとフォロワーアームがリアルタイムで追従します。',
+            'teleop.panelTitle': '操作パネル',
+            'teleop.stateLabel': '動作状態:',
+            'teleop.hintDefault': 'トグルをオンにするとテレオペレーションが開始されます。',
+            'teleop.hintOn': 'リーダーアームを動かすとフォロワーが30Hzで追従します。',
+            'teleop.hintError': 'リーダーアームの接続/ポートエラーです。E-STOP後に接続を確認してください。',
+            'teleop.toggleLabel': 'テレオペレーション有効化',
+            'teleop.warnTitle': '安全操作および注意事項',
+            'teleop.warn1': '<strong>衝突注意</strong>：フォロワーロボットはリーダーロボットの急な動作をそのまま追従するため、操作半径内の障害物を事前に確認してください。',
+            'teleop.warn2': '<strong>非常停止</strong>：ロボットが誤動作したり制御範囲を外れた場合は、直ちに上の赤いE-STOPボタン（または画面上部のE-STOP）を押してください。',
+            'teleop.warn3': '<strong>安全終了</strong>：テレオペレーション無効化時、リーダーアームのトルクが再び強く入り固定されます。落下しないよう軽く手で支えながらOFFボタンを押してください。',
+
+            'status.jointTitle': 'ロボットアーム関節角度（6軸）',
+            'status.jointSyncNormal': '正常',
+            'status.jointSyncLive': 'リアルタイム（10Hz）',
+
+            'status.railTitle': 'リニアレール（Linear Rail）',
+            'status.railCurrentLabel': '現在の目標レール位置:',
+            'rail.moving': '移動中...',
+
+            'status.turntableTitle': 'ターンテーブル回転（Turntable）',
+            'status.turntableAngleLabel': '回転角度:',
+
+            'status.deviceTitle': 'デバイス設定（USB）',
+            'device.restartNote': '保存時にシステム再起動が必要',
+            'device.loading': 'デバイス一覧を読み込み中...',
+            'device.saveBtn': '保存して再起動',
+            'device.refreshBtn': '更新',
+            'device.loadFailed': 'デバイス一覧の読み込みに失敗しました',
+            'device.noCandidates': '（候補なし）',
+            'device.noneSelected': '選択されたデバイスがありません。',
+            'device.confirmRestart': 'デバイス設定を保存し、5秒後にシステムを再起動します。\n続行しますか？',
+            'device.savedPrefix': '保存されました — ',
+            'device.savedSuffix': '秒後に再起動...',
+            'device.restarting': '再起動中... しばらくしてからページを更新してください。',
+
+            'common.errorPrefix': 'エラー: ',
+            'common.unknown': '不明',
+            'common.networkError': 'ネットワークエラー',
+            'common.waiting': '待機中',
+
+            'status.actTitle': 'ACTモデル選択',
+            'act.applyNote': 'IDLE状態でのみ適用',
+            'act.modelLabel': 'モデル',
+            'act.loadingOption': '読み込み中...',
+            'act.applyLabel': '適用',
+            'act.loadBtn': 'ロード',
+            'act.currentLabel': '現在のモデル',
+            'act.stateLabel': '状態',
+            'act.dash': '-',
+            'act.noneSelected': 'モデルを選択してください。',
+            'act.requesting': 'ロード要求を送信中...',
+            'act.requested': 'ロード要求送信済み — ロボットがIDLEのときのみ適用されます。',
+            'act.noModels': '利用可能なモデルがありません',
+            'act.pathSet': '（パス指定済み）',
+            'act.none': 'なし',
+            'act.loadingState': '読み込み中...',
+            'act.ready': '準備完了',
+            'act.notLoaded': '未ロード',
+
+            'status.manualTitle': '手動制御パネル',
+            'manual.note': 'IDLE / FINISHED状態でのみ動作',
+
+            'manual.railTitle': 'リニアレール',
+            'manual.railCurrentPrefix': '現在: ',
+            'manual.railExec': '移動',
+            'manual.railMoving': '移動中…',
+            'manual.railPlaceholder': '0 ~ 420 mm',
+            'manual.railAlert': 'レール位置を0~420mmの範囲で入力してください。',
+            'manual.railError': 'レールエラー: ',
+            'manual.railCmdFailed': 'レールコマンドの送信に失敗しました',
+            'manual.presetHome': 'ホーム(0)',
+            'manual.railCommandedPrefix': '指令済み: ',
+
+            'manual.turnTitle': 'ターンテーブル',
+            'manual.turnCurrentPrefix': '現在: ',
+            'manual.turnExec': '回転',
+            'manual.turnMoving': '回転中…',
+            'manual.turnPlaceholder': '0 ~ 360°',
+            'manual.turnAlert': '角度を0~360°の範囲で入力してください。',
+            'manual.turnError': 'ターンテーブルエラー: ',
+            'manual.turnCmdFailed': 'ターンテーブルコマンドの送信に失敗しました',
+            'manual.turnCommandedPrefix': '指令済み: ',
+
+            'manual.ledTitle': 'ターンテーブルLED',
+
+            'manual.refCapTitle': '基準画像キャプチャ',
+            'manual.refCapHint': '良品をターンテーブルに載せてから開始してください',
+            'manual.delaySec': '遅延(秒)',
+            'manual.capStart': 'キャプチャ開始',
+            'manual.capStop': '中断',
+            'manual.refCapProgress': 'キャプチャ中... (0° → 90° → 180° → 270°)',
+            'manual.refCapComplete': 'キャプチャ完了 ✓',
+            'manual.refCapStopped': 'キャプチャ中断済み',
+
+            'manual.dsCapTitle': 'データセット撮影',
+            'manual.dsCapHint': '良品をターンテーブルに載せてから開始してください（ML学習用の原本を保存）',
+            'manual.settleSec': '安定化(秒)',
+            'manual.rounds': '繰り返し(周)',
+            'manual.dsCapStart': '撮影開始',
+            'manual.dsCapProgressPrefix': '撮影中... (0° → 90° → 180° → 270°) ×',
+            'manual.roundsUnit': '周',
+            'manual.dsCapComplete': '撮影完了 ✓',
+            'manual.dsCapStopped': '撮影中断済み',
+
+            'manual.inspectTestTitle': '検査単独テスト',
+            'manual.inspectTestHint': '対象物をターンテーブルに載せてから開始してください（ロボット/FSMなしで検査のみ実行）',
+            'manual.inspectTestBtn': '検査テスト',
+            'manual.inspectTestProgress': '検査テスト中... (0° → 90° → 180° → 270°)',
+            'manual.inspectTestComplete': '検査テスト完了 ✓',
+
+            'status.fsmTitle': 'システム状態シーケンス（FSM Flow）',
+            'fsm.init': '初期化',
+            'fsm.inspect': '品質検査',
+            'fsm.sort': '仕分け移動',
+            'fsm.release': '排出',
+            'fsm.home': 'ホーム復帰',
+            'fsm.teleop': '手動操縦',
+            'fsm.finished': '完了',
+            'fsm.error': 'エラー',
+            'fsm.estop': '非常停止',
+
+            'inspection.camTitle': 'ターンテーブル撮影画面',
+            'inspection.debugTitle': '判定分析画面',
+            'inspection.criteriaTitle': '判定基準・結果',
+            'inspection.failReasonTitle': '不合格理由（Fail Reason）',
+            'inspection.normal': '正常（None）',
+            'inspection.unknown': '不明（Unknown）',
+
+            'th2.item': '検査項目',
+            'th2.measured': '測定値',
+            'th2.threshold': '合格基準（Threshold）',
+
+            'row.solidity': 'Solidity（反り現象）',
+            'row.areaRatio': '面積比率（未出力/収縮）',
+            'row.holeCount': '穴の数（層剥離/破損）',
+            'row.texture': 'テクスチャ分散（糸引き）',
+
+            'threshold.holeCountUnit': '0 個',
+            'threshold.textureMax': '500 以下',
+        },
+    };
+
+    const FALLBACK_LANG = 'ko';
+    let lang = localStorage.getItem('quvi_lang') || FALLBACK_LANG;
+    if (!dict[lang]) lang = FALLBACK_LANG;
+
+    function t(key) {
+        return (dict[lang] && dict[lang][key])
+            || (dict[FALLBACK_LANG] && dict[FALLBACK_LANG][key])
+            || key;
+    }
+
+    function setLang(code) {
+        if (!dict[code]) return;
+        localStorage.setItem('quvi_lang', code);
+        location.reload();
+    }
+
+    // data-i18n[-title|-placeholder|-html] 속성을 가진 요소를 순회하며 치환
+    function applyI18n() {
+        document.documentElement.lang = lang;
+        const langSelect = document.getElementById('langSelect');
+        if (langSelect) langSelect.value = lang;
+        document.querySelectorAll('[data-i18n]').forEach(el => {
+            el.textContent = t(el.getAttribute('data-i18n'));
+        });
+        // 볼드 등 간단한 마크업이 필요한 정적 문구용 (XSS 우려 없는 고정 딕셔너리 값만 사용)
+        document.querySelectorAll('[data-i18n-html]').forEach(el => {
+            el.innerHTML = t(el.getAttribute('data-i18n-html'));
+        });
+        document.querySelectorAll('[data-i18n-title]').forEach(el => {
+            el.title = t(el.getAttribute('data-i18n-title'));
+        });
+        document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+            el.placeholder = t(el.getAttribute('data-i18n-placeholder'));
+        });
+    }
+
+    window.I18N = { dict, lang, t, setLang, applyI18n };
+
+    document.addEventListener('DOMContentLoaded', applyI18n);
+})();
