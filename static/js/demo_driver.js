@@ -50,13 +50,14 @@
         { name: 'FAIL (C)', mm: RAIL.FAIL },
         { name: 'BED (D)', mm: RAIL.BED },
     ];
-    // 판정값은 data/inspection_logs 실제 로그(PASS: 20260626_045336, FAIL: 20260626_045644)에서 가져옴
+    // PASS 판정값·영상은 2026-07-25 실기 녹화 테이크(data/demo_bags/pass)에서 가져옴.
+    // FAIL 은 아직 data/inspection_logs 로그(20260626_045644) 기준 — 불량 테이크 녹화 후 교체 예정.
     const SCENARIOS = {
         PASS: {
             passed: true, fail_reason: '',
-            solidity: 0.9919, area_ratio: 1.02, hole_count: 0, hole_area_ratio: 0.0,
-            texture_variance: 4.01, inspection_time_sec: 1.82,
-            anomaly_score_worst: 8.12, ml_passed: 1,
+            solidity: 0.9896, area_ratio: 0.8861, hole_count: 0, hole_area_ratio: 0.0,
+            texture_variance: 3.72, inspection_time_sec: 0.54,
+            anomaly_score_worst: 23.55, ml_passed: 1,
             image: './assets/captured_pass.png',
         },
         FAIL: {
@@ -131,16 +132,19 @@
     const elCam2Insp = document.getElementById('vidCamera2Insp');
     const elDebugInsp = document.getElementById('imgInspectDebugInsp');
 
+    // 두 카메라 영상은 같은 테이크의 동시 녹화본이라 사이클 내내 함께 흘러야 한다.
+    // 숨은 쪽을 pause 하면 시간축이 어긋나 다시 보일 때 과거 장면이 나온다 —
+    // 그래서 표시 여부만 토글하고 재생은 running 동안 유지한다.
     function setCams({ side, cam2, debugImg }) {
         [elSide].forEach((v) => {
             if (!v) return;
             v.style.display = side ? '' : 'none';
-            if (side) v.play().catch(() => {}); else v.pause();
+            if (running) v.play().catch(() => {}); else v.pause();
         });
         [elCam2, elCam2Insp].forEach((v) => {
             if (!v) return;
             v.style.display = cam2 ? '' : 'none';
-            if (cam2) v.play().catch(() => {}); else v.pause();
+            if (running) v.play().catch(() => {}); else v.pause();
         });
         [elDebug, elDebugInsp].forEach((img) => {
             if (!img) return;
@@ -161,42 +165,49 @@
         nextResult = (label === 'PASS') ? 'FAIL' : 'PASS';
         objectIndex += 1;
 
+        // 영상을 처음으로 되감아 시나리오와 같은 0초에서 출발시킨다.
+        [elSide, elCam2, elCam2Insp].forEach((v) => { if (v) v.currentTime = 0; });
+
+        // 아래 시각(ms)은 2026-07-25 실기 테이크의 /hmi/status FSM 전이 실측값이다
+        // (data/demo_bags/pass, 총 67.3초). 영상 길이와 일치해야 하므로 임의로 줄이지 말 것.
         emit({ state: 'GRASPING', joints: J_GRASP, rail: RAIL.BED, turn: 0 });
         setCams({ side: true, cam2: false, debugImg: null });
 
-        after(3000, () => {
+        after(23000, () => {   // 챔버 안착 후 검사 시작(LED 안정화)
             emit({ state: 'INSPECTING', joints: J_INSPECT, rail: RAIL.INSPECT, turn: 0 });
             setCams({ side: false, cam2: true, debugImg: null });
         });
-        after(3800, () => emit({ turn: 90 }));
-        after(4600, () => emit({ turn: 180 }));
-        after(5400, () => {
-            emit({ turn: 270 });
-            setCams({ side: false, cam2: true, debugImg: scn.image }); // 검사캠 + 판정 패널에 촬영 이미지
-        });
+        after(33500, () => emit({ turn: 90 }));
+        after(38500, () => emit({ turn: 180 }));
+        after(43500, () => emit({ turn: 270 }));
 
-        after(7000, () => {
+        after(46500, () => {   // 판정 확정 — /inspection/result 발행 시점
             if (scn.passed) stats.passed += 1; else stats.failed += 1;
             latest = Object.assign({ timestamp: new Date().toISOString(), object_index: objectIndex }, scn);
             history.unshift(latest);
             if (history.length > 50) history.pop();
+            setCams({ side: false, cam2: true, debugImg: scn.image });
+        });
+
+        after(54500, () => {
             const target = scn.passed ? RAIL.PASS : RAIL.FAIL;
             emit({ state: 'SORTING', joints: scn.passed ? J_SORT_PASS : J_SORT_FAIL, rail: target, turn: 0 });
-            setCams({ side: false, cam2: false, debugImg: scn.image });
+            setCams({ side: true, cam2: false, debugImg: scn.image });
         });
 
-        after(9500, () => emit({ state: 'RELEASING' }));
+        after(57000, () => emit({ state: 'RELEASING' }));
 
-        after(11500, () => {
+        after(62000, () => {
             emit({ state: 'HOMING', joints: J_HOME, rail: RAIL.HOME, turn: 0 });
-            setCams({ side: false, cam2: false, debugImg: null });
+            setCams({ side: true, cam2: false, debugImg: null });
         });
 
-        after(14500, () => emit({ state: 'FINISHED' }));
+        after(67000, () => emit({ state: 'FINISHED' }));
 
-        after(16500, () => {
+        after(69000, () => {
             emit({ state: 'IDLE' });
             running = false;
+            setCams({ side: false, cam2: false, debugImg: null });
         });
     }
 
