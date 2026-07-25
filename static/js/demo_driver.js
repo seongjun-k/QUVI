@@ -56,6 +56,7 @@
             passed: true, fail_reason: '',
             solidity: 0.9919, area_ratio: 1.02, hole_count: 0, hole_area_ratio: 0.0,
             texture_variance: 4.01, inspection_time_sec: 1.82,
+            anomaly_score_worst: 8.12, ml_passed: 1,
             image: './assets/captured_pass.png',
         },
         FAIL: {
@@ -63,6 +64,7 @@
             passed: false, fail_reason: I18N.t('demo.fail.reason'),
             solidity: 0.5755, area_ratio: 5.6148, hole_count: 3, hole_area_ratio: 0.1730,
             texture_variance: 9.28, inspection_time_sec: 2.14,
+            anomaly_score_worst: 32.54, ml_passed: 0,
             image: './assets/captured_fail.png',
         },
     };

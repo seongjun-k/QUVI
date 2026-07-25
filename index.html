@@ -82,7 +82,7 @@
                     <span class="conn-dot"></span><span id="connText" data-i18n="conn.waiting">서버 연결 대기</span>
                 </div>
                 <!-- 언어 선택 (ko/en/ja) — localStorage(quvi_lang)에 저장, 선택 시 리로드 -->
-                <select id="langSelect" class="lang-select" onchange="I18N.setLang(this.value)" style="margin-left:8px;padding:4px 6px;border-radius:6px;">
+                <select id="langSelect" class="lang-select" onchange="I18N.setLang(this.value)">
                     <option value="ko">KO</option>
                     <option value="en">EN</option>
                     <option value="ja">JA</option>
@@ -222,6 +222,10 @@
                                 <div class="metric-item">
                                     <div class="metric-label" data-i18n="metric.time">검사 소요시간</div>
                                     <div class="metric-value" id="mTime">—</div>
+                                </div>
+                                <div class="metric-item">
+                                    <div class="metric-label" data-i18n="metric.mlScore">ML 이상 점수</div>
+                                    <div class="metric-value" id="mMlScore">—</div>
                                 </div>
                             </div>
                         </div>

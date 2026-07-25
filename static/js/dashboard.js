@@ -326,6 +326,7 @@ function updateLatestInspection(result) {
     setMetric('mHoleArea', result.hole_area_ratio, THRESHOLDS.holeAreaRatio[0], THRESHOLDS.holeAreaRatio[1]);
     setMetricInverse('mTexture', result.texture_variance, THRESHOLDS.textureMax);
     document.getElementById('mTime').textContent = result.inspection_time_sec.toFixed(2) + 's';
+    setMlScore('mMlScore', result.anomaly_score_worst, result.ml_passed);
 
     addHistoryRow(result);
     // 검사 상세 탭 업데이트
@@ -411,6 +412,18 @@ function setMetricInt(id, value, min, max) {
     const el = document.getElementById(id);
     el.textContent = value;
     el.className = 'metric-value ' + (value >= min && value <= max ? 'ok' : 'bad');
+}
+
+// PatchCore 하이브리드: ml_passed -1=미사용, 0=FAIL, 1=PASS (InspectionResult.msg 정의와 결합)
+function setMlScore(id, score, mlPassed) {
+    const el = document.getElementById(id);
+    if (mlPassed === undefined || mlPassed === null || mlPassed < 0) {
+        el.textContent = I18N.t('metric.mlNA');
+        el.className = 'metric-value';
+        return;
+    }
+    el.textContent = parseFloat(score).toFixed(2);
+    el.className = 'metric-value ' + (mlPassed === 1 ? 'ok' : 'bad');
 }
 
 function setMetricInverse(id, value, threshold) {
