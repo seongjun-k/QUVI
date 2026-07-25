@@ -7,24 +7,8 @@
    [A] 자주 수정하는 영역 — 표시 상수·라벨
    ═══════════════════════════════════════════ */
 
-// ─── 진행 단계 라벨 ───
-// SSoT: 발원지 main_orchestrator_node.py FsmState — 변경 시 hmi_node.py FSM_DISPLAY_STATES·dashboard.html fsm_* 노드와 동시 수정
-const STAGE_LABELS = {
-    'INIT':       '시스템 초기화 중',
-    'IDLE':       '대기 중',
-    'GRASPING':   'ACT 파지 진행 중',
-    'INSPECTING': '품질 검사 중',
-    'SORTING':    '분류 이동 중',
-    'RELEASING':  '출력물 투하 중',
-    'HOMING':     '홈 복귀 중',
-    'TELEOPING':  '텔레오퍼레이션 동작 중',
-    'FINISHED':   '작업 완료',
-    'ERROR':      '오류 발생 — 확인 필요',
-    'ESTOP':      '비상 정지 — E-STOP 활성',
-};
-
-// ─── FSM Flow 노드 목록 ───
-// SSoT: 발원지 main_orchestrator_node.py FsmState — 변경 시 hmi_node.py FSM_DISPLAY_STATES·dashboard.html fsm_* 노드와 동시 수정
+// ─── FSM Flow 노드 목록 (진행 단계 라벨 접두어 매칭에도 사용) ───
+// SSoT: 발원지 main_orchestrator_node.py FsmState — 변경 시 hmi_node.py FSM_DISPLAY_STATES·dashboard.html fsm_* 노드·i18n.js stage.* 키와 동시 수정
 const FSM_NODES = [
     'INIT', 'IDLE', 'GRASPING', 'INSPECTING',
     'SORTING', 'RELEASING', 'HOMING', 'TELEOPING', 'FINISHED',
@@ -128,7 +112,7 @@ function _updateJointStates(status) {
             if (!valEl || !barEl) return;
 
             if (idx === 5) {
-                // 그리퍼 (ID 6, 1800 ~ 2300 ticks)
+                // 그리퍼 (ID 6) — 범위는 GRIPPER.close~open ticks
                 const ticks = Math.round((rad * 4096.0) / (2 * Math.PI));
                 valEl.textContent = `${ticks} ticks`;
 
@@ -161,7 +145,7 @@ function _updateJointStates(status) {
         // 동기화 시간 업데이트
         const syncTimeEl = document.getElementById('jointSyncTime');
         if (syncTimeEl) {
-            syncTimeEl.textContent = '실시간 (10Hz)';
+            syncTimeEl.textContent = I18N.t('status.jointSyncLive');
             syncTimeEl.style.color = 'var(--accent-green)';
         }
     }
@@ -189,7 +173,7 @@ function _updateRailPosition(status) {
         // railPos(마지막 명령 목표값, mm)과 가장 가까운 스테이션 탐색 (부동소수 오차 허용 0.25mm)
         let station = stationMap.find(s => Math.abs(s.mm - railPos) < 0.25);
         if (!station) {
-            station = { name: '이동 중...', mm: railPos };
+            station = { name: I18N.t('rail.moving'), mm: railPos };
         }
 
         // Carriage 위치 계산
@@ -272,11 +256,8 @@ function updateStageLabel(state) {
     const el = document.getElementById('stageText');
     if (!el) return;
     // "GRASPING_WAIT" 같은 세부 상태도 접두어로 매칭
-    let label = STAGE_LABELS[state];
-    if (!label) {
-        const prefix = Object.keys(STAGE_LABELS).find(k => state.startsWith(k));
-        label = prefix ? STAGE_LABELS[prefix] : state;
-    }
+    const key = FSM_NODES.includes(state) ? state : FSM_NODES.find(k => state.startsWith(k));
+    const label = key ? I18N.t('stage.' + key) : state;
     el.textContent = label;
     el.className = 'stage-pill';
     if (state === 'ERROR' || state === 'ESTOP') el.classList.add('error');
@@ -295,15 +276,15 @@ function setTeleopBadge(mode) {
     if (mode === 'on') {
         badge.textContent = 'ON';
         badge.className = 'teleop-state-badge on';
-        if (hint) hint.textContent = '리더 암을 움직이면 팔로워가 30Hz로 따라갑니다.';
+        if (hint) hint.textContent = I18N.t('teleop.hintOn');
     } else if (mode === 'error') {
         badge.textContent = 'ERROR';
         badge.className = 'teleop-state-badge error';
-        if (hint) hint.textContent = '리더 암 연결/포트 오류입니다. E-STOP 후 연결을 확인하세요.';
+        if (hint) hint.textContent = I18N.t('teleop.hintError');
     } else {
         badge.textContent = 'OFF';
         badge.className = 'teleop-state-badge off';
-        if (hint) hint.textContent = '토글을 켜면 텔레오퍼레이션이 시작됩니다.';
+        if (hint) hint.textContent = I18N.t('teleop.hintDefault');
     }
 }
 
@@ -370,12 +351,12 @@ function updateInspectionDetailTab(result) {
     }
     const failReason = document.getElementById('detailFailReason');
     if (result.passed) {
-        failReason.textContent = '정상 (None)';
+        failReason.textContent = I18N.t('inspection.normal');
         failReason.style.color = 'var(--accent-green)';
         failReason.style.background = 'rgba(63, 185, 80, 0.1)';
         failReason.style.borderColor = 'rgba(63, 185, 80, 0.2)';
     } else {
-        failReason.textContent = result.fail_reason || '불명 (Unknown)';
+        failReason.textContent = result.fail_reason || I18N.t('inspection.unknown');
         failReason.style.color = 'var(--accent-red)';
         failReason.style.background = 'rgba(248,81,73,0.1)';
         failReason.style.borderColor = 'rgba(248,81,73,0.2)';
@@ -452,7 +433,7 @@ function addHistoryRow(result) {
 }
 
 function renderHistoryTable() {
-    document.getElementById('historyCount').textContent = historyData.length + '건';
+    document.getElementById('historyCount').textContent = historyData.length + I18N.t('history.countSuffix');
 
     const tbody = document.getElementById('historyBody');
     let rows = '';
@@ -548,11 +529,11 @@ async function execRailMove() {
     const btn   = document.getElementById('railExecBtn');
     const mm    = parseFloat(input.value);
     if (isNaN(mm) || mm < 0 || mm > 420) {
-        alert('레일 위치를 0~420mm 범위로 입력해주세요.');
+        alert(I18N.t('manual.railAlert'));
         return;
     }
     btn.disabled = true;
-    btn.textContent = '이동 중…';
+    btn.textContent = I18N.t('manual.railMoving');
     try {
         const res  = await fetch('/api/rail/move', {
             method: 'POST',
@@ -562,16 +543,16 @@ async function execRailMove() {
         const data = await res.json();
         if (data.ok) {
             console.log(`[QUVI] 레일 명령 완료: ${mm}mm`);
-            document.getElementById('railCurrentDisp').textContent = `명령됨: ${mm} mm`;
+            document.getElementById('railCurrentDisp').textContent = `${I18N.t('manual.railCommandedPrefix')}${mm} mm`;
         } else {
-            alert(`레일 오류: ${data.error}`);
+            alert(`${I18N.t('manual.railError')}${data.error}`);
         }
     } catch (e) {
         console.error('[QUVI] 레일 이동 실패:', e);
-        alert('레일 명령 전송 실패');
+        alert(I18N.t('manual.railCmdFailed'));
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> 이동';
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> ${I18N.t('manual.railExec')}`;
     }
 }
 
@@ -581,11 +562,11 @@ async function execTurnMove() {
     const btn   = document.getElementById('turnExecBtn');
     const angle = parseInt(input.value);
     if (isNaN(angle) || angle < 0 || angle > 360) {
-        alert('각도를 0~360° 범위로 입력해주세요.');
+        alert(I18N.t('manual.turnAlert'));
         return;
     }
     btn.disabled = true;
-    btn.textContent = '회전 중…';
+    btn.textContent = I18N.t('manual.turnMoving');
     try {
         const res  = await fetch('/api/turntable/move', {
             method: 'POST',
@@ -595,16 +576,16 @@ async function execTurnMove() {
         const data = await res.json();
         if (data.ok) {
             console.log(`[QUVI] 턴테이블 명령 완료: ${angle}°`);
-            document.getElementById('turnCurrentDisp').textContent = `명령됨: ${angle}°`;
+            document.getElementById('turnCurrentDisp').textContent = `${I18N.t('manual.turnCommandedPrefix')}${angle}°`;
         } else {
-            alert(`턴테이블 오류: ${data.error}`);
+            alert(`${I18N.t('manual.turnError')}${data.error}`);
         }
     } catch (e) {
         console.error('[QUVI] 턴테이블 이동 실패:', e);
-        alert('턴테이블 명령 전송 실패');
+        alert(I18N.t('manual.turnCmdFailed'));
     } finally {
         btn.disabled = false;
-        btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> 회전';
+        btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> ${I18N.t('manual.turnExec')}`;
     }
 }
 
@@ -648,12 +629,12 @@ function updateManualControlPanel(status) {
     // 레일 현재 표시
     const railDisp = document.getElementById('railCurrentDisp');
     if (railDisp && status.rail_position !== undefined) {
-        railDisp.textContent = `현재: ${parseFloat(status.rail_position).toFixed(2)} mm`;
+        railDisp.textContent = `${I18N.t('manual.railCurrentPrefix')}${parseFloat(status.rail_position).toFixed(2)} mm`;
     }
     // 턴테이블 현재 표시
     const turnDisp = document.getElementById('turnCurrentDisp');
     if (turnDisp && status.turntable_angle !== undefined) {
-        turnDisp.textContent = `현재: ${status.turntable_angle}°`;
+        turnDisp.textContent = `${I18N.t('manual.turnCurrentPrefix')}${status.turntable_angle}°`;
     }
     // LED 상태
     if (status.led_state !== undefined) {
@@ -682,12 +663,12 @@ async function _startCaptureSequence({ url, body, statusElId, startBtnId, progre
                 if (startBtn) startBtn.disabled = false;
             }, totalMs);
         } else {
-            if (statusEl) { statusEl.textContent = '오류: ' + (data.error || '알 수 없음'); statusEl.style.color = 'var(--accent-red)'; }
+            if (statusEl) { statusEl.textContent = I18N.t('common.errorPrefix') + (data.error || I18N.t('common.unknown')); statusEl.style.color = 'var(--accent-red)'; }
             if (startBtn) startBtn.disabled = false;
         }
     } catch (e) {
         console.error(errorLogPrefix, e);
-        if (statusEl) { statusEl.textContent = '네트워크 오류'; statusEl.style.color = 'var(--accent-red)'; }
+        if (statusEl) { statusEl.textContent = I18N.t('common.networkError'); statusEl.style.color = 'var(--accent-red)'; }
         if (startBtn) startBtn.disabled = false;
     }
 }
@@ -714,8 +695,8 @@ async function startRefCapture() {
         body: { angles: CAPTURE_ANGLES, delay_sec: delay },
         statusElId: 'refCaptureStatus',
         startBtnId: 'refCaptureStartBtn',
-        progressText: '캡쳐 진행 중... (0° → 90° → 180° → 270°)',
-        completeText: '캡쳐 완료 ✓',
+        progressText: I18N.t('manual.refCapProgress'),
+        completeText: I18N.t('manual.refCapComplete'),
         totalMs,
         errorLogPrefix: '[QUVI] 기준 캡쳐 시작 실패:',
     });
@@ -726,7 +707,7 @@ async function stopRefCapture() {
         url: '/api/capture/reference/stop',
         statusElId: 'refCaptureStatus',
         startBtnId: 'refCaptureStartBtn',
-        stopText: '캡쳐 중단됨',
+        stopText: I18N.t('manual.refCapStopped'),
         errorLogPrefix: '[QUVI] 기준 캡쳐 중단 실패:',
     });
 }
@@ -744,8 +725,8 @@ async function startDatasetCapture() {
         body: { angles: CAPTURE_ANGLES, settle_sec: settleSec, post_capture_sec: postSec, rounds },
         statusElId: 'dsCaptureStatus',
         startBtnId: 'dsCaptureStartBtn',
-        progressText: `촬영 진행 중... (0° → 90° → 180° → 270°) × ${rounds}바퀴`,
-        completeText: '촬영 완료 ✓',
+        progressText: `${I18N.t('manual.dsCapProgressPrefix')} ${rounds}${I18N.t('manual.roundsUnit')}`,
+        completeText: I18N.t('manual.dsCapComplete'),
         totalMs,
         errorLogPrefix: '[QUVI] 데이터셋 촬영 시작 실패:',
     });
@@ -756,7 +737,7 @@ async function stopDatasetCapture() {
         url: '/api/capture/dataset/stop',
         statusElId: 'dsCaptureStatus',
         startBtnId: 'dsCaptureStartBtn',
-        stopText: '촬영 중단됨',
+        stopText: I18N.t('manual.dsCapStopped'),
         errorLogPrefix: '[QUVI] 데이터셋 촬영 중단 실패:',
     });
 }
@@ -770,8 +751,8 @@ async function startInspectionTest() {
         body: { angles: CAPTURE_ANGLES },
         statusElId: 'inspectTestStatus',
         startBtnId: 'btn_inspect_test',
-        progressText: '검사 테스트 진행 중... (0° → 90° → 180° → 270°)',
-        completeText: '검사 테스트 완료 ✓',
+        progressText: I18N.t('manual.inspectTestProgress'),
+        completeText: I18N.t('manual.inspectTestComplete'),
         totalMs,
         errorLogPrefix: '[QUVI] 검사 단독 테스트 시작 실패:',
     });
@@ -794,7 +775,7 @@ async function refreshActModels() {
                 const prev = sel.value;
                 sel.innerHTML = '';
                 if (models.length === 0) {
-                    sel.innerHTML = '<option value="">사용 가능한 모델 없음</option>';
+                    sel.innerHTML = `<option value="">${I18N.t('act.noModels')}</option>`;
                 } else {
                     for (const m of models) {
                         const opt = document.createElement('option');
@@ -808,7 +789,7 @@ async function refreshActModels() {
         }
 
         const curEl = document.getElementById('actCurrentModel');
-        if (curEl) curEl.textContent = current.name || (current.path ? '(경로 지정됨)' : '없음');
+        if (curEl) curEl.textContent = current.name || (current.path ? I18N.t('act.pathSet') : I18N.t('act.none'));
         const useEl = document.getElementById('actUseState');
         if (useEl) {
             useEl.textContent = current.use_act ? 'ON' : 'OFF';
@@ -817,11 +798,11 @@ async function refreshActModels() {
         const stEl = document.getElementById('actModelState');
         const loadBtn = document.getElementById('actModelLoadBtn');
         if (current.loading) {
-            if (stEl) { stEl.textContent = '로딩 중...'; stEl.style.color = 'var(--accent-orange, #e9a)'; }
+            if (stEl) { stEl.textContent = I18N.t('act.loadingState'); stEl.style.color = 'var(--accent-orange, #e9a)'; }
             if (loadBtn) loadBtn.disabled = true;
         } else {
             if (stEl) {
-                stEl.textContent = current.ready ? '준비됨' : '미로드';
+                stEl.textContent = current.ready ? I18N.t('act.ready') : I18N.t('act.notLoaded');
                 stEl.style.color = current.ready ? 'var(--accent-green)' : 'var(--text-muted)';
             }
             if (loadBtn) loadBtn.disabled = false;
@@ -836,11 +817,11 @@ async function loadActModel() {
     const msgEl = document.getElementById('actModelMsg');
     const path = sel ? sel.value : '';
     if (!path) {
-        if (msgEl) { msgEl.textContent = '모델을 선택하세요.'; msgEl.style.color = 'var(--accent-red)'; }
+        if (msgEl) { msgEl.textContent = I18N.t('act.noneSelected'); msgEl.style.color = 'var(--accent-red)'; }
         return;
     }
     _actModelUserTouched = false;
-    if (msgEl) { msgEl.textContent = '로드 요청 전송...'; msgEl.style.color = 'var(--text-muted)'; }
+    if (msgEl) { msgEl.textContent = I18N.t('act.requesting'); msgEl.style.color = 'var(--text-muted)'; }
     try {
         const res = await fetch('/api/act/select', {
             method: 'POST',
@@ -849,15 +830,15 @@ async function loadActModel() {
         });
         const data = await res.json();
         if (data.ok) {
-            if (msgEl) { msgEl.textContent = '로드 요청됨 — 로봇이 IDLE일 때만 적용됩니다.'; msgEl.style.color = 'var(--accent-green)'; }
+            if (msgEl) { msgEl.textContent = I18N.t('act.requested'); msgEl.style.color = 'var(--accent-green)'; }
             // 로딩 상태 반영 위해 잠시 자주 폴링
             let n = 0;
             const t = setInterval(() => { refreshActModels(); if (++n > 15) clearInterval(t); }, 1000);
         } else {
-            if (msgEl) { msgEl.textContent = '오류: ' + (data.error || '알 수 없음'); msgEl.style.color = 'var(--accent-red)'; }
+            if (msgEl) { msgEl.textContent = I18N.t('common.errorPrefix') + (data.error || I18N.t('common.unknown')); msgEl.style.color = 'var(--accent-red)'; }
         }
     } catch (e) {
-        if (msgEl) { msgEl.textContent = '네트워크 오류'; msgEl.style.color = 'var(--accent-red)'; }
+        if (msgEl) { msgEl.textContent = I18N.t('common.networkError'); msgEl.style.color = 'var(--accent-red)'; }
     }
 }
 
@@ -895,7 +876,7 @@ async function refreshDevices() {
             sel.style.cssText = 'width:100%;padding:6px;box-sizing:border-box;';
             if (list.length === 0) {
                 const o = document.createElement('option');
-                o.value = ''; o.textContent = '(후보 없음)';
+                o.value = ''; o.textContent = I18N.t('device.noCandidates');
                 sel.appendChild(o);
             }
             for (const d of list) {
@@ -911,7 +892,7 @@ async function refreshDevices() {
             grid.appendChild(cell);
         }
     } catch (e) {
-        grid.innerHTML = '<div style="color:var(--accent-red);font-size:12px;">장치 목록 로드 실패</div>';
+        grid.innerHTML = `<div style="color:var(--accent-red);font-size:12px;">${I18N.t('device.loadFailed')}</div>`;
     }
 }
 
@@ -925,10 +906,10 @@ async function applyDeviceConfig() {
         if (sel && sel.value) config[k] = sel.value;
     }
     if (Object.keys(config).length === 0) {
-        if (msgEl) { msgEl.textContent = '선택된 장치가 없습니다.'; msgEl.style.color = 'var(--accent-red)'; }
+        if (msgEl) { msgEl.textContent = I18N.t('device.noneSelected'); msgEl.style.color = 'var(--accent-red)'; }
         return;
     }
-    if (!confirm('장치 설정을 저장하고 5초 뒤 시스템을 재시작합니다.\n계속하시겠습니까?')) return;
+    if (!confirm(I18N.t('device.confirmRestart'))) return;
 
     if (btn) btn.disabled = true;
     try {
@@ -942,18 +923,18 @@ async function applyDeviceConfig() {
             let sec = data.restart_in || 5;
             if (msgEl) msgEl.style.color = 'var(--accent-green)';
             const tick = setInterval(() => {
-                if (msgEl) msgEl.textContent = `저장됨 — ${sec}초 뒤 재시작...`;
+                if (msgEl) msgEl.textContent = `${I18N.t('device.savedPrefix')}${sec}${I18N.t('device.savedSuffix')}`;
                 if (sec-- <= 0) {
                     clearInterval(tick);
-                    if (msgEl) msgEl.textContent = '재시작 중... 잠시 후 페이지를 새로고침하세요.';
+                    if (msgEl) msgEl.textContent = I18N.t('device.restarting');
                 }
             }, 1000);
         } else {
-            if (msgEl) { msgEl.textContent = '오류: ' + (data.error || '알 수 없음'); msgEl.style.color = 'var(--accent-red)'; }
+            if (msgEl) { msgEl.textContent = I18N.t('common.errorPrefix') + (data.error || I18N.t('common.unknown')); msgEl.style.color = 'var(--accent-red)'; }
             if (btn) btn.disabled = false;
         }
     } catch (e) {
-        if (msgEl) { msgEl.textContent = '네트워크 오류'; msgEl.style.color = 'var(--accent-red)'; }
+        if (msgEl) { msgEl.textContent = I18N.t('common.networkError'); msgEl.style.color = 'var(--accent-red)'; }
         if (btn) btn.disabled = false;
     }
 }
@@ -970,7 +951,7 @@ function setConnBadge(online) {
     const text = document.getElementById('connText');
     if (!badge || !text) return;
     badge.className = 'conn-badge ' + (online ? 'online' : 'offline');
-    text.textContent = online ? '서버 연결됨' : '서버 연결 끊김';
+    text.textContent = online ? I18N.t('conn.online') : I18N.t('conn.offline');
 }
 
 socket.on('connect', () => {
@@ -1080,7 +1061,7 @@ refreshDevices();
     toggleBtn.addEventListener('click', () => {
         const collapsed = frame.style.display === 'none';
         frame.style.display = collapsed ? '' : 'none';
-        toggleBtn.textContent = collapsed ? '접기' : '펼치기';
+        toggleBtn.textContent = collapsed ? I18N.t('cam.collapse') : I18N.t('cam.expand');
     });
 })();
 

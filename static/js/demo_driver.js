@@ -59,7 +59,8 @@
             image: './assets/captured_pass.png',
         },
         FAIL: {
-            passed: false, fail_reason: 'Solidity 0.576 미달(워핑) + 구멍 3개 검출',
+            // 언어 전환은 리로드 방식이므로 로드 시점 1회 평가로 충분
+            passed: false, fail_reason: I18N.t('demo.fail.reason'),
             solidity: 0.5755, area_ratio: 5.6148, hole_count: 3, hole_area_ratio: 0.1730,
             texture_variance: 9.28, inspection_time_sec: 2.14,
             image: './assets/captured_fail.png',
@@ -209,7 +210,7 @@
         running = false;
         setCams({ side: false, cam2: false, debugImg: null });
         // "비상정지"·"ESTOP" 문자열은 dashboard.js _updateFsmHighlight 정규식(/ESTOP|비상정지/i)과 매칭되어야 함
-        emit({ state: 'ERROR', error: 'ESTOP 비상정지 활성 — RESET으로 해제하세요.' });
+        emit({ state: 'ERROR', error: I18N.t('demo.estop.error') });
     }
 
     function resetCycle() {
@@ -282,7 +283,7 @@
             return jsonResponse({ ok: true, teleop: on });
         }
 
-        toast('데모 모드 — 실기에서만 동작합니다');
+        toast(I18N.t('demo.toast.simOnly'));
         return jsonResponse({ ok: true, result: 'demo' });
     };
 
