@@ -210,7 +210,7 @@
             'inspection.criteriaTitle': '판정 기준·결과',
             'inspection.failReasonTitle': '불합격 사유 (Fail Reason)',
             'inspection.normal': '정상 (이상 없음)',
-            'inspection.unknown': '불명 (Unknown)',
+            'inspection.unknown': '사유 미상',
 
             'th2.item': '검사 항목',
             'th2.measured': '측정 값',
@@ -444,7 +444,7 @@
             'inspection.criteriaTitle': 'Judgment Criteria & Result',
             'inspection.failReasonTitle': 'Fail Reason',
             'inspection.normal': 'Normal (no defects)',
-            'inspection.unknown': 'Unknown',
+            'inspection.unknown': 'Unknown reason',
 
             'th2.item': 'Item',
             'th2.measured': 'Measured Value',
@@ -678,7 +678,7 @@
             'inspection.criteriaTitle': '判定基準・結果',
             'inspection.failReasonTitle': '不合格理由（Fail Reason）',
             'inspection.normal': '正常（異常なし）',
-            'inspection.unknown': '不明（Unknown）',
+            'inspection.unknown': '理由不明',
 
             'th2.item': '検査項目',
             'th2.measured': '測定値',
