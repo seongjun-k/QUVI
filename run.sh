@@ -3,9 +3,12 @@
 # QUVI System Launch Shortcut
 # 호스트 PC에서 실행 시 quvi-dev 컨테이너 내부로 접속하여
 # full_system.launch.py 메인 런치 파일을 실행합니다.
+# 인자는 launch 로 그대로 전달됩니다 (데모 녹화 예:
+#   ./run.sh rerun_save_path:=/workspace/data/demo_bags/pass.rrd )
 # ------------------------------------------------------------------
 
 CONTAINER_NAME="quvi-dev"
+LAUNCH_ARGS="$*"
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 COMPOSE_FILE="${SCRIPT_DIR}/docker/docker-compose.yml"
 
@@ -25,7 +28,7 @@ if [ -t 0 ]; then
         # 대시보드 장치 변경 시 재시작 감시 루프. sentinel 없으면 1회 실행 후 종료(기존 동작).
         rm -f /workspace/data/.restart_requested
         while true; do
-            ros2 launch quvi_bringup full_system.launch.py
+            ros2 launch quvi_bringup full_system.launch.py ${LAUNCH_ARGS}
             launch_status=\$?
             [ -f /workspace/data/.restart_requested ] || exit \$launch_status
             rm -f /workspace/data/.restart_requested
@@ -44,7 +47,7 @@ else
         source /workspace/install/setup.bash
         rm -f /workspace/data/.restart_requested
         while true; do
-            ros2 launch quvi_bringup full_system.launch.py
+            ros2 launch quvi_bringup full_system.launch.py ${LAUNCH_ARGS}
             launch_status=\$?
             [ -f /workspace/data/.restart_requested ] || exit \$launch_status
             rm -f /workspace/data/.restart_requested

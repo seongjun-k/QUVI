@@ -54,6 +54,10 @@ data/*.png
 data/models/
 data/anomaly_dataset/
 
+# 데모 녹화 원본(bag 1.7GB·rrd)과 거기서 추출한 자산 — 배포본은 gh-pages 브랜치에 있다
+data/demo_bags/
+data/demo_assets/
+
 # QUVI 무관 (별도 위젯)
 ClaudeUsageWidget/
 
