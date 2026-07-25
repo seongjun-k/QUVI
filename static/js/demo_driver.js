@@ -131,6 +131,31 @@
     const elDebug = document.getElementById('imgInspectDebug');
     const elCam2Insp = document.getElementById('vidCamera2Insp');
     const elDebugInsp = document.getElementById('imgInspectDebugInsp');
+    const elRerun = document.getElementById('rerunViewer');
+
+    // rerun 웹 뷰어는 재생 위치를 외부에서 제어할 수 없다(0.22.1 JS API·URL 파라미터 모두 미지원).
+    // 그래서 "시작" 후 이 지연만큼 뒤에 iframe 을 로드해, 뷰어가 그 시점부터 스스로
+    // 재생을 시작하게 맞춘다. rrd 다운로드(19MB) 시간이 있어 프레임 단위로는 어긋난다 —
+    // 화면 보면서 이 값만 조정하면 된다.
+    const RERUN_LOAD_MS = 1000;
+
+    let rerunLoaded = false;
+
+    function startRerun() {
+        if (!elRerun || rerunLoaded) return;
+        elRerun.src = elRerun.dataset.src;
+        elRerun.style.display = '';
+        rerunLoaded = true;
+    }
+
+    // 사이클이 끝난 뒤에는 뷰어를 남겨 둬 직접 탐색할 수 있게 하고,
+    // 다음 "시작" 때 여기서 비워 처음부터 다시 재생시킨다.
+    function resetRerun() {
+        if (!elRerun) return;
+        elRerun.removeAttribute('src');
+        elRerun.style.display = 'none';
+        rerunLoaded = false;
+    }
 
     // 두 카메라 영상은 같은 테이크의 동시 녹화본이라 사이클 내내 함께 흘러야 한다.
     // 숨은 쪽을 pause 하면 시간축이 어긋나 다시 보일 때 과거 장면이 나온다 —
@@ -172,6 +197,8 @@
         // (data/demo_bags/pass, 총 67.3초). 영상 길이와 일치해야 하므로 임의로 줄이지 말 것.
         emit({ state: 'GRASPING', joints: J_GRASP, rail: RAIL.BED, turn: 0 });
         setCams({ side: true, cam2: false, debugImg: null });
+        resetRerun();                       // 이전 사이클에서 남은 뷰어를 비우고
+        after(RERUN_LOAD_MS, startRerun);   // ACT 추론 구간에 맞춰 다시 기동
 
         after(23000, () => {   // 챔버 안착 후 검사 시작(LED 안정화)
             emit({ state: 'INSPECTING', joints: J_INSPECT, rail: RAIL.INSPECT, turn: 0 });
@@ -214,6 +241,7 @@
     function stopCycle() {
         clearTimers();
         running = false;
+        resetRerun();
         setCams({ side: false, cam2: false, debugImg: null });
         emit({ state: 'IDLE', joints: J_HOME, rail: RAIL.HOME, turn: 0 });
     }

@@ -237,7 +237,8 @@
             'demo.fail.reason': 'Solidity 0.576 미달(워핑) + 구멍 3개 검출',
             'demo.estop.error': 'ESTOP 비상정지 활성 — RESET으로 해제하세요.',
             'demo.overview.title': '로봇 전체 뷰',
-            'demo.rerunPlaceholder': 'ACT 추론 시각화 — 실기 녹화 rrd 준비 중',
+            'demo.rerunPlaceholder': 'ACT 추론 시각화 — 뷰어를 불러오지 못했다 (인터넷 연결 필요)',
+            'demo.rerunScrub': '— 기록 재생 (직접 탐색 가능)',
         },
         en: {
             'nav.dashboard': 'Dashboard',
@@ -471,7 +472,8 @@
             'demo.fail.reason': 'Solidity 0.576 below threshold (warping) + 3 holes detected',
             'demo.estop.error': 'ESTOP active — press RESET to clear.',
             'demo.overview.title': 'Full Robot View',
-            'demo.rerunPlaceholder': 'ACT Inference Visualization — real-hardware rrd recording pending',
+            'demo.rerunPlaceholder': 'ACT Inference Visualization — viewer failed to load (internet connection required)',
+            'demo.rerunScrub': '— recorded log, scrub to explore',
         },
         ja: {
             'nav.dashboard': 'ダッシュボード',
@@ -705,7 +707,8 @@
             'demo.fail.reason': 'Solidity 0.576未達(反り) + 穴3個検出',
             'demo.estop.error': 'ESTOP 非常停止が有効です — RESETで解除してください。',
             'demo.overview.title': 'ロボット全体ビュー',
-            'demo.rerunPlaceholder': 'ACT推論の可視化 — 実機録画rrd準備中',
+            'demo.rerunPlaceholder': 'ACT推論の可視化 — ビューアを読み込めませんでした（インターネット接続が必要）',
+            'demo.rerunScrub': '— 記録の再生（自由に探索できます）',
         },
     };
 
