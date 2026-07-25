@@ -50,8 +50,11 @@
         { name: 'FAIL (C)', mm: RAIL.FAIL },
         { name: 'BED (D)', mm: RAIL.BED },
     ];
-    // PASS 판정값·영상은 2026-07-25 실기 녹화 테이크(data/demo_bags/pass)에서 가져옴.
-    // FAIL 은 아직 data/inspection_logs 로그(20260626_045644) 기준 — 불량 테이크 녹화 후 교체 예정.
+    // 판정값·영상·타임라인 모두 2026-07-25 실기 녹화 테이크에서 가져왔다
+    // (data/demo_bags/pass · fail). t 는 해당 테이크의 /hmi/status FSM 전이 실측 시각(ms)이며
+    // 영상 길이와 맞물려 있다 — 영상을 바꾸지 않는 한 임의로 수정하지 말 것.
+    const RERUN_BASE = 'https://app.rerun.io/version/0.22.1/index.html?url=';
+    const RRD_BASE = 'https%3A%2F%2Fseongjun-k.github.io%2FQUVI%2Fassets%2F';
     const SCENARIOS = {
         PASS: {
             passed: true, fail_reason: '',
@@ -59,14 +62,24 @@
             texture_variance: 3.72, inspection_time_sec: 0.54,
             anomaly_score_worst: 23.55, ml_passed: 1,
             image: './assets/captured_pass.png',
+            sideVideo: './assets/sidecam_pass.mp4', cam2Video: './assets/camera2_pass.mp4',
+            rerun: RERUN_BASE + RRD_BASE + 'pass.rrd',
+            t: { inspect: 23000, turn90: 33500, turn180: 38500, turn270: 43500,
+                 result: 46500, sorting: 54500, releasing: 57000, homing: 62000,
+                 finished: 67000, idle: 69000 },
         },
         FAIL: {
             // 언어 전환은 리로드 방식이므로 로드 시점 1회 평가로 충분
             passed: false, fail_reason: I18N.t('demo.fail.reason'),
-            solidity: 0.5755, area_ratio: 5.6148, hole_count: 3, hole_area_ratio: 0.1730,
-            texture_variance: 9.28, inspection_time_sec: 2.14,
-            anomaly_score_worst: 32.54, ml_passed: 0,
+            solidity: 0.9918, area_ratio: 1.0136, hole_count: 3, hole_area_ratio: 0.0115,
+            texture_variance: 7.22, inspection_time_sec: 0.34,
+            anomaly_score_worst: 34.08, ml_passed: 0,
             image: './assets/captured_fail.png',
+            sideVideo: './assets/sidecam_fail.mp4', cam2Video: './assets/camera2_fail.mp4',
+            rerun: RERUN_BASE + RRD_BASE + 'fail.rrd',
+            t: { inspect: 21000, turn90: 31500, turn180: 36500, turn270: 41500,
+                 result: 44500, sorting: 53000, releasing: 55000, homing: 59500,
+                 finished: 64000, idle: 66000 },
         },
     };
 
@@ -141,9 +154,9 @@
 
     let rerunLoaded = false;
 
-    function startRerun() {
+    function startRerun(url) {
         if (!elRerun || rerunLoaded) return;
-        elRerun.src = elRerun.dataset.src;
+        elRerun.src = url;
         elRerun.style.display = '';
         rerunLoaded = true;
     }
@@ -190,25 +203,26 @@
         nextResult = (label === 'PASS') ? 'FAIL' : 'PASS';
         objectIndex += 1;
 
-        // 영상을 처음으로 되감아 시나리오와 같은 0초에서 출발시킨다.
-        [elSide, elCam2, elCam2Insp].forEach((v) => { if (v) v.currentTime = 0; });
+        // 이번 시나리오의 테이크로 영상을 갈아끼우고 처음으로 되감는다.
+        // src 를 바꾼 뒤에는 load() 를 불러야 브라우저가 새 파일을 물어간다.
+        if (elSide) { elSide.src = scn.sideVideo; elSide.load(); }
+        [elCam2, elCam2Insp].forEach((v) => { if (v) { v.src = scn.cam2Video; v.load(); } });
 
-        // 아래 시각(ms)은 2026-07-25 실기 테이크의 /hmi/status FSM 전이 실측값이다
-        // (data/demo_bags/pass, 총 67.3초). 영상 길이와 일치해야 하므로 임의로 줄이지 말 것.
+        const t = scn.t;
         emit({ state: 'GRASPING', joints: J_GRASP, rail: RAIL.BED, turn: 0 });
         setCams({ side: true, cam2: false, debugImg: null });
-        resetRerun();                       // 이전 사이클에서 남은 뷰어를 비우고
-        after(RERUN_LOAD_MS, startRerun);   // ACT 추론 구간에 맞춰 다시 기동
+        resetRerun();                                        // 이전 사이클에서 남은 뷰어를 비우고
+        after(RERUN_LOAD_MS, () => startRerun(scn.rerun));    // 이번 테이크의 rrd 로 기동
 
-        after(23000, () => {   // 챔버 안착 후 검사 시작(LED 안정화)
+        after(t.inspect, () => {   // 챔버 안착 후 검사 시작(LED 안정화)
             emit({ state: 'INSPECTING', joints: J_INSPECT, rail: RAIL.INSPECT, turn: 0 });
             setCams({ side: false, cam2: true, debugImg: null });
         });
-        after(33500, () => emit({ turn: 90 }));
-        after(38500, () => emit({ turn: 180 }));
-        after(43500, () => emit({ turn: 270 }));
+        after(t.turn90, () => emit({ turn: 90 }));
+        after(t.turn180, () => emit({ turn: 180 }));
+        after(t.turn270, () => emit({ turn: 270 }));
 
-        after(46500, () => {   // 판정 확정 — /inspection/result 발행 시점
+        after(t.result, () => {   // 판정 확정 — /inspection/result 발행 시점
             if (scn.passed) stats.passed += 1; else stats.failed += 1;
             latest = Object.assign({ timestamp: new Date().toISOString(), object_index: objectIndex }, scn);
             history.unshift(latest);
@@ -216,22 +230,22 @@
             setCams({ side: false, cam2: true, debugImg: scn.image });
         });
 
-        after(54500, () => {
+        after(t.sorting, () => {
             const target = scn.passed ? RAIL.PASS : RAIL.FAIL;
             emit({ state: 'SORTING', joints: scn.passed ? J_SORT_PASS : J_SORT_FAIL, rail: target, turn: 0 });
             setCams({ side: true, cam2: false, debugImg: scn.image });
         });
 
-        after(57000, () => emit({ state: 'RELEASING' }));
+        after(t.releasing, () => emit({ state: 'RELEASING' }));
 
-        after(62000, () => {
+        after(t.homing, () => {
             emit({ state: 'HOMING', joints: J_HOME, rail: RAIL.HOME, turn: 0 });
             setCams({ side: true, cam2: false, debugImg: null });
         });
 
-        after(67000, () => emit({ state: 'FINISHED' }));
+        after(t.finished, () => emit({ state: 'FINISHED' }));
 
-        after(69000, () => {
+        after(t.idle, () => {
             emit({ state: 'IDLE' });
             running = false;
             setCams({ side: false, cam2: false, debugImg: null });
@@ -315,7 +329,7 @@
                     };
                 } else {
                     tv.onended = null;
-                    tv.src = './assets/sidecam.mp4';
+                    tv.src = './assets/sidecam_pass.mp4';
                     tv.loop = true;
                     tv.play().catch(() => {});
                 }
