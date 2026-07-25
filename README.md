@@ -1,5 +1,14 @@
 # QUVI (QUality VIsion)
 
+[![한국어](https://img.shields.io/badge/lang-한국어-blue)](README.md)
+[![English](https://img.shields.io/badge/lang-English-red)](README.en.md)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+![ROS 2](https://img.shields.io/badge/ROS_2-Jazzy-22314E?logo=ros)
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Platform](https://img.shields.io/badge/MCU-ESP32--S3-E7352C)
+![Docker](https://img.shields.io/badge/Docker-quvi--dev-2496ED?logo=docker&logoColor=white)
+
 **AI 비전 로봇을 활용한 3D 프린터 출력물 자동 양불 판정 및 분류 시스템**
 
 > "보는 것이 곧 품질이다 (Seeing is Quality)"
