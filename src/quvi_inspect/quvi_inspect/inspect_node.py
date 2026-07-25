@@ -478,23 +478,45 @@ class InspectNode(Node):
         self.get_logger().info('양불 판정 시작 (표면 특징 분석)')
 
         surface_results = self._surface_analysis()
-        final_pass      = surface_results['passed']
-        fail_reason     = surface_results['fail_detail'] if not final_pass else ''
+        rule_pass = surface_results['passed']
+        ml_passed = surface_results['ml_passed']
+        # ML 미로드(None)면 룰 단독 폴백 — ML 이 명시적으로 FAIL(False) 일 때만 최종 판정에 반영
+        final_pass = rule_pass and (ml_passed is not False)
+        if not rule_pass and ml_passed is False:
+            fail_reason = surface_results['fail_detail'] + '; ML 이상탐지: ' + surface_results['ml_detail']
+        elif not rule_pass:
+            fail_reason = surface_results['fail_detail']
+        elif ml_passed is False:
+            fail_reason = f"ML 이상탐지: {surface_results['ml_detail']}"
+        else:
+            fail_reason = ''
 
         elapsed = time.time() - start_time
+
+        worst = surface_results['anomaly_score_worst']
+        anomaly_score_worst = worst if worst is not None else -1.0
+        # msg 의 ml_passed 는 int8 이라 None 표현 불가 — -1=미사용, 0=FAIL, 1=PASS 로 매핑
+        if ml_passed is None:
+            ml_passed_msg = -1
+        elif ml_passed is False:
+            ml_passed_msg = 0
+        else:
+            ml_passed_msg = 1
 
         result = InspectionResult()
         result.header.stamp        = self.get_clock().now().to_msg()
         result.header.frame_id     = 'inspection_chamber'
-        result.passed              = final_pass
-        result.fail_reason         = fail_reason
-        result.solidity            = surface_results['solidity']
-        result.area_ratio          = surface_results['area_ratio']
-        result.hole_count          = surface_results['hole_count']
-        result.hole_area_ratio     = surface_results['hole_area_ratio']
-        result.texture_variance    = surface_results['texture_variance']
-        result.object_index        = self._current_object_index
-        result.inspection_time_sec = elapsed
+        result.passed               = final_pass
+        result.fail_reason          = fail_reason
+        result.solidity             = surface_results['solidity']
+        result.area_ratio           = surface_results['area_ratio']
+        result.hole_count           = surface_results['hole_count']
+        result.hole_area_ratio      = surface_results['hole_area_ratio']
+        result.texture_variance     = surface_results['texture_variance']
+        result.anomaly_score_worst  = anomaly_score_worst
+        result.ml_passed            = ml_passed_msg
+        result.object_index         = self._current_object_index
+        result.inspection_time_sec  = elapsed
         self._result_pub.publish(result)
 
         status = 'PASS ✓' if final_pass else f'FAIL ✗ ({fail_reason})'
@@ -504,18 +526,16 @@ class InspectNode(Node):
             f'구멍: {surface_results["hole_count"]}개 | '
             f'텍스처: {surface_results["texture_variance"]:.1f}')
 
-        # ── 섀도우 모드 로그: ML 은 참고용, passed 에는 반영되지 않음 ──
-        ml_passed = surface_results['ml_passed']
-        worst = surface_results['anomaly_score_worst']
+        # ── 하이브리드 판정 로그: 룰 PASS 라도 ML 이 FAIL 이면 최종 판정에 반영됨 ──
         if ml_passed is None:
             ml_str, worst_str, agree = 'N/A', 'N/A', 'N/A'
         else:
             ml_str = 'PASS' if ml_passed else 'FAIL'
             worst_str = f'{worst:.2f}'
-            agree = '일치' if ml_passed == final_pass else '불일치'
-        rule_str = 'PASS' if final_pass else 'FAIL'
+            agree = '일치' if ml_passed == rule_pass else '불일치'
+        rule_str = 'PASS' if rule_pass else 'FAIL'
         self.get_logger().info(
-            f'[섀도우] 룰={rule_str} | ML={ml_str} (worst={worst_str}) | {agree}')
+            f'[하이브리드] 룰={rule_str} | ML={ml_str} (worst={worst_str}) | {agree}')
         self.get_logger().info('=' * 50)
 
         if self._pub_debug:
@@ -598,7 +618,7 @@ class InspectNode(Node):
             lap     = cv2.Laplacian(gray, cv2.CV_64F)
             tex_var = float(lap.var())
 
-            # ── ML 이상탐지 (섀도우 모드 — passed 판정에는 반영하지 않음) ──
+            # ── ML 이상탐지 점수 계산 (최종 판정 반영은 _run_inspection_inner 의 하이브리드 로직에서) ──
             a_score = None
             detector = self._anomaly_detectors.get(angle)
             if detector is not None:
@@ -660,7 +680,7 @@ class InspectNode(Node):
         pick = violating_areas or valid_areas
         worst_area = max(pick, key=lambda a: abs(1.0 - a)) if pick else float('nan')
 
-        # ── ML 이상탐지 집계 (섀도우 모드 — passed 에는 절대 반영하지 않음) ──
+        # ── ML 이상탐지 집계 (여기서는 판정만 계산 — 최종 반영은 _run_inspection_inner 에서) ──
         ml_scores = {a: f['anomaly_score'] for a, f in angle_features.items()
                      if f['anomaly_score'] is not None}
         anomaly_score_worst = max(ml_scores.values()) if ml_scores else None

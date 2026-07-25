@@ -269,6 +269,8 @@ class HmiNode(Node):
             'hole_count': int(msg.hole_count),
             'hole_area_ratio': float(msg.hole_area_ratio),
             'texture_variance': float(msg.texture_variance),
+            'anomaly_score_worst': float(msg.anomaly_score_worst),
+            'ml_passed': int(msg.ml_passed),
             'object_index': int(msg.object_index),
             'inspection_time_sec': float(msg.inspection_time_sec),
         }

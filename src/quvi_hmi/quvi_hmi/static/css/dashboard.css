@@ -217,6 +217,48 @@ select:focus-visible,
     letter-spacing: 0.3px;
 }
 
+/* ─── 언어 선택 (i18n) ─── */
+.lang-select {
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 4px 22px 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    /* 커스텀 화살표 — appearance:none 이 기본 화살표까지 지우므로 직접 그림 */
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'><path d='M0 0l4 5 4-5z' fill='%238b949e'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 9px center;
+}
+
+.lang-select:hover {
+    background-color: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
+/* ─── rerun 패널 접기/펼치기 버튼 (기본 button 스타일 제거) ─── */
+#rerunToggleBtn {
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: inherit;
+}
+
+#rerunToggleBtn:hover {
+    background: var(--bg-card-hover);
+    color: var(--text-primary);
+}
+
 .conn-badge .conn-dot {
     width: 8px;
     height: 8px;

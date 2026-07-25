@@ -12,6 +12,10 @@ int32 hole_count                    # 내부 공동 개수
 float32 hole_area_ratio             # 구멍 총 면적 / 전체 면적
 float32 texture_variance            # 라플라시안 분산
 
+# ML 이상탐지 (PatchCore 하이브리드)
+float32 anomaly_score_worst         # 각도별 worst 이상점수 (-1 = ML 미사용)
+int8 ml_passed                       # -1=미사용, 0=FAIL, 1=PASS
+
 # 메타 정보
 int32 object_index                  # 현재 검사 중인 출력물 번호
 float32 inspection_time_sec         # 검사 소요 시간 (초)

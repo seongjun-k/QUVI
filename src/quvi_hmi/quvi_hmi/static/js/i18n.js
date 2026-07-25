@@ -59,6 +59,8 @@
             'metric.holeArea': '구멍 면적비',
             'metric.texture': '텍스처 분산 (스트링잉)',
             'metric.time': '검사 소요시간',
+            'metric.mlScore': 'ML 이상 점수 (PatchCore)',
+            'metric.mlNA': '미사용',
 
             'panel.subsystem': '서브시스템',
             'subsystem.grasp': 'ACT 파지',
@@ -276,6 +278,8 @@
             'metric.holeArea': 'Hole Area Ratio',
             'metric.texture': 'Texture Variance (Stringing)',
             'metric.time': 'Inspection Duration',
+            'metric.mlScore': 'ML Anomaly Score (PatchCore)',
+            'metric.mlNA': 'N/A',
 
             'panel.subsystem': 'Subsystems',
             'subsystem.grasp': 'ACT Grasping',
@@ -493,6 +497,8 @@
             'metric.holeArea': '穴の面積比',
             'metric.texture': 'テクスチャ分散（糸引き）',
             'metric.time': '検査所要時間',
+            'metric.mlScore': 'ML異常スコア (PatchCore)',
+            'metric.mlNA': '未使用',
 
             'panel.subsystem': 'サブシステム',
             'subsystem.grasp': 'ACT把持',
