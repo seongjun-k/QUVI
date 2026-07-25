@@ -237,8 +237,8 @@
             'demo.fail.reason': 'Solidity 0.576 미달(워핑) + 구멍 3개 검출',
             'demo.estop.error': 'ESTOP 비상정지 활성 — RESET으로 해제하세요.',
             'demo.overview.title': '로봇 전체 뷰',
-            'demo.rerunPlaceholder': 'ACT 추론 시각화 — 뷰어를 불러오지 못했다 (인터넷 연결 필요)',
-            'demo.rerunScrub': '— 기록 재생 (직접 탐색 가능)',
+            'demo.rerunPlaceholder': 'ACT 추론 시각화 — 뷰어를 불러오지 못했습니다 (인터넷 연결이 필요합니다)',
+            'demo.rerunScrub': '— 기록 재생 (직접 탐색하실 수 있습니다)',
         },
         en: {
             'nav.dashboard': 'Dashboard',
