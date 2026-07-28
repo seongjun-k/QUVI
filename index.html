@@ -112,6 +112,12 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
                     <span data-i18n="control.reset">리셋</span>
                 </button>
+                <div class="control-divider"></div>
+                <!-- 정적 데모 전용: 재생할 시나리오 선택. 없으면 demo_driver 가 교대 재생으로 돌아간다. -->
+                <select id="demoScenario" class="lang-select" data-i18n-title="demo.scenario.title">
+                    <option value="PASS" data-i18n="demo.scenario.pass">정상품 검사 보기</option>
+                    <option value="FAIL" data-i18n="demo.scenario.fail">불량품 검사 보기</option>
+                </select>
             </div>
 
             <!-- 메인 그리드 -->

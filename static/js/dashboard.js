@@ -1086,12 +1086,15 @@ refreshDevices();
     const rerunPanel = document.getElementById('rerunPanelBody');
     if (!panel || !video || !rerunPanel) return;
 
+    // once: 여기서 하는 일(패널 표시·rerun 그리드 조정·안내 모달)은 모두 1회성이다.
+    // demo_driver 가 사이클마다 전체 뷰 src 를 교체하므로 loadeddata 는 반복 발화한다 —
+    // once 가 없으면 "시작" 을 누를 때마다 안내 모달이 다시 뜬다.
     video.addEventListener('loadeddata', () => {
         panel.style.display = '';
         rerunPanel.style.gridColumn = '2 / -1';
         video.play().catch(() => {});
 
-        // 데모 영상이 있으면 데모 모드로 간주 — 접속(새로고침 포함)마다 안내 모달 표시
+        // 데모 영상이 있으면 데모 모드로 간주 — 접속(새로고침 포함) 시 1회 안내 모달 표시
         const overlay = document.getElementById('demoNoticeOverlay');
         const closeBtn = document.getElementById('demoNoticeCloseBtn');
         if (overlay && closeBtn) {
@@ -1100,7 +1103,7 @@ refreshDevices();
                 overlay.style.display = 'none';
             });
         }
-    });
+    }, { once: true });
 })();
 
 // ─── 사이드바 접기/펼치기 ───

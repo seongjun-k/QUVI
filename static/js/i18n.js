@@ -239,6 +239,9 @@
             'demo.overview.title': '로봇 전체 뷰',
             'demo.rerunPlaceholder': 'ACT 추론 시각화 — 뷰어를 불러오지 못했습니다 (인터넷 연결이 필요합니다)',
             'demo.rerunScrub': '— 기록 재생 (직접 탐색하실 수 있습니다)',
+            'demo.scenario.title': '재생할 검사 시나리오를 선택하세요',
+            'demo.scenario.pass': '정상품 검사 보기',
+            'demo.scenario.fail': '불량품 검사 보기',
         },
         en: {
             'nav.dashboard': 'Dashboard',
@@ -474,6 +477,9 @@
             'demo.overview.title': 'Full Robot View',
             'demo.rerunPlaceholder': 'ACT Inference Visualization — viewer failed to load (internet connection required)',
             'demo.rerunScrub': '— recorded log, scrub to explore',
+            'demo.scenario.title': 'Choose which inspection run to play',
+            'demo.scenario.pass': 'Watch a passing part',
+            'demo.scenario.fail': 'Watch a failing part',
         },
         ja: {
             'nav.dashboard': 'ダッシュボード',
@@ -709,6 +715,9 @@
             'demo.overview.title': 'ロボット全体ビュー',
             'demo.rerunPlaceholder': 'ACT推論の可視化 — ビューアを読み込めませんでした（インターネット接続が必要）',
             'demo.rerunScrub': '— 記録の再生（自由に探索できます）',
+            'demo.scenario.title': '再生する検査シナリオを選択してください',
+            'demo.scenario.pass': '良品の検査を見る',
+            'demo.scenario.fail': '不良品の検査を見る',
         },
     };
 

@@ -148,6 +148,7 @@
     const elDebugInsp = document.getElementById('imgInspectDebugInsp');
     const elRerun = document.getElementById('rerunViewer');
     const elOverview = document.getElementById('overviewVideo');
+    const elScenario = document.getElementById('demoScenario');
 
     // 전체 뷰는 사이클 중에만 재생한다. autoplay 속성과 dashboard.js 의 loadeddata 핸들러가
     // 각각 play() 를 걸어 페이지 로드만 해도 돌아가는데, 그 핸들러가 패널 표시도 겸하므로
@@ -215,7 +216,10 @@
     function startCycle() {
         if (running) return; // 재생 중 재클릭 무시
         running = true;
-        const label = nextResult;
+        // 컨트롤 바의 시나리오 선택이 우선. 심사자가 두 사이클을 다 보지 않고 넘어가는 것을
+        // 막으려고 교대 재생 대신 명시 선택으로 바꿨다 — 선택이 없으면 종전대로 교대한다.
+        const picked = elScenario && elScenario.value;
+        const label = SCENARIOS[picked] ? picked : nextResult;
         const scn = SCENARIOS[label];
         nextResult = (label === 'PASS') ? 'FAIL' : 'PASS';
         objectIndex += 1;
