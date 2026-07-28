@@ -149,6 +149,15 @@
     const elRerun = document.getElementById('rerunViewer');
     const elOverview = document.getElementById('overviewVideo');
 
+    // 전체 뷰는 사이클 중에만 재생한다. autoplay 속성과 dashboard.js 의 loadeddata 핸들러가
+    // 각각 play() 를 걸어 페이지 로드만 해도 돌아가는데, 그 핸들러가 패널 표시도 겸하므로
+    // 로드를 막을 수는 없다 — 재생이 시작되면 사이클 밖일 때 되돌린다.
+    if (elOverview) {
+        elOverview.addEventListener('play', () => {
+            if (!running) { elOverview.pause(); elOverview.currentTime = 0; }
+        });
+    }
+
     // rerun 웹 뷰어는 재생 위치를 외부에서 제어할 수 없다(0.22.1 JS API·URL 파라미터 모두 미지원).
     // 그래서 "시작" 후 이 지연만큼 뒤에 iframe 을 로드해, 뷰어가 그 시점부터 스스로
     // 재생을 시작하게 맞춘다. rrd 다운로드(19MB) 시간이 있어 프레임 단위로는 어긋난다 —
