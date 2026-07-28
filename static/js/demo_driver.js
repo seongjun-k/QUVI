@@ -153,7 +153,7 @@
     // 그래서 "시작" 후 이 지연만큼 뒤에 iframe 을 로드해, 뷰어가 그 시점부터 스스로
     // 재생을 시작하게 맞춘다. rrd 다운로드(19MB) 시간이 있어 프레임 단위로는 어긋난다 —
     // 화면 보면서 이 값만 조정하면 된다.
-    const RERUN_LOAD_MS = 3000;
+    const RERUN_LOAD_MS = 2000;
 
     let rerunLoaded = false;
 
