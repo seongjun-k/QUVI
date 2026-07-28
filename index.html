@@ -174,9 +174,10 @@
                             <button id="demoNoticeCloseBtn" type="button" data-i18n="demo.notice.closeBtn">둘러보기 시작</button>
                         </div>
                     </div>
-                    <!-- 로봇 전체 뷰 (데모 영상) — static/demo/robot_overview.mp4 가 있을 때만 JS가 표시 -->
+                    <!-- 로봇 전체 뷰 — 초기값은 PASS 테이크, demo_driver 가 시나리오에 맞춰 교체한다.
+                         패널 자체는 dashboard.js 가 영상 loadeddata 시점에 표시한다. -->
                     <div class="camera-feed" id="overviewPanel" style="display:none;">
-                        <video id="overviewVideo" src="./assets/robot_overview.mp4" autoplay muted loop playsinline preload="metadata"></video>
+                        <video id="overviewVideo" src="./assets/robot_overview_pass.mp4" autoplay muted loop playsinline preload="metadata"></video>
                         <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="15" height="10" rx="2"/><polygon points="22 7 17 12 22 17 22 7"/></svg><span data-i18n="demo.overview.title">로봇 전체 뷰</span></div>
                     </div>
                     <!-- ACT 추론 시각화 — 실기 녹화 rrd 를 rerun 웹 뷰어에 넘겨 재생한다.

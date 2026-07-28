@@ -64,6 +64,7 @@
             image: './assets/captured_pass.png',
             sideVideo: './assets/sidecam_pass.mp4', cam2Video: './assets/camera2_pass.mp4',
             rerun: RERUN_BASE + RRD_BASE + 'pass.rrd',
+            overview: './assets/robot_overview_pass.mp4',
             t: { inspect: 23000, turn90: 33500, turn180: 38500, turn270: 43500,
                  result: 46500, sorting: 54500, releasing: 57000, homing: 62000,
                  finished: 67000, idle: 69000 },
@@ -77,6 +78,7 @@
             image: './assets/captured_fail.png',
             sideVideo: './assets/sidecam_fail.mp4', cam2Video: './assets/camera2_fail.mp4',
             rerun: RERUN_BASE + RRD_BASE + 'fail.rrd',
+            overview: './assets/robot_overview_fail.mp4',
             t: { inspect: 21000, turn90: 31500, turn180: 36500, turn270: 41500,
                  result: 44500, sorting: 53000, releasing: 55000, homing: 59500,
                  finished: 64000, idle: 66000 },
@@ -145,6 +147,7 @@
     const elCam2Insp = document.getElementById('vidCamera2Insp');
     const elDebugInsp = document.getElementById('imgInspectDebugInsp');
     const elRerun = document.getElementById('rerunViewer');
+    const elOverview = document.getElementById('overviewVideo');
 
     // rerun 웹 뷰어는 재생 위치를 외부에서 제어할 수 없다(0.22.1 JS API·URL 파라미터 모두 미지원).
     // 그래서 "시작" 후 이 지연만큼 뒤에 iframe 을 로드해, 뷰어가 그 시점부터 스스로
@@ -207,6 +210,8 @@
         // src 를 바꾼 뒤에는 load() 를 불러야 브라우저가 새 파일을 물어간다.
         if (elSide) { elSide.src = scn.sideVideo; elSide.load(); }
         [elCam2, elCam2Insp].forEach((v) => { if (v) { v.src = scn.cam2Video; v.load(); } });
+        // 전체 뷰는 loop 로 계속 도는 패널이라 사이클 시작 때만 갈아끼운다.
+        if (elOverview) { elOverview.src = scn.overview; elOverview.load(); elOverview.play().catch(() => {}); }
 
         const t = scn.t;
         emit({ state: 'GRASPING', joints: J_GRASP, rail: RAIL.BED, turn: 0 });
