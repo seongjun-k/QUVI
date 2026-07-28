@@ -192,6 +192,11 @@
             if (debugImg) { img.src = debugImg; img.style.display = ''; }
             else { img.style.display = 'none'; }
         });
+        // 전체 뷰도 사이클과 함께 멈춘다. 정지·ESTOP·리셋·사이클 종료가 모두 이 함수를
+        // 거치므로 여기 한 곳에서 처리한다(loop 속성 때문에 두면 혼자 계속 돈다).
+        if (elOverview) {
+            if (running) elOverview.play().catch(() => {}); else elOverview.pause();
+        }
     }
 
     // ─── FSM 시나리오 엔진 ───
