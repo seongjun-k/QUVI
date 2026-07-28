@@ -64,7 +64,7 @@
             image: './assets/captured_pass.png',
             sideVideo: './assets/sidecam_pass.mp4', cam2Video: './assets/camera2_pass.mp4',
             rerun: RERUN_BASE + RRD_BASE + 'pass.rrd',
-            overview: './assets/robot_overview_pass.mp4',
+            overview: './assets/robot_overview_pass.mp4', overviewDelay: 500,
             t: { inspect: 23000, turn90: 33500, turn180: 38500, turn270: 43500,
                  result: 46500, sorting: 54500, releasing: 57000, homing: 62000,
                  finished: 67000, idle: 69000 },
@@ -78,7 +78,7 @@
             image: './assets/captured_fail.png',
             sideVideo: './assets/sidecam_fail.mp4', cam2Video: './assets/camera2_fail.mp4',
             rerun: RERUN_BASE + RRD_BASE + 'fail.rrd',
-            overview: './assets/robot_overview_fail.mp4',
+            overview: './assets/robot_overview_fail.mp4', overviewDelay: 0,
             t: { inspect: 21000, turn90: 31500, turn180: 36500, turn270: 41500,
                  result: 44500, sorting: 53000, releasing: 55000, homing: 59500,
                  finished: 64000, idle: 66000 },
@@ -211,7 +211,15 @@
         if (elSide) { elSide.src = scn.sideVideo; elSide.load(); }
         [elCam2, elCam2Insp].forEach((v) => { if (v) { v.src = scn.cam2Video; v.load(); } });
         // 전체 뷰는 loop 로 계속 도는 패널이라 사이클 시작 때만 갈아끼운다.
-        if (elOverview) { elOverview.src = scn.overview; elOverview.load(); elOverview.play().catch(() => {}); }
+        // 재생 시작은 dashboard.js 의 loadeddata 핸들러가 잡고 있어 여기서 늦출 수 없다 —
+        // 대신 교체 시점 자체를 미뤄 테이크별로 싱크를 맞춘다(overviewDelay).
+        if (elOverview) {
+            after(scn.overviewDelay, () => {
+                elOverview.src = scn.overview;
+                elOverview.load();
+                elOverview.play().catch(() => {});
+            });
+        }
 
         const t = scn.t;
         emit({ state: 'GRASPING', joints: J_GRASP, rail: RAIL.BED, turn: 0 });
