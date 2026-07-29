@@ -877,11 +877,23 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     _, _blank_buf = cv2.imencode('.jpg', _blank)
     _blank_jpeg = _blank_buf.tobytes()
 
+    # 프레임 수신 전 폴백: 검사 상세 탭 스트림은 검은 화면 대신 예시 이미지를 송출
+    # (inspect_debug 은 검사 1회당 1장 발행이라 첫 검사 전엔 항상 폴백이 뜬다).
+    # 파일이 없으면 기존 No Signal 화면 유지.
+    _fallback_jpeg = {}
+    for _key in ('camera2', 'inspect_debug'):
+        try:
+            with open(os.path.join(static_dir, 'img',
+                                   f'placeholder_{_key}.jpg'), 'rb') as _f:
+                _fallback_jpeg[_key] = _f.read()
+        except OSError:
+            pass
+
     def _mjpeg_generator(cam_key: str):
         while True:
             jpeg = hmi_node.get_camera_jpeg(cam_key)
             if jpeg is None:
-                jpeg = _blank_jpeg
+                jpeg = _fallback_jpeg.get(cam_key, _blank_jpeg)
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + jpeg + b'\r\n')
             time.sleep(1.0 / hmi_node._stream_fps)
