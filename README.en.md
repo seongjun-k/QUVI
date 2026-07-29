@@ -2,6 +2,7 @@
 
 [![한국어](https://img.shields.io/badge/lang-한국어-blue)](README.md)
 [![English](https://img.shields.io/badge/lang-English-red)](README.en.md)
+[![日本語](https://img.shields.io/badge/lang-日本語-white)](README.ja.md)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 ![ROS 2](https://img.shields.io/badge/ROS_2-Jazzy-22314E?logo=ros)
