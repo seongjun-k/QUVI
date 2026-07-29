@@ -1,5 +1,7 @@
 # QUVI ROS 아키텍처 평가서
 
+<!-- 2026-06-16 시점의 평가이며 이후 일부 지적사항은 해소됨 -->
+
 작성일: 2026-06-16
 대상: `/home/ksj/QUVI`
 참조 문서: `/home/ksj/.gemini/antigravity-cli/brain/ea019f7b-715a-42cf-bd72-77c348327d71/system_architecture_spec.md`

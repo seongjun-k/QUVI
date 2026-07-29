@@ -66,20 +66,20 @@ preprocess_for_ml(bgr_image, bin_thresh) -> 256×256 RGB tensor
 - 게이트: 검수 통과 정상 이미지 각도당 20장 미만이면 중단하고 재평가
 
 ### Phase 1 — 오프라인 프로토타입 (노드 무수정)
-- [ ] `quvi_inspect/ml_preprocess.py` (§3) + `quvi_inspect/anomaly_detector.py` (PatchCore 코어: 특징추출→coreset→kNN 점수)
-- [ ] `scripts/train_anomaly_bank.py`: 정상셋 → 각도별 뱅크 4개 저장. 백본 가중치는 최초 1회 다운로드 후 `data/models/wide_resnet50.pth`로 영속화(오프라인 재현성)
-- [ ] **임계값 산정**: 정상셋을 8:2 분할, held-out 정상 20%의 점수 분포에서 `threshold = max(held-out) × 1.15` (마진은 실측 조정). 기존 FAIL 5장은 "임계값 초과하는가" sanity check로만 사용 — 통계적 검증 아님
+- [x] `quvi_inspect/ml_preprocess.py` (§3) + `quvi_inspect/anomaly_detector.py` (PatchCore 코어: 특징추출→coreset→kNN 점수)
+- [x] `scripts/train_anomaly_bank.py`: 정상셋 → 각도별 뱅크 4개 저장. 백본 가중치는 최초 1회 다운로드 후 `data/models/wide_resnet50.pth`로 영속화(오프라인 재현성)
+- [x] **임계값 산정**: 정상셋을 8:2 분할, held-out 정상 20%의 점수 분포에서 `threshold = max(held-out) × 1.15` (마진은 실측 조정). 기존 FAIL 5장은 "임계값 초과하는가" sanity check로만 사용 — 통계적 검증 아님 (`data/models/thresholds.json`로 저장, inspect_node.py가 로드)
 - [ ] 산출물: 각도별 정상/불량 점수 분포 리포트 (분리도 눈으로 확인)
 
 ### Phase 2 — 노드 통합 (판정은 아직 룰)
 - [x] **캡처 타이밍 정합** (2026-07-10 종결, 630f50d): `capture_settle_sec`·`dataset_capture_settle_sec` 모두 1.5s로 일치. LED 노출 안정에 1.5s가 부족하면 두 값을 **항상 같이** 올릴 것 (판별: 데이터셋 촬영 시 동일 각도 이미지 밝기 편차 확인)
-- [ ] `_load_params`에 추가: `anomaly_enabled(False)`, `anomaly_model_dir`, `anomaly_threshold`, `anomaly_device('cuda')`
-- [ ] init에서 뱅크 로드 (파일 없거나 로드 실패 → 경고 로그 + 자동 비활성, **노드는 절대 죽지 않음**)
-- [ ] `_surface_analysis()`에서 각도별 이상점수 계산, worst(최대) 점수를 결과 dict에 추가
+- [x] `_load_params`에 추가: `anomaly_enabled(False)`, `anomaly_model_dir`, `anomaly_device('cuda')` (임계값은 단일 파라미터 대신 `thresholds.json`에서 각도별로 로드)
+- [x] init에서 뱅크 로드 (파일 없거나 로드 실패 → 경고 로그 + 자동 비활성, **노드는 절대 죽지 않음**)
+- [x] `_surface_analysis()`에서 각도별 이상점수 계산, worst(최대) 점수를 결과 dict에 추가
 
 ### Phase 3 — 섀도우 모드 (액추에이션 불변)
 - [ ] `passed`는 룰 유지. ML 점수·ML 판정·룰 판정을 `result.txt`와 노드 로그에 병행 기록
-- [ ] `scripts/shadow_report.py`: 누적 로그에서 룰 vs ML 일치율·불일치 케이스 리포트
+- [x] `scripts/shadow_report.py`: 누적 로그에서 룰 vs ML 일치율·불일치 케이스 리포트
 - [ ] **컷오버 정량 게이트**: ① 실검사 ≥30회 누적 ② 알려진 불량품 투입 시험에서 ML 미검출(false-accept) 0건 ③ 불일치 케이스 전건 사람 판독 완료
 - HMI 노출은 이 단계에선 로그만 (InspectionResult.msg 변경은 Phase 4 선택 항목 — msg 변경은 의존 패키지 리빌드 필요해 후순위)
 
