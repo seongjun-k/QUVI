@@ -15,13 +15,13 @@
 
 > 「見ることこそ品質である (Seeing is Quality)」
 
-▶ **[Webデモを試す](https://seongjun-k.github.io/QUVI/)** — ハードウェアなしで、実機録画をそのまま再生した良品・不良品の検査サイクルを体験できます。
+▶ **[Webデモを試す](https://seongjun-k.github.io/QUVI/)** — ハードウェア不要。良品・不良品の検査サイクルを、実機の録画そのままにブラウザで再生できます。
 
 ---
 
 ## 課題定義
 
-3Dプリンティングでは、造形後に**人が結果物をベッドから取り外し、目視で不良(反り・層間剥離・糸引き・造形不足)を確認して仕分ける**必要があります。この後処理工程は、プリントファームの規模が大きくなるほど、繰り返し労働と検査のばらつき(人によって異なる基準、疲労による見落とし)が蓄積するボトルネックになります。
+3Dプリンティングでは、造形後に**人が造形物をベッドから取り外し、目視で不良(反り・層間剥離・糸引き・造形不足)を確認して仕分ける**必要があります。この後処理工程は、プリントファームの規模が大きくなるほど、単純作業の繰り返しと検査のばらつき(人によって異なる基準、疲労による見落とし)が蓄積するボトルネックになります。
 
 QUVIはこの課題を、**把持(模倣学習ロボットアーム) → 検査(マシンビジョン) → 仕分け(自動積載)** の全工程を無人化した自動仕分けシステムで解決します。造形が完了した製品をロボットアームが自動で把持し、検査チャンバーのターンテーブル上で4方向から撮影して品質を分析(良否判定)し、結果に応じて合格(PASS)と不良(FAIL)のステーションへ仕分けて積載します。
 
@@ -43,7 +43,7 @@ QUVIはこの課題を、**把持(模倣学習ロボットアーム) → 検査(
 
 ### 検査方式
 
-検査カメラがターンテーブルの4方向(0°/90°/180°/270°)の画像をキャプチャして2系統で分析し、両者の結果を**ハイブリッドに結合**して最終判定します。
+検査カメラがターンテーブルの4方向(0°/90°/180°/270°)の画像をキャプチャして2系統で分析し、両者の結果を**組み合わせて**最終判定します。
 
 1. **表面特徴のルール判定** — 角度別のworst-caseでPASS/FAILを決定
    * Solidity (凸包に対する輪郭面積比 — 反りの検出)
@@ -54,22 +54,22 @@ QUVIはこの課題を、**把持(模倣学習ロボットアーム) → 検査(
    判定しきい値は `src/quvi_inspect/config/inspect_params.yaml` で管理し、HMI表示基準(`dashboard.js` のTHRESHOLDS)との同期を維持します。
 2. **PatchCore異常検知** — WideResNet50バックボーンによる角度別メモリバンクで異常スコアを計算。正常品の画像のみで学習するため、不良サンプルの収集・ラベリングが不要です。
 
-**ハイブリッド判定ルール** — ルールとMLの両方がPASSのときのみ最終PASSです。ルールがPASSと判断した製品でも、MLが明示的にFAILを出せば最終FAILに覆します。逆に、MLがルールのFAILをPASSに戻すことはありません。つまりMLは判定を保守的に強化する方向にのみ作用し、不良品が良品として流出するケース(false-accept)を増やしません。MLモデルがロードされていない環境では、ルール単独の判定に自動フォールバックします。
+**ハイブリッド判定ルール** — ルールとMLの両方がPASSのときのみ最終PASSです。ルールがPASSと判断した製品でも、MLが明示的にFAILと判定すれば最終判定はFAILに覆ります。逆に、MLがルールのFAILをPASSに戻すことはありません。つまりMLは判定を保守的に強化する方向にのみ作用し、不良品が良品として流出するケース(false-accept)を増やしません。MLモデルがロードされていない環境では、ルール単独の判定に自動フォールバックします。
 
 判定結果には `anomaly_score_worst`(4方向のうち最悪の異常スコア)と `ml_passed`(-1=未使用 / 0=FAIL / 1=PASS)が併せて配信され、HMIダッシュボードにML異常スコアとして表示されます。
 
-基準画像はHMIの基準画像キャプチャモードで正常品を実撮影して作成します。ルール判定の面積比項目が基準画像を使用するため現時点では依然として必要であり、ルール依存を完全に取り除くことは今後の課題です。
+基準画像は、HMIの基準画像キャプチャモードで正常品を実際に撮影して作成します。ルール判定の面積比項目が基準画像を使用するため現時点では欠かせませんが、この基準画像への依存をなくすことが今後の課題です。
 
 ### ROS 2 パッケージ・ノード構成
 
 | パッケージ名 | 実行ノード名 | 主な役割 |
 | :--- | :--- | :--- |
-| **`quvi_robot_control`** | `main_orchestrator_node` | 全体自律シーケンスのFSM制御 (把持 → チャンバー安着 → 検査 → 仕分け → ホーム復帰) |
+| **`quvi_robot_control`** | `main_orchestrator_node` | 全体自律シーケンスのFSM制御 (把持 → チャンバーへの設置 → 検査 → 仕分け → ホーム復帰) |
 | | `robot_control_node` | ロボットアームのDynamixel制御、LeRobot ACT把持推論、レール/ターンテーブル指令の中継、E-STOP処理 |
 | **`quvi_inspect`** | `inspect_node` | 4方向表面特徴分析 + PatchCore異常検知のハイブリッド良否判定、検査ログ保存、基準画像・MLデータセットのキャプチャモード |
 | **`quvi_hmi`** | `hmi_node` | **Flask + SocketIOベースのリアルタイムWebダッシュボード** (状態モニタリング、MJPEGストリーミング、手動制御) |
 | **`quvi_msgs`** | - | カスタムメッセージ (`SystemStatus`, `InspectionResult`, `GraspGoal`, `MotorStatus` など) |
-| **`quvi_bringup`** | - | システムランチファイル (`full_system.launch.py`, `vision_pipeline.launch.py`) |
+| **`quvi_bringup`** | - | システムのlaunchファイル (`full_system.launch.py`, `vision_pipeline.launch.py`) |
 
 トピック名は `quvi_robot_control/topics.py` で一元管理します。
 
@@ -96,7 +96,7 @@ QUVI/
 ├── lerobot/                 # LeRobot サブモジュール (OMX 対応ブランチ)
 ├── src/                     # ROS 2 ソース
 │   ├── quvi_msgs/           # カスタムメッセージ定義
-│   ├── quvi_bringup/        # ローンチファイル
+│   ├── quvi_bringup/        # launchファイル
 │   ├── quvi_robot_control/  # ロボットアーム・FSM オーケストレーター・共通ユーティリティ/トピック
 │   ├── quvi_inspect/        # 良否判定 + PatchCore 異常検知パッケージ
 │   └── quvi_hmi/            # Flask + SocketIO ウェブダッシュボード
@@ -154,7 +154,7 @@ docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 ロボットアームの把持(Zone 1)は、LeRobot ACT (Action Chunking with Transformers) 模倣学習に基づくビジュオモーター制御で行います。
 
 ### 1. テレオペレーションによるデータ収集
-リーダー・フォロワー方式の実演データをヘルパースクリプトで記録します(ホスト/コンテナのどちらでも実行可能)。
+リーダー・フォロワー方式の教示データをヘルパースクリプトで記録します(ホスト/コンテナのどちらでも実行可能)。
 ```bash
 ./scripts/act_record.sh <HF_USER> <エピソード数> <エピソード時間(秒)>
 ```
@@ -184,7 +184,7 @@ python3 scripts/train_anomaly_bank.py        # → data/models/bank_{angle}.pt, 
 python3 scripts/shadow_report.py
 ```
 
-ランチ引数 `anomaly_enabled`(デフォルト true)でオン/オフを切り替え、モデルファイルが存在しないかロードに失敗した場合は自動的に無効化され、ルール判定のみを使用します。
+launch引数 `anomaly_enabled`(デフォルト true)でオン/オフを切り替え、モデルファイルが存在しないかロードに失敗した場合は自動的に無効化され、ルール判定のみを使用します。
 
 ---
 
@@ -193,7 +193,7 @@ python3 scripts/shadow_report.py
 リニアレール・ターンテーブル・LEDを担当するESP32-S3ファームウェアはPlatformIOプロジェクトです (`firmware/quvi_esp32_firmware/`)。ESP32-S3はCH340ブリッジ経由(`/dev/ttyESP32` udevシンボリックリンク、`scripts/99-esp32.rules`)で接続され、ブートボタンの操作なしで自動リセット書き込みが可能です。
 
 ```bash
-# ホスト側で実行。micro-ROS agent がポートを掴んでいる場合は先に終了すること。
+# ホスト側で実行。micro-ROS agent がポートを使用している場合は先に終了すること。
 cd firmware/quvi_esp32_firmware
 pio run                                        # コンパイル
 pio run -t upload --upload-port /dev/ttyESP32  # 書き込み
@@ -216,7 +216,7 @@ pio run -t upload --upload-port /dev/ttyESP32  # 書き込み
 - **開発支援AI**: Anthropic **Claude Code** (Claude Opus・Sonnet・Haikuモデル)、OpenAI **Codex**、Google **Antigravity** — コード作成・レビュー・デバッグの補助。最終的な設計判断と実機検証はチームが直接実施
 - **製品に搭載したAIモデル**: **ACT** 把持ポリシー (LeRobotで自前のテレオペレーションデータを収集して直接学習)、**PatchCore** 異常検知 (WideResNet50バックボーン、自前の正常品画像でメモリバンクを構築)
 - **オープンソース**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO など — 詳細な出典は下記[リファレンス](#リファレンス)を参照
-- **外部アドバイザー**: なし (指導教員の指導以外に外部機関・企業の助言なし)
+- **外部アドバイザー**: なし (指導教員による指導のほか、外部機関・企業からの助言は受けていません)
 
 ---
 
