@@ -9,10 +9,13 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/MCU-ESP32--S3-E7352C)
 ![Docker](https://img.shields.io/badge/Docker-quvi--dev-2496ED?logo=docker&logoColor=white)
+[![Web Demo](https://img.shields.io/badge/Web_Demo-Live-brightgreen)](https://seongjun-k.github.io/QUVI/)
 
 **AI 비전 로봇을 활용한 3D 프린터 출력물 자동 양불 판정 및 분류 시스템**
 
 > "보는 것이 곧 품질이다 (Seeing is Quality)"
+
+▶ **[웹 데모 바로가기](https://seongjun-k.github.io/QUVI/)** — 하드웨어 없이 정상품·불량품 검사 사이클을 실기 녹화 그대로 체험할 수 있습니다.
 
 ---
 

@@ -9,10 +9,13 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/MCU-ESP32--S3-E7352C)
 ![Docker](https://img.shields.io/badge/Docker-quvi--dev-2496ED?logo=docker&logoColor=white)
+[![Web Demo](https://img.shields.io/badge/Web_Demo-Live-brightgreen)](https://seongjun-k.github.io/QUVI/)
 
 **AIビジョンロボットによる3Dプリンター造形物の自動良否判定・仕分けシステム**
 
 > 「見ることこそ品質である (Seeing is Quality)」
+
+▶ **[Webデモを試す](https://seongjun-k.github.io/QUVI/)** — ハードウェアなしで、実機録画をそのまま再生した良品・不良品の検査サイクルを体験できます。
 
 ---
 

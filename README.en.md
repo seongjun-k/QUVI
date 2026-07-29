@@ -9,10 +9,13 @@
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![Platform](https://img.shields.io/badge/MCU-ESP32--S3-E7352C)
 ![Docker](https://img.shields.io/badge/Docker-quvi--dev-2496ED?logo=docker&logoColor=white)
+[![Web Demo](https://img.shields.io/badge/Web_Demo-Live-brightgreen)](https://seongjun-k.github.io/QUVI/)
 
 **An automated 3D-printer output pass/fail inspection and sorting system powered by an AI vision robot**
 
 > "Seeing is Quality"
+
+▶ **[Try the Web Demo](https://seongjun-k.github.io/QUVI/)** — experience the pass/fail inspection cycles, replayed from real hardware recordings, with no hardware required.
 
 ---
 
