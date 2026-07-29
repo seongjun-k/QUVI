@@ -88,19 +88,19 @@ QUVIはこの課題を、**把持(模倣学習ロボットアーム) → 検査(
 
 ```
 QUVI/
-├── docker/                  # Docker 개발 환경 (Dockerfile, compose)
-├── firmware/                # ESP32-S3 레일·턴테이블 펌웨어 (PlatformIO, micro-ROS)
-├── lerobot/                 # LeRobot 서브모듈 (OMX 지원 브랜치)
-├── src/                     # ROS 2 소스
-│   ├── quvi_msgs/           # 커스텀 메시지 정의
-│   ├── quvi_bringup/        # 런치 파일
-│   ├── quvi_robot_control/  # 로봇팔·FSM 오케스트레이터·공용 유틸/토픽
-│   ├── quvi_inspect/        # 양불 판정 + PatchCore 이상탐지 패키지
-│   └── quvi_hmi/            # Flask + SocketIO 웹 대시보드
-├── data/                    # 기준 이미지, 검사 로그, ML 데이터셋·모델, 장치 설정
-├── scripts/                 # ACT 녹화/학습, 이상탐지 학습, 캘리브레이션·진단 스크립트
-├── tests/                   # pytest 로직 테스트
-└── docs/                    # 기술 설계 문서
+├── docker/                  # Docker 開発環境 (Dockerfile, compose)
+├── firmware/                # ESP32-S3 レール・ターンテーブル ファームウェア (PlatformIO, micro-ROS)
+├── lerobot/                 # LeRobot サブモジュール (OMX 対応ブランチ)
+├── src/                     # ROS 2 ソース
+│   ├── quvi_msgs/           # カスタムメッセージ定義
+│   ├── quvi_bringup/        # ローンチファイル
+│   ├── quvi_robot_control/  # ロボットアーム・FSM オーケストレーター・共通ユーティリティ/トピック
+│   ├── quvi_inspect/        # 良否判定 + PatchCore 異常検知パッケージ
+│   └── quvi_hmi/            # Flask + SocketIO ウェブダッシュボード
+├── data/                    # 基準画像、検査ログ、ML データセット・モデル、デバイス設定
+├── scripts/                 # ACT 記録/学習、異常検知学習、キャリブレーション・診断スクリプト
+├── tests/                   # pytest ロジックテスト
+└── docs/                    # 技術設計ドキュメント
 ```
 
 ---
@@ -133,8 +133,8 @@ docker compose up -d
 
 ### 3. ビルドと実行 (ホスト側で)
 ```bash
-./build.sh   # 컨테이너 기동 + colcon build --symlink-install
-./run.sh     # full_system.launch.py 실행
+./build.sh   # コンテナ起動 + colcon build --symlink-install
+./run.sh     # full_system.launch.py 実行
 ```
 * Webブラウザで `http://localhost:5000` にアクセス → HMIダッシュボード。
 * 手動実行の場合: コンテナ内で `ros2 launch quvi_bringup full_system.launch.py`
@@ -153,7 +153,7 @@ docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 ### 1. テレオペレーションによるデータ収集
 リーダー・フォロワー方式の実演データをヘルパースクリプトで記録します(ホスト/コンテナのどちらでも実行可能)。
 ```bash
-./scripts/act_record.sh <HF_USER> <에피소드수> <에피소드시간(초)>
+./scripts/act_record.sh <HF_USER> <エピソード数> <エピソード時間(秒)>
 ```
 
 ### 2. ACTモデルの学習
@@ -170,14 +170,14 @@ HMIダッシュボードでモデルのスキャン・選択によるランタ�
 ## PatchCore 異常検知の学習パイプライン
 
 ```bash
-# 0. HMI 데이터셋 촬영 모드 또는 기존 PASS 검사 로그로 정상품 이미지 수집
-python3 scripts/build_anomaly_dataset.py     # PASS 로그 → 각도별 raw/ 정리 + 검수 시트 생성
-# (사람이 review_sheet_{angle}.png 를 보고 불량 혼입 이미지를 raw/에서 삭제)
+# 0. HMI データセット撮影モードまたは既存 PASS 検査ログから正常品画像を収集
+python3 scripts/build_anomaly_dataset.py     # PASS ログ → 角度別 raw/ 整理 + レビューシート生成
+# (人が review_sheet_{angle}.png を確認し、不良混入画像を raw/ から削除)
 
-# 1. 각도별 메모리뱅크 학습 + 임계값 산정
+# 1. 角度別メモリバンク学習 + しきい値算定
 python3 scripts/train_anomaly_bank.py        # → data/models/bank_{angle}.pt, thresholds.json
 
-# 2. 룰 vs ML 일치율 리포트 (판정 신뢰도 점검)
+# 2. ルール vs ML 一致率レポート (判定信頼度の点検)
 python3 scripts/shadow_report.py
 ```
 
@@ -190,10 +190,10 @@ python3 scripts/shadow_report.py
 リニアレール・ターンテーブル・LEDを担当するESP32-S3ファームウェアはPlatformIOプロジェクトです (`firmware/quvi_esp32_firmware/`)。ESP32-S3はCH340ブリッジ経由(`/dev/ttyESP32` udevシンボリックリンク、`scripts/99-esp32.rules`)で接続され、ブートボタンの操作なしで自動リセット書き込みが可能です。
 
 ```bash
-# 호스트에서 실행. micro-ROS agent가 포트를 잡고 있으면 먼저 종료할 것.
+# ホスト側で実行。micro-ROS agent がポートを掴んでいる場合は先に終了すること。
 cd firmware/quvi_esp32_firmware
-pio run                                        # 컴파일
-pio run -t upload --upload-port /dev/ttyESP32  # 플래시
+pio run                                        # コンパイル
+pio run -t upload --upload-port /dev/ttyESP32  # 書き込み
 ```
 
 ホーミング(3段階: 粗探索 → バックオフ → 精密探索)・レール座標系・ソフトリミットなどのハードウェアキャリブレーション定数は `Config.h` で管理します。
@@ -210,7 +210,7 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 
 透明性の原則に基づき、本プロジェクトの制作に活用したAI、オープンソース、外部の支援を公開します。
 
-- **開発支援AI**: Anthropic **Claude Code** (Claude Opus・Sonnet・Haikuモデル) — コード作成・レビュー・デバッグの補助。最終的な設計判断と実機検証はチームが直接実施
+- **開発支援AI**: Anthropic **Claude Code** (Claude Opus・Sonnet・Haikuモデル)、OpenAI **Codex**、Google **Antigravity** — コード作成・レビュー・デバッグの補助。最終的な設計判断と実機検証はチームが直接実施
 - **製品に搭載したAIモデル**: **ACT** 把持ポリシー (LeRobotで自前のテレオペレーションデータを収集して直接学習)、**PatchCore** 異常検知 (WideResNet50バックボーン、自前の正常品画像でメモリバンクを構築)
 - **オープンソース**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO など — 詳細な出典は下記[リファレンス](#リファレンス)を参照
 - **外部アドバイザー**: なし (指導教員の指導以外に外部機関・企業の助言なし)

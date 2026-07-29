@@ -210,7 +210,7 @@ Hardware calibration constants — homing (3-stage: coarse search → backoff �
 
 In the interest of transparency, we disclose the AI, open-source software, and external assistance used in building this project.
 
-- **Development-assistance AI**: Anthropic **Claude Code** (Claude Opus/Sonnet/Haiku models) — assisted with code writing, review, and debugging. Final design decisions and hardware validation were performed by the team directly
+- **Development-assistance AI**: Anthropic **Claude Code** (Claude Opus/Sonnet/Haiku models), OpenAI **Codex**, Google **Antigravity** — assisted with code writing, review, and debugging. Final design decisions and hardware validation were performed by the team directly
 - **AI models embedded in the product**: **ACT** grasp policy (trained on our own teleoperation data collected via LeRobot), **PatchCore** anomaly detection (WideResNet50 backbone, memory bank built from our own known-good images)
 - **Open source**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO, and more — see [References](#references) below for detailed sources
 - **External consulting**: None (no consultation from outside institutions or companies beyond our supervising teacher)
