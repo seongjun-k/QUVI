@@ -126,9 +126,7 @@ class InspectNode(Node):
             f'INSPECT_NODE 초기화 완료 | '
             f'촬영 각도: {self._angles} | 판정 타임아웃: {self._finalize_sec}s')
 
-    # ─────────────────────────────────────────────
-    # 파라미터 (선언 + 로드 통합)
-    # ─────────────────────────────────────────────
+    # ─── 파라미터 (선언 + 로드 통합) ───
     def _load_params(self):
         """모든 파라미터를 선언하고 로컬 멤버 변수로 로드합니다."""
         params = [
@@ -173,9 +171,7 @@ class InspectNode(Node):
             self.declare_parameter(name, default)
             setattr(self, attr_name, self.get_parameter(name).value)
 
-    # ─────────────────────────────────────────────
-    # 기준 이미지 로드
-    # ─────────────────────────────────────────────
+    # ─── 기준 이미지 로드 ───
     def _load_reference_images(self):
         """기준 이미지(HMI에서 정상품을 챔버에 올려두고 캡처한 결과)를 로드한다.
         파일 네이밍: ref_0.png, ref_90.png, ref_180.png, ref_270.png
@@ -210,9 +206,7 @@ class InspectNode(Node):
                 f'누락된 각도: {missing}. '
                 f'검사 결과의 신뢰도가 떨어집니다.')
 
-    # ─────────────────────────────────────────────
-    # ML 이상탐지 초기화 (섀도우 모드, Phase 2)
-    # ─────────────────────────────────────────────
+    # ─── ML 이상탐지 초기화 (섀도우 모드, Phase 2) ───
     def _init_anomaly(self):
         """각도별 PatchCore 뱅크를 로드한다. 실패해도 노드는 계속 동작한다(자동 비활성)."""
         if not self._anomaly_enabled:
@@ -254,9 +248,7 @@ class InspectNode(Node):
             self.get_logger().warn(f'ML 이상탐지 로드 실패({exc}) — 자동 비활성, 룰 판정만 사용')
             self._anomaly_detectors = {}
 
-    # ─────────────────────────────────────────────
-    # 콜백
-    # ─────────────────────────────────────────────
+    # ─── 콜백 ───
     def _image_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
         if frame is not None:
@@ -454,9 +446,7 @@ class InspectNode(Node):
             self.get_logger().info(
                 f'데이터셋 {len(self._angles)}장 저장 완료 — 경로: {self._ds_dir}')
 
-    # ─────────────────────────────────────────────
-    # 메인 검사 로직
-    # ─────────────────────────────────────────────
+    # ─── 메인 검사 로직 ───
     def _run_inspection(self):
         """4방향 이미지로 표면 특징 분석 검사 실행."""
         with self._inspection_lock:
@@ -544,17 +534,13 @@ class InspectNode(Node):
             self._save_inspection_log(final_pass, surface_results)
         # 상태 해제는 _run_inspection 의 try/finally 가 일괄 처리
 
-    # ─────────────────────────────────────────────
-    # 이미지 전처리
-    # ─────────────────────────────────────────────
+    # ─── 이미지 전처리 ───
     def _preprocess(self, image: np.ndarray) -> np.ndarray:
         """이미지 전처리: 그레이스케일 + 가우시안 블러."""
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if len(image.shape) == 3 else image.copy()
         return cv2.GaussianBlur(gray, (self._blur_k, self._blur_k), 0)
 
-    # ─────────────────────────────────────────────
-    # 표면 특징 분석
-    # ─────────────────────────────────────────────
+    # ─── 표면 특징 분석 ───
     def _surface_analysis(self) -> Dict:
         """4방향 이미지의 표면 특징을 추출하고 worst-case 로 판정한다.
 
@@ -708,9 +694,7 @@ class InspectNode(Node):
             'ml_detail':           ml_detail,
         }
 
-    # ─────────────────────────────────────────────
-    # 디버그 / 로깅
-    # ─────────────────────────────────────────────
+    # ─── 디버그 / 로깅 ───
     def _publish_debug_image(self, passed: bool, surface: Dict):
         """원본 이미지를 타일링하고 표면 특징 분석 결과를 오버레이한다."""
         TILE_W, TILE_H = 320, 240

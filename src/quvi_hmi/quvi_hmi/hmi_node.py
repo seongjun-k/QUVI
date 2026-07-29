@@ -152,7 +152,7 @@ class HmiNode(Node):
         self._act_model_select_pub = self.create_publisher(
             String, TOPIC_ACT_MODEL_SELECT, 10)
 
-        # ─── ROS 2 Subscribers ───
+        # ─── ROS 2 구독 ───
         self.create_subscription(
             SystemStatus, TOPIC_HMI_STATUS, self._status_cb, 10)
         # ACT 모델 목록/현재상태 (robot_control_node 가 latched 로 발행)
@@ -196,7 +196,7 @@ class HmiNode(Node):
             Image, inspect_topic,
             lambda msg: self._store_frame(decode_raw(msg), 'inspect_debug'), 5)
 
-        # ─── ROS 2 Publishers ───
+        # ─── ROS 2 발행 ───
         self._cmd_pub = self.create_publisher(String, TOPIC_HMI_COMMAND, 10)
         self._inspect_trigger_pub = self.create_publisher(Bool, TOPIC_INSPECTION_TRIGGER, 10)
         self._teleop_pub = self.create_publisher(Bool, TOPIC_ROBOT_TELEOP_CMD, 10)
@@ -512,9 +512,7 @@ class HmiNode(Node):
             return self._jpeg_cache.get(key)
 
 
-# ═══════════════════════════════════════════════
-# Flask 앱
-# ═══════════════════════════════════════════════
+# ─── Flask 앱 ───
 
 def _run_turntable_sequence(hmi_node, angles, wait_timeout, post_wait_sec=0.0, timeout_label=''):
     """턴테이블을 angles 순서로 회전시키며 각 회전마다 turntable_done을 대기한다.
@@ -932,9 +930,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
     return app, socketio
 
 
-# ═══════════════════════════════════════════════
-# 메인
-# ═══════════════════════════════════════════════
+# ─── 메인 ───
 
 def main(args=None):
     rclpy.init(args=args)

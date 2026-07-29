@@ -35,7 +35,7 @@ def generate_launch_description():
 
     default_data_dir = _default_data_dir()
 
-    # ─── Launch Arguments ───
+    # ─── 런치 인자 ───
     sidecam_device_arg = DeclareLaunchArgument(
         'sidecam_device', default_value='/dev/sidecam',
         description='사이드캠(Zone 1) USB 장치 경로')
@@ -156,7 +156,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # Arguments
+        # 인자
         sidecam_device_arg,
         fixed_cam_device_arg,
         data_dir_arg,

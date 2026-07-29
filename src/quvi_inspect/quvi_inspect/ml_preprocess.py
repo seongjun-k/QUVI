@@ -20,9 +20,7 @@ from quvi_robot_control.utils import BinaryCache, compute_aligned_crop
 _MIN_CONTOUR_AREA_PX = 500
 
 
-# ─────────────────────────────────────────────
-# 학습·추론 공용 전처리
-# ─────────────────────────────────────────────
+# ─── 학습·추론 공용 전처리 ───
 def preprocess_for_ml(
     bgr: np.ndarray,
     bin_thresh: int = 127,

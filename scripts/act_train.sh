@@ -14,10 +14,10 @@ echo "Dataset ID: $REPO_ID"
 echo "Output Dir: $OUTPUT_DIR"
 echo "=================================================="
 
-# Check if CUDA is available, otherwise default to cpu
+# CUDA 사용 가능 여부 확인, 없으면 cpu 로 폴백
 DEVICE="cuda"
 if [ -f /.dockerenv ]; then
-  # Inside Docker
+  # 컨테이너 내부
   python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)"
   if [ $? -ne 0 ]; then
     echo "Warning: CUDA is not available. Training on CPU will be extremely slow!"
@@ -32,7 +32,7 @@ if [ -f /.dockerenv ]; then
     --env.type=real \
     --wandb.enable=false
 else
-  # Host
+  # 호스트
   docker exec -it quvi-dev python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)"
   if [ $? -ne 0 ]; then
      echo "Warning: CUDA is not available inside Docker. Training on CPU will be extremely slow!"

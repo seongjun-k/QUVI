@@ -46,9 +46,7 @@ MIN_IMAGES_PER_ANGLE = 20   # 각도당 최소 학습 이미지 수 — 미달 �
 GRID_COLS_MAX = 8
 
 
-# ─────────────────────────────────────────────
-# raw/ 데이터셋 구성
-# ─────────────────────────────────────────────
+# ─── raw/ 데이터셋 구성 ───
 def find_pass_folders(logs_dir: str) -> List[str]:
     """`*_PASS` 로 끝나는 검사 로그 폴더 목록(정렬됨)을 반환."""
     pattern = os.path.join(logs_dir, '*_PASS')
@@ -92,9 +90,7 @@ def build_raw_dataset(
     return counts
 
 
-# ─────────────────────────────────────────────
-# 검수용 썸네일 시트
-# ─────────────────────────────────────────────
+# ─── 검수용 썸네일 시트 ───
 def build_review_sheet(
     out_dir: str, angle: int, thumb_size: int,
 ) -> Optional[Tuple[str, List[str]]]:
@@ -138,9 +134,7 @@ def build_review_sheet(
     return sheet_path, files
 
 
-# ─────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────
+# ─── CLI ───
 def main() -> None:
     parser = argparse.ArgumentParser(description='QUVI 이상탐지 데이터셋 빌더 (Phase 0-a)')
     parser.add_argument('--logs-dir', default='/workspace/data/inspection_logs')

@@ -33,9 +33,7 @@ _DIST_CHUNK_SIZE = 4096
 _SCORE_TOP_K = 5
 
 
-# ─────────────────────────────────────────────
-# 디바이스 헬퍼
-# ─────────────────────────────────────────────
+# ─── 디바이스 헬퍼 ───
 def _resolve_device(device: str) -> torch.device:
     """요청 디바이스가 사용 불가하면 cpu 로 자동 폴백."""
     if device.startswith('cuda') and not torch.cuda.is_available():
@@ -43,9 +41,7 @@ def _resolve_device(device: str) -> torch.device:
     return torch.device(device)
 
 
-# ─────────────────────────────────────────────
-# PatchCoreDetector
-# ─────────────────────────────────────────────
+# ─── PatchCoreDetector ───
 class PatchCoreDetector:
     """WideResNet-50 중간층 패치 특징 기반 자체구현 PatchCore.
 

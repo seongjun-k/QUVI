@@ -21,9 +21,7 @@ from sensor_msgs.msg import CompressedImage, Image
 _bridge = CvBridge()
 
 
-# ─────────────────────────────────────────────
-# 이미지 디코딩
-# ─────────────────────────────────────────────
+# ─── 이미지 디코딩 ───
 
 def decode_compressed(msg: CompressedImage) -> Optional[np.ndarray]:
     """CompressedImage → BGR numpy array. 실패 시 None 반환."""
@@ -45,9 +43,7 @@ def encode_bgr(frame: np.ndarray) -> Image:
     return _bridge.cv2_to_imgmsg(frame, encoding='bgr8')
 
 
-# ─────────────────────────────────────────────
-# 각도 정규화 + 역회전 크롭 (그레이/컬러 공용)
-# ─────────────────────────────────────────────
+# ─── 각도 정규화 + 역회전 크롭 (그레이/컬러 공용) ───
 
 def compute_aligned_crop(
     contours_external: list,
@@ -111,9 +107,7 @@ def compute_aligned_crop(
     return cropped
 
 
-# ─────────────────────────────────────────────
-# 이진화 캐시
-# ─────────────────────────────────────────────
+# ─── 이진화 캐시 ───
 
 class BinaryCache:
     """단일 회색조 이미지에 대한 이진화 + 윤곽 검출 결과를 캐싱한다.

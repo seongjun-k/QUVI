@@ -79,9 +79,7 @@ BIN_THRESH = _load_bin_thresh()
 MIN_RELIABLE_VAL_SAMPLES = 5   # held-out 표본이 이보다 적으면 max() 임계값 과적합 위험 — 경고만, 학습은 계속
 
 
-# ─────────────────────────────────────────────
-# 데이터 로드
-# ─────────────────────────────────────────────
+# ─── 데이터 로드 ───
 def load_and_preprocess(img_dir: str) -> List[Tuple[str, np.ndarray]]:
     """디렉토리의 png 이미지를 로드 후 ml_preprocess 로 전처리한다.
 
@@ -119,9 +117,7 @@ def _fmt_scores(scores: List[float]) -> str:
         f'mean={sum(scores) / len(scores):.4f} (n={len(scores)})')
 
 
-# ─────────────────────────────────────────────
-# 각도별 학습
-# ─────────────────────────────────────────────
+# ─── 각도별 학습 ───
 def train_one_angle(
     angle: int, args: argparse.Namespace, backbone_weights_path: str,
 ) -> Dict:
@@ -180,7 +176,7 @@ def train_one_angle(
         f'  임계값 = max(점수) × {args.threshold_margin} = {threshold:.4f}'
         + ('' if threshold_reliable else '  [신뢰 불가 — 데이터 부족]'))
 
-    # ── FAIL 로그 sanity check (통계적 검증 아님) ──
+    # ─── FAIL 로그 sanity check (통계적 검증 아님) ───
     fail_scores = _score_fail_logs(angle, args, detector)
     if fail_scores:
         exceed = sum(1 for s in fail_scores if s > threshold)
@@ -220,9 +216,7 @@ def _score_fail_logs(
     return scores
 
 
-# ─────────────────────────────────────────────
-# CLI
-# ─────────────────────────────────────────────
+# ─── CLI ───
 def main() -> None:
     parser = argparse.ArgumentParser(description='QUVI 이상탐지 메모리뱅크 학습 (Phase 1)')
     parser.add_argument('--dataset-dir', default='/workspace/data/anomaly_dataset/raw')

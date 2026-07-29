@@ -44,7 +44,7 @@ def generate_launch_description():
     # 대시보드 장치 설정(있으면) 로드 — 하드코딩 기본값을 덮어쓴다.
     _dev = _load_device_config()
 
-    # ─── Launch Arguments ───
+    # ─── 런치 인자 ───
     hmi_port_arg = DeclareLaunchArgument(
         'hmi_port', default_value='5000',
         description='HMI Web UI 포트')
@@ -105,7 +105,7 @@ def generate_launch_description():
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
-    # ─── Vision Pipeline 포함 ───
+    # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(

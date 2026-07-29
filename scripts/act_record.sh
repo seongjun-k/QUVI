@@ -16,11 +16,11 @@ echo "Num Episodes: $EPISODES"
 echo "Episode Time: $EPISODE_TIME sec"
 echo "=================================================="
 
-# Create log directories if on host
+# 호스트에서 실행 시 로그 디렉터리 생성
 mkdir -p log outputs
 
 if [ -f /.dockerenv ]; then
-  # Inside Docker Container
+  # 컨테이너 내부
   python3 /workspace/lerobot/src/lerobot/record.py \
     --robot.path /workspace/lerobot/configs/robot/omx.yaml \
     --teleop.path /workspace/lerobot/configs/robot/omx_leader.yaml \
@@ -32,7 +32,7 @@ if [ -f /.dockerenv ]; then
     --dataset.num_episodes="$EPISODES" \
     --display_data=true
 else
-  # On Host System
+  # 호스트 시스템
   docker exec -it quvi-dev python3 /workspace/lerobot/src/lerobot/record.py \
     --robot.path /workspace/lerobot/configs/robot/omx.yaml \
     --teleop.path /workspace/lerobot/configs/robot/omx_leader.yaml \

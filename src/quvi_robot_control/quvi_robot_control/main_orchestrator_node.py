@@ -358,7 +358,7 @@ class MainOrchestratorNode(Node):
             # HMI로부터 START 대기 (Callback에서 처리)
             pass
 
-        # ── 시작 초기화 시퀀스: 레일 0mm → 12.5mm → 턴테이블 0° ──
+        # ─── 시작 초기화 시퀀스: 레일 0mm → 12.5mm → 턴테이블 0° ───
         elif self._state == FsmState.STARTUP_RAIL_HOME_TRIGGER:
             self._startup_rail_done = False
             self._state_timer_counter = 0

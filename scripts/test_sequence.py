@@ -22,7 +22,7 @@ except ImportError:
     print("dynamixel_sdk 미설치: pip install dynamixel-sdk --break-system-packages")
     sys.exit(1)
 
-# ── 하드웨어 설정 ──────────────────────────────────────────────────────────────
+# ─── 하드웨어 설정 ───
 PORT     = '/dev/ttyFollower'
 BAUDRATE = 1_000_000
 PROTOCOL = 2.0
@@ -44,13 +44,13 @@ ADDR_GOAL_POSITION       = 116
 LEN_GOAL_POSITION        = 4
 LEN_PRESENT_POSITION     = 4
 
-# ── 속도 설정 ─────────────────────────────────────────────────────────────────
+# ─── 속도 설정 ───
 PROFILE_VELOCITY       = 8
 PROFILE_ACCEL          = 3
 PROFILE_VELOCITY_GRIP  = 20
 PROFILE_ACCEL_GRIP     = 5
 
-# ── 소프트웨어 보간 설정 ───────────────────────────────────────────────────────
+# ─── 소프트웨어 보간 설정 ───
 # 현재 → 목표 위치 사이를 INTERP_STEPS개로 나눠서 전송
 # INTERP_STEPS * INTERP_DELAY = 총 이동 시간
 INTERP_STEPS         = 200       # 중간 목표 개수 (많을수록 부드럽게)
@@ -120,10 +120,7 @@ def interp_move(port, pkt, target_pose: dict, steps: int, delay: float,
     """
     motor_names = list(target_pose.keys())
 
-    # Profile 설정
     apply_profile(port, pkt, motor_names, velocity, accel)
-
-    # 현재 위치 읽기
     current = read_positions(port, pkt, motor_names)
 
     for i in range(1, steps + 1):
@@ -176,7 +173,7 @@ def gripper_close(port, pkt):
                 PROFILE_VELOCITY_GRIP, PROFILE_ACCEL_GRIP)
 
 
-# ── 티칭 웨이포인트 ────────────────────────────────────────────────────────────
+# ─── 티칭 웨이포인트 ───
 POSE_P1 = {'shoulder_pan': 2054, 'shoulder_lift': 1258, 'elbow_flex': 2800, 'wrist_flex': 2981, 'wrist_roll': 2035, 'gripper': 2150}
 POSE_P2 = {'shoulder_pan':   12, 'shoulder_lift': 1843, 'elbow_flex': 2165, 'wrist_flex': 3123, 'wrist_roll': 2095, 'gripper': 2150}
 POSE_P3 = {'shoulder_pan':   16, 'shoulder_lift': 1736, 'elbow_flex': 2413, 'wrist_flex': 3018, 'wrist_roll': 2087, 'gripper': 2150}
@@ -227,7 +224,7 @@ POSES = {
 }
 
 
-# ── 티칭 모드 (구 teach_pendant.py) ───────────────────────────────────────────
+# ─── 티칭 모드 (구 teach_pendant.py) ───
 def _getch():
     fd = sys.stdin.fileno()
     old = termios.tcgetattr(fd)
