@@ -23,7 +23,7 @@
 
 After a 3D print finishes, **a person has to manually remove the part and visually inspect it for defects (warping, layer separation, stringing, under-extrusion) before sorting it**. As print farms scale up, this manual post-processing becomes a bottleneck — repetitive labor plus inconsistent inspection (different people apply different standards, and fatigue causes missed defects).
 
-QUVI automates this entire pipeline — **grasping (imitation-learning robot arm) → inspection (machine vision) → sorting (automatic stacking)** — as an unmanned Smart Cell. A robot arm automatically picks up the finished print, places it on a turntable inside the inspection chamber, captures images from 4 angles, analyzes quality (pass/fail judgment), and stacks the part at the PASS or FAIL station accordingly.
+QUVI automates this entire pipeline — **grasping (imitation-learning robot arm) → inspection (machine vision) → sorting (automatic stacking)** — as an unmanned automated sorting system. A robot arm automatically picks up the finished print, places it on a turntable inside the inspection chamber, captures images from 4 angles, analyzes quality (pass/fail judgment), and stacks the part at the PASS or FAIL station accordingly.
 
 The entire process is autonomously controlled by a finite state machine (FSM) orchestrator. Grasping is performed via LeRobot ACT imitation learning, and inspection combines surface-feature rule-based judgment with PatchCore anomaly detection in a hybrid decision scheme.
 
@@ -152,6 +152,8 @@ docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 ## LeRobot ACT Imitation Learning Guide
 
 Robot arm grasping (Zone 1) is performed via visuomotor control based on LeRobot ACT (Action Chunking with Transformers) imitation learning.
+
+> **What is imitation learning?** Instead of programming motions with coordinates and rules, a human demonstrates the grasp several times with a leader arm, and a neural network learns from the paired camera images and joint positions recorded during those demonstrations. The trained model then generates joint motions on its own from camera input alone, so it can grasp parts even when their position varies slightly — no re-teaching required. ACT is an imitation-learning policy that predicts motions in multi-step chunks rather than one step at a time, which makes the movement smoother and more stable.
 
 ### 1. Teleoperation data collection
 Record leader-follower demonstration data using the helper script (runs on either host or container).
