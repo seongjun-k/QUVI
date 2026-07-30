@@ -1243,6 +1243,27 @@ input:checked + .slider:before {
     .metrics-grid {
         grid-template-columns: repeat(2, 1fr);
     }
+    /* 한글 라벨이 글자 단위로 세로 꺾임 방지 */
+    .nav-item,
+    .status-indicator,
+    .conn-badge,
+    .btn {
+        white-space: nowrap;
+    }
+    .nav-item {
+        flex: none;
+    }
+    .header,
+    .control-bar {
+        flex-wrap: wrap;
+    }
+    .history-table th,
+    .history-table td {
+        white-space: nowrap;
+    }
+    .card-body:has(.history-table) {
+        overflow-x: auto;
+    }
 }
 
 /* ─── 대형 화면 / 발표용 디스플레이 (≥1920px) ─── */
