@@ -995,7 +995,9 @@ function updateClock() {
     const dateStr = now.toLocaleDateString('ko-KR', {
         year: 'numeric', month: '2-digit', day: '2-digit'
     });
-    document.getElementById('clock').textContent = `${dateStr} ${timeStr}`;
+    // 좁은 화면에서 "54초" 중간이 아니라 날짜/시각 사이에서만 줄바꿈되도록 분리
+    document.getElementById('clock').innerHTML =
+        `<span style="white-space:nowrap">${dateStr}</span> <span style="white-space:nowrap">${timeStr}</span>`;
 }
 
 // ─── 초기 데이터 로드 ───
