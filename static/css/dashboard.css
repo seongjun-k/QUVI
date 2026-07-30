@@ -1218,49 +1218,107 @@ input:checked + .slider:before {
     .app-container {
         flex-direction: column;
     }
+    /* ─── 사이드바 → 로고+탭 한 줄 상단 바 ─── */
     .sidebar {
         width: 100%;
         height: auto;
-        padding: 16px;
+        flex-direction: row;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 12px;
         border-right: none;
         border-bottom: 1px solid var(--border);
     }
     .sidebar .logo {
-        margin-bottom: 16px;
+        margin-bottom: 0;
+        font-size: 18px;
+        flex: none;
+    }
+    .sidebar .logo span {
+        display: none; /* "Quality Vision" 부제 숨김 */
     }
     .nav-menu {
+        flex: 1;
         flex-direction: row;
+        gap: 4px;
         overflow-x: auto;
+        scrollbar-width: none; /* 탭 스크롤바 숨김(스와이프로 이동) */
+    }
+    .nav-menu::-webkit-scrollbar {
+        display: none;
+    }
+    .nav-item {
+        flex: none;
+        padding: 8px 10px;
+        font-size: 13px;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .nav-item.active {
+        box-shadow: inset 0 -2px 0 #1e6bb8; /* 세로 막대 대신 밑줄 */
+    }
+    .sidebar-toggle {
+        display: none;
     }
     .main-container {
         height: auto;
         overflow-y: visible;
     }
-    .stats-row {
-        grid-template-columns: repeat(2, 1fr);
-    }
+    /* ─── 헤더·제어 바 ─── */
     .header {
         padding: 8px 12px;
+        flex-wrap: wrap;
+        row-gap: 6px;
     }
-    .main-grid {
-        padding: 8px 12px;
+    .header-left,
+    .header-right {
+        gap: 8px;
+        flex-wrap: wrap;
     }
-    .metrics-grid {
-        grid-template-columns: repeat(2, 1fr);
+    .clock {
+        font-size: 12px;
     }
-    /* 한글 라벨이 글자 단위로 세로 꺾임 방지 */
-    .nav-item,
     .status-indicator,
     .conn-badge,
     .btn {
         white-space: nowrap;
     }
-    .nav-item {
-        flex: none;
-    }
-    .header,
     .control-bar {
+        padding: 8px 12px;
         flex-wrap: wrap;
+        row-gap: 8px;
+    }
+    /* ─── 본문: 카메라 우선, 간격 압축 ─── */
+    .main-grid {
+        padding: 10px;
+        gap: 10px;
+    }
+    .camera-grid {
+        order: -1; /* 데모의 핵심인 카메라 피드를 통계보다 위로 */
+        gap: 10px;
+    }
+    /* 통계 5종을 한 줄 미니 타일로 */
+    .stats-row {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+    .stat-card {
+        padding: 8px 2px;
+    }
+    .stat-card:hover {
+        transform: none; /* 터치 화면에서 hover 부양 효과 무의미 */
+    }
+    .stat-value {
+        font-size: 17px;
+    }
+    .stat-label {
+        font-size: 9px;
+        letter-spacing: 0;
+        margin-top: 2px;
+        white-space: nowrap;
+    }
+    .metrics-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
     .history-table th,
     .history-table td {
@@ -1268,29 +1326,6 @@ input:checked + .slider:before {
     }
     .card-body:has(.history-table) {
         overflow-x: auto;
-    }
-    /* 데모의 핵심인 카메라 피드를 통계 카드보다 위로 */
-    .camera-grid {
-        order: -1;
-    }
-    /* 사이드바·통계 카드 컴팩트화 — 첫 화면에 카메라가 들어오도록 */
-    .sidebar {
-        padding: 10px 12px;
-    }
-    .sidebar .logo {
-        margin-bottom: 8px;
-    }
-    .sidebar-toggle {
-        display: none;
-    }
-    .nav-item {
-        padding: 8px 12px;
-    }
-    .stat-card {
-        padding: 10px;
-    }
-    .stat-value {
-        font-size: 22px;
     }
 }
 
