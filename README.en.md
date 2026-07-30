@@ -15,7 +15,7 @@
 
 > "Seeing is Quality"
 
-▶ **[Try the Web Demo](https://seongjun-k.github.io/QUVI/)** — experience the pass/fail inspection cycles, replayed from real hardware recordings, with no hardware required.
+▶ **[Try the Web Demo](https://seongjun-k.github.io/QUVI/)** — experience the pass/fail inspection cycles, replayed from real hardware recordings, with no hardware required. Works on mobile too.
 
 ---
 
