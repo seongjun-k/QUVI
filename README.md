@@ -215,7 +215,7 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 
 투명성 원칙에 따라 본 프로젝트 제작에 활용한 AI, 오픈소스, 외부 도움을 공개합니다.
 
-- **개발 지원 AI**: Anthropic **Claude Code** (Claude Opus·Sonnet·Haiku 모델), OpenAI **Codex**, Google **Antigravity** — 코드 작성·리뷰·디버깅 보조. 최종 설계 판단과 실기 검증은 팀이 직접 수행
+- **개발 지원 AI**: Anthropic **Claude Code** (Claude Fable 5·Opus·Sonnet·Haiku 모델), OpenAI **Codex**, Google **Antigravity** — 코드 작성·리뷰·디버깅 보조. 최종 설계 판단과 실기 검증은 팀이 직접 수행
 - **제품에 탑재된 AI 모델**: **ACT** 파지 정책 (LeRobot으로 자체 텔레오퍼레이션 데이터 수집 후 직접 학습), **PatchCore** 이상탐지 (WideResNet50 백본, 자체 정상품 이미지로 메모리뱅크 구축)
 - **오픈소스**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO 등 — 상세 출처는 아래 [레퍼런스](#레퍼런스) 참조
 - **외부 자문**: 없음 (지도교사 지도 외 외부 기관·업체 자문 없음)
