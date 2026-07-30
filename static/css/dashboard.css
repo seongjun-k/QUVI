@@ -1201,6 +1201,11 @@ input:checked + .slider:before {
     .camera-grid {
         grid-template-columns: 1fr;
     }
+    /* dashboard.js가 rerun 패널에 인라인 grid-column: 2/-1 을 박는다(데스크톱 3열 가정).
+       1열 그리드에선 암묵적 열이 생겨 사이드캠·판정결과가 2px로 접히므로 강제 복구 */
+    .camera-grid > .camera-feed {
+        grid-column: 1 / -1 !important;
+    }
     .main-grid {
         grid-template-columns: 1fr;
     }
@@ -1263,6 +1268,29 @@ input:checked + .slider:before {
     }
     .card-body:has(.history-table) {
         overflow-x: auto;
+    }
+    /* 데모의 핵심인 카메라 피드를 통계 카드보다 위로 */
+    .camera-grid {
+        order: -1;
+    }
+    /* 사이드바·통계 카드 컴팩트화 — 첫 화면에 카메라가 들어오도록 */
+    .sidebar {
+        padding: 10px 12px;
+    }
+    .sidebar .logo {
+        margin-bottom: 8px;
+    }
+    .sidebar-toggle {
+        display: none;
+    }
+    .nav-item {
+        padding: 8px 12px;
+    }
+    .stat-card {
+        padding: 10px;
+    }
+    .stat-value {
+        font-size: 22px;
     }
 }
 
