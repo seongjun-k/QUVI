@@ -23,6 +23,12 @@
         (listeners[event] || []).forEach((cb) => { try { cb(data); } catch (e) { console.error(e); } });
     }
 
+    // ─── GA4 이벤트 ───
+    // gtag 는 광고 차단기에 막히면 정의되지 않는다 — 없으면 조용히 넘긴다.
+    function track(name, scenario) {
+        if (typeof gtag === 'function') gtag('event', name, { scenario: scenario });
+    }
+
     // ─── 우하단 토스트 ───
     let toastTimer = null;
     function toast(msg) {
@@ -223,6 +229,7 @@
         const scn = SCENARIOS[label];
         nextResult = (label === 'PASS') ? 'FAIL' : 'PASS';
         objectIndex += 1;
+        track('demo_start', label);
 
         // 이번 시나리오의 테이크로 영상을 갈아끼우고 처음으로 되감는다.
         // src 를 바꾼 뒤에는 load() 를 불러야 브라우저가 새 파일을 물어간다.
@@ -274,7 +281,7 @@
             setCams({ side: true, cam2: false, debugImg: null });
         });
 
-        after(t.finished, () => emit({ state: 'FINISHED' }));
+        after(t.finished, () => { emit({ state: 'FINISHED' }); track('cycle_complete', label); });
 
         after(t.idle, () => {
             emit({ state: 'IDLE' });
