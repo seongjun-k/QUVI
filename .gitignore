@@ -86,3 +86,11 @@ docker/resolve
 docker/transferring
 
 .gjc/
+
+# 대회 제출·발표 문안 및 전략 문서 — 저장소 공개용이 아님 (로컬 보관)
+docs/contest_submission.md
+docs/pitch_script.md
+docs/pitch_video.md
+docs/workshop_plan.md
+docs/trial_log.md
+docs/trial_log.csv
