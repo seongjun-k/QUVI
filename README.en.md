@@ -245,7 +245,8 @@ In the interest of transparency, we disclose the AI, open-source software, and e
 
 - **Development-assistance AI**: Anthropic **Claude Code** (Claude Fable 5/Opus/Sonnet/Haiku models), OpenAI **Codex**, Google **Antigravity** — assisted with code writing, review, and debugging. Final design decisions and hardware validation were performed by the team directly
 - **AI models embedded in the product**: **ACT** grasp policy (trained on our own teleoperation data collected via LeRobot), **PatchCore** anomaly detection (WideResNet50 backbone, memory bank built from our own known-good images)
-- **Open source**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO, and more — see [References](#references) below for detailed sources
+- **Open source** (with license types): ROS 2 Jazzy (Apache-2.0), micro-ROS (Apache-2.0), LeRobot (Apache-2.0), OpenCV (Apache-2.0), PyTorch (BSD-3-Clause), Flask (BSD-3-Clause), Flask-SocketIO (MIT), NumPy (BSD-3-Clause), DYNAMIXEL SDK (Apache-2.0), PlatformIO (Apache-2.0) — see [References](#references) below for detailed sources
+- **Web demo analytics**: Google Analytics 4 — counts visits and completed inspection cycles on the public web demo. No personally identifiable information is collected
 - **External consulting**: None (no consultation from outside institutions or companies beyond our supervising teacher)
 
 ---

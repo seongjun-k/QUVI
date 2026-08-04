@@ -245,7 +245,8 @@ pio run -t upload --upload-port /dev/ttyESP32  # 書き込み
 
 - **開発支援AI**: Anthropic **Claude Code** (Claude Fable 5・Opus・Sonnet・Haikuモデル)、OpenAI **Codex**、Google **Antigravity** — コード作成・レビュー・デバッグの補助。最終的な設計判断と実機検証はチームが直接実施
 - **製品に搭載したAIモデル**: **ACT** 把持ポリシー (LeRobotで自前のテレオペレーションデータを収集して直接学習)、**PatchCore** 異常検知 (WideResNet50バックボーン、自前の正常品画像でメモリバンクを構築)
-- **オープンソース**: ROS 2 Jazzy, micro-ROS, LeRobot, OpenCV, PyTorch, Flask/Flask-SocketIO, Dynamixel SDK, PlatformIO など — 詳細な出典は下記[リファレンス](#リファレンス)を参照
+- **オープンソース**（ライセンス種別を含む）: ROS 2 Jazzy (Apache-2.0), micro-ROS (Apache-2.0), LeRobot (Apache-2.0), OpenCV (Apache-2.0), PyTorch (BSD-3-Clause), Flask (BSD-3-Clause), Flask-SocketIO (MIT), NumPy (BSD-3-Clause), DYNAMIXEL SDK (Apache-2.0), PlatformIO (Apache-2.0) — 詳細な出典は下記[リファレンス](#リファレンス)を参照
+- **Web デモ計測**: Google Analytics 4 — 公開 Web デモの訪問数と検査サイクル完了数を集計。個人を識別する情報は収集しない
 - **外部アドバイザー**: なし (指導教員による指導のほか、外部機関・企業からの助言は受けていません)
 
 ---
