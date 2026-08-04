@@ -134,6 +134,9 @@ QUVI/
 
 ## How to Run (Docker Environment)
 
+> **If you do not have the hardware**, use the [web demo](https://seongjun-k.github.io/QUVI/) instead of the steps below. It runs in the browser with no installation and replays a full inspection cycle recorded on the real machine.
+> The steps below assume a physical setup (robot arm, rail, cameras) on an Ubuntu 24.04 host with Docker.
+
 ### 1. Clone the repository and initialize submodules
 ```bash
 git clone https://github.com/seongjun-k/QUVI.git
@@ -141,14 +144,22 @@ cd QUVI
 git submodule update --init --recursive
 ```
 
-### 2. Set up the Docker environment
+### 2. Install device udev rules (once, when hardware is connected)
+The ESP32-S3 and the two cameras must be bound to fixed symlinks (`/dev/ttyESP32`, `/dev/sidecam`, `/dev/fixed_cam`) to match the default device paths in the launch file.
+```bash
+sudo cp scripts/99-esp32.rules scripts/99-uvc-cameras.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+> The camera symlinks are keyed to the physical USB hub port, so they will not appear if the hub is plugged into a different port. In that case, select the raw node directly in the HMI device settings.
+
+### 3. Set up the Docker environment
 ```bash
 cd docker
 docker compose build
 docker compose up -d
 ```
 
-### 3. Build and run (from the host)
+### 4. Build and run (from the host)
 ```bash
 ./build.sh   # Start the container + colcon build --symlink-install
 ./run.sh     # Run full_system.launch.py
@@ -156,7 +167,7 @@ docker compose up -d
 * Open `http://localhost:5000` in a web browser → HMI dashboard.
 * For manual execution: inside the container, run `ros2 launch quvi_bringup full_system.launch.py`
 
-### 4. Testing
+### 5. Testing
 ```bash
 docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 ```

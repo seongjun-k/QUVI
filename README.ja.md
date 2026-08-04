@@ -134,6 +134,9 @@ QUVI/
 
 ## 実行方法 (Docker Environment)
 
+> **ハードウェアをお持ちでない場合**は、以下の手順の代わりに[Web デモ](https://seongjun-k.github.io/QUVI/)をご利用ください。インストール不要で、実機の録画による検査サイクル全体をブラウザでご覧いただけます。
+> 以下の手順はロボットアーム・レール・カメラの実機がある環境を前提とし、ホストは Ubuntu 24.04 + Docker を想定しています。
+
 ### 1. リポジトリのクローンとサブモジュールの初期化
 ```bash
 git clone https://github.com/seongjun-k/QUVI.git
@@ -141,14 +144,22 @@ cd QUVI
 git submodule update --init --recursive
 ```
 
-### 2. Docker環境の構築
+### 2. デバイス udev ルールの導入 (実機接続時に一度)
+ESP32-S3 とカメラ2台は固定シンボリックリンク (`/dev/ttyESP32`, `/dev/sidecam`, `/dev/fixed_cam`) に割り当てないと、launch ファイルの既定デバイスパスと一致しません。
+```bash
+sudo cp scripts/99-esp32.rules scripts/99-uvc-cameras.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
+> カメラのシンボリックリンクは USB ハブの物理ポート位置を基準とするため、ハブを別のポートに挿すと生成されません。その場合は HMI のデバイス設定で raw ノードを直接指定してください。
+
+### 3. Docker環境の構築
 ```bash
 cd docker
 docker compose build
 docker compose up -d
 ```
 
-### 3. ビルドと実行 (ホスト側で)
+### 4. ビルドと実行 (ホスト側で)
 ```bash
 ./build.sh   # コンテナ起動 + colcon build --symlink-install
 ./run.sh     # full_system.launch.py 実行
@@ -156,7 +167,7 @@ docker compose up -d
 * Webブラウザで `http://localhost:5000` にアクセス → HMIダッシュボード。
 * 手動実行の場合: コンテナ内で `ros2 launch quvi_bringup full_system.launch.py`
 
-### 4. テスト
+### 5. テスト
 ```bash
 docker exec quvi-dev bash -c "cd /workspace && python3 -m pytest tests/ -q"
 ```
