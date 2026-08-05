@@ -1,6 +1,28 @@
 # QUVI ROS 아키텍처 평가서
 
-<!-- 2026-06-16 시점의 평가이며 이후 일부 지적사항은 해소됨 -->
+> ## ⚠️ 본문은 2026-06-16 시점 평가입니다 — 아래 지적사항 대부분은 이후 해소되었습니다
+>
+> 이 문서는 자체 아키텍처 점검 기록이며, **본문의 지적사항은 발견 당시 상태**를 서술한 것입니다.
+> 현재 코드 기준 처리 현황은 바로 아래 「해소 현황」 표를 보십시오.
+> 특히 **1번 E-STOP 전파는 해결되었습니다.** 본문 서술만 보고 현재 상태로 오해하지 마십시오.
+
+## 해소 현황 (2026-08-05 코드 기준 재확인)
+
+| # | 지적사항 | 상태 | 근거 |
+|---|---|---|---|
+| 1 | E-STOP이 ESP32·Dynamixel까지 전파되지 않음 | **해결** | 전역 토픽 `topics.py:41` `TOPIC_ESTOP = '/system/estop'` 신설. 펌웨어가 `estop_sub`로 구독하고 `estop_subscription_callback`(`.ino:398`)에서 처리, `.ino:557`이 `status_msg.estop`으로 상태 회신. 오케스트레이터는 ESTOP 활성 시 `ESTOP ACTIVE`로 진행 차단(`main_orchestrator_node.py:222,284`) |
+| 2 | 턴테이블 명령 토픽을 상태 피드백처럼 사용 | **해결** | 명령/완료 분리 — `TOPIC_MOTOR_TURNTABLE_CMD = '/motor/turntable_cmd'`, `TOPIC_MOTOR_TURNTABLE_DONE = '/motor/turntable_done'`(`topics.py:28-30`). 검사 노드는 완료 토픽을 구독(`inspect_node.py:59`). 추가로 done 누락(0°→0° 무이동) 대비 명시 캡처 명령 `/inspection/capture_now`와 워치독(`inspect_node.py:345`) 도입 |
+| 3 | `use_act=false` 기본값에서 파지 완료 신호 미발행 → timeout | **해결** (설계 선택) | launch 기본값은 `false` 유지하되, 리뷰의 3번째 개선안을 채택 — 오케스트레이터가 시작 전 readiness를 검사해 미준비 시 `ACT NOT READY`로 차단하고 사용자에게 노출(`main_orchestrator_node.py:199-201`). 저장된 모델이 있으면 `use_act`가 자동 ON(`robot_control_node.py:292-294`)이라 실사용 경로에서는 기본값이 문제되지 않음 |
+| 4 | 탐지 좌표가 실제 파지 제어에 미사용 | **부분 해결** | 개선안 중 "계약 문서화"만 반영 — `GraspGoal`은 좌표 기반 제어가 아니라 트리거임을 명시(`robot_control_node.py:29` 주석). 좌표 기반 pre-positioning과 객체별 ROI 지정은 **미도입**. ACT가 이미지로 추론하는 현 설계에서는 의도된 계약 |
+| 5 | `quvi_inspect` 의존성 선언 누락 | **해결** | `src/quvi_inspect/package.xml:15`에 `<depend>quvi_robot_control</depend>` 추가. `quvi_common` 분리는 미시행(패키지 수 대비 이득 없음) |
+| 6 | 레일 위치가 placeholder steps 값 | **해결** | mm 단위 파라미터화 — `RAIL_STATION_MAP`(mm) + `RAIL_STEPS_PER_MM`(80.0, 펌웨어 `Config.h` 유래)를 `topics.py` SSoT로 두고 내부에서 steps 변환(`hmi_node.py:71,307`). YAML 분리 대신 SSoT 상수로 처리 |
+| 7 | 모터·연결 상태가 ROS graph에 미노출 | **해결** | `quvi_msgs/MotorStatus.msg` 신설 + `TOPIC_MOTOR_STATUS = '/motor/status'`(`topics.py:31`). 펌웨어가 `estop` 등 상태 필드를 발행 |
+| 테스트 | pytest 수집 범위 문제 | **부분 해결** | `pytest.ini:2` `testpaths = tests` 지정으로 `lerobot` 서브모듈 수집 문제 해소. `test_alignment.py:150`의 `test_normal_rotation(angle_deg)` 인자 형태는 **미정리** |
+
+미해결로 남긴 2건(4번 좌표 기반 제어, `test_alignment.py` 규약)은 현 설계에서 동작에 지장이 없어
+우선순위를 낮춘 항목입니다. 위 표는 코드 정적 확인 결과이며, 실장비 동작 검증과는 별개입니다.
+
+---
 
 작성일: 2026-06-16
 대상: `/home/ksj/QUVI`
