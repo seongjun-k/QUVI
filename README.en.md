@@ -19,6 +19,14 @@
 
 ---
 
+## Mission & Metric
+
+**Mission** — For small print operators running printers overnight, a failure nobody notices until morning costs a full day of capacity. QUVI wins that capacity back with an unmanned inspection and sorting robot.
+
+**The one number we measure** — Weekly users who watch an inspection cycle through to the end in the web demo. We count only those who reach a verdict, not everyone who lands on the page. (Measured with Google Analytics 4; no personally identifying data is collected.)
+
+---
+
 ## Problem Statement
 
 As the price of 3D printers has fallen, more small operators have built businesses around print-on-demand, prototyping, and low-volume production. But in FDM printing, failure isn't an accident you can eliminate — it's a constant that persists as a probability. Desktop FDM failure rates in shared print environments have been measured at 41.1% (Song & Telenko, *Material and energy loss due to human and machine error in commercial FDM printers*, Journal of Cleaner Production, 2017), and even skilled operators and print farms only push it down to 2–8%, never to zero.
