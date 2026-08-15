@@ -226,6 +226,8 @@
 
             // ─── 정적 데모 전용(gh-pages) ───
             'demo.notice.title': 'QUVI 데모 페이지 안내',
+            'demo.notice.why': '야간에 출력이 실패하면 아침까지 아무도 모릅니다. 그 몇 시간이 하루치 가동을 통째로 날립니다.<br><strong>QUVI는 출력이 끝난 뒤의 검사와 분류를 사람 손 없이 끝냅니다.</strong>',
+            'demo.notice.repo': '코드·문서 전체 보기 (GitHub)',
             'demo.notice.body': '3D 프린트 출력물 자동 검사 시스템 <strong>QUVI</strong>의 대시보드입니다.<br>실제 장비 구동을 녹화한 데이터를 재생 중입니다.',
             'demo.notice.li1': '<strong>로봇 전체 뷰</strong> — 로봇암·리니어 레일·턴테이블 실제 구동 영상',
             'demo.notice.li2': '<strong>사이드캠 / 검사캠</strong> — 픽업 구역과 검사 구역 카메라 피드',
@@ -464,6 +466,8 @@
 
             // ─── Static demo only (gh-pages) ───
             'demo.notice.title': 'QUVI Demo Page Guide',
+            'demo.notice.why': 'When an overnight print fails, nobody finds out until morning — and those few hours cost a full day of capacity.<br><strong>QUVI handles the inspection and sorting that follows a print, with no human hands involved.</strong>',
+            'demo.notice.repo': 'Browse the full code and docs (GitHub)',
             'demo.notice.body': 'This is the dashboard for <strong>QUVI</strong>, an automated 3D-print defect inspection system.<br>Playing back recorded footage of the real hardware in operation.',
             'demo.notice.li1': '<strong>Full Robot View</strong> — footage of the arm, linear rail, and turntable in real operation',
             'demo.notice.li2': '<strong>Side Cam / Inspection Cam</strong> — camera feeds from the pickup and inspection zones',
@@ -702,6 +706,8 @@
 
             // ─── 静的デモ専用(gh-pages) ───
             'demo.notice.title': 'QUVIデモページ案内',
+            'demo.notice.why': '夜間に出力が失敗しても、朝まで誰も気づけません。その数時間が1日分の稼働を丸ごと失わせます。<br><strong>QUVIは出力後の検査と仕分けを、人の手を介さずに終わらせます。</strong>',
+            'demo.notice.repo': 'コードとドキュメントを見る (GitHub)',
             'demo.notice.body': '3Dプリント出力物自動検査システム <strong>QUVI</strong> のダッシュボードです。<br>実機の稼働を録画したデータを再生しています。',
             'demo.notice.li1': '<strong>ロボット全体ビュー</strong> — ロボットアーム・リニアレール・ターンテーブルの実機稼働映像',
             'demo.notice.li2': '<strong>サイドカム / 検査カム</strong> — ピックアップ区域と検査区域のカメラ映像',

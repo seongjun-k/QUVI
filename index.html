@@ -3,7 +3,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>QUVI — Quality Vision Dashboard</title>
+    <title>QUVI — 3D프린터 출력물 무인 검사·분류 시스템</title>
+    <!-- 공유 미리보기 — 커뮤니티·메신저에 링크를 붙였을 때 카드가 뜨게 한다.
+         카카오톡 등은 절대 URL 의 og:image 만 렌더한다. -->
+    <meta name="description" content="야간 출력 실패를 아침까지 아무도 모르는 문제를 없애는 무인 검사·분류 로봇. 실기 녹화 그대로 검사 사이클 전 과정을 브라우저에서 볼 수 있습니다.">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="QUVI — 3D프린터 출력물 무인 검사·분류 시스템">
+    <meta property="og:description" content="야간 출력 실패를 아침까지 아무도 모르는 문제를 없애는 무인 검사·분류 로봇. 실기 녹화 그대로 검사 사이클 전 과정을 브라우저에서 볼 수 있습니다.">
+    <meta property="og:url" content="https://seongjun-k.github.io/QUVI/">
+    <meta property="og:image" content="https://seongjun-k.github.io/QUVI/assets/captured_pass.png">
+    <meta property="og:locale" content="ko_KR">
+    <meta name="twitter:card" content="summary">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -176,6 +186,8 @@
                     <div id="demoNoticeOverlay" class="demo-notice-overlay" style="display:none;">
                         <div class="demo-notice-box">
                             <h2 data-i18n="demo.notice.title">QUVI 데모 페이지 안내</h2>
+                            <p data-i18n-html="demo.notice.why">야간에 출력이 실패하면 아침까지 아무도 모릅니다. 그 몇 시간이 하루치 가동을 통째로 날립니다.<br>
+                               <strong>QUVI는 출력이 끝난 뒤의 검사와 분류를 사람 손 없이 끝냅니다.</strong></p>
                             <p data-i18n-html="demo.notice.body">3D 프린트 출력물 자동 검사 시스템 <strong>QUVI</strong>의 대시보드입니다.<br>
                                실제 장비 구동을 녹화한 데이터를 재생 중입니다.</p>
                             <ul>
@@ -186,6 +198,10 @@
                             </ul>
                             <p class="demo-notice-hint" data-i18n-html="demo.notice.hint">상단에서 <strong>정상품 / 불량품</strong> 중 보고 싶은 검사를 고른 뒤 <span class="demo-notice-start">▶ 시작</span> 버튼을 누르면 해당 사이클이 실행됩니다. 두 가지 모두 확인해 보세요.</p>
                             <button id="demoNoticeCloseBtn" type="button" data-i18n="demo.notice.closeBtn">둘러보기 시작</button>
+                            <!-- 저장소 링크 — 데모에서 코드로 넘어갈 경로. .demo-notice-start 재사용(초록 강조) -->
+                            <p class="demo-notice-hint" style="text-align:center;">
+                                <a class="demo-notice-start" href="https://github.com/seongjun-k/QUVI" target="_blank" rel="noopener" data-i18n="demo.notice.repo">코드·문서 전체 보기 (GitHub)</a>
+                            </p>
                         </div>
                     </div>
                     <!-- 로봇 전체 뷰 — 초기값은 PASS 테이크, demo_driver 가 시나리오에 맞춰 교체한다.
@@ -959,7 +975,7 @@
 
 <!-- ═══ JavaScript ═══ -->
 <!-- i18n.js가 가장 먼저 로드되어야 window.I18N을 demo_driver.js/dashboard.js가 사용 가능 -->
-<script src="./static/js/i18n.js?v=98e2095"></script>
+<script src="./static/js/i18n.js?v=20260815"></script>
 <!-- demo_driver.js가 window.io/window.fetch를 가짜로 대체 — dashboard.js보다 먼저 로드되어야 함 -->
 <script src="./static/js/demo_driver.js?v=98e2095"></script>
 <script src="./static/js/dashboard.js?v=20260730b"></script>
