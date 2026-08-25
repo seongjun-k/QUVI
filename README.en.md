@@ -21,9 +21,9 @@
 
 ## Mission & Metric
 
-**Mission** — For small print operators running printers overnight, a failure nobody notices until morning costs a full day of capacity. QUVI wins that capacity back with an unmanned inspection and sorting robot.
+**Mission** — For makers and small workshops or print shops running printers for long, unattended jobs, we eliminate the waste of materials and time caused by catching a defect too late — by having a robot photograph the print the moment it finishes and letting AI judge whether it failed.
 
-**The one number we measure** — Weekly users who watch an inspection cycle through to the end in the web demo. We count only those who reach a verdict, not everyone who lands on the page. (Measured with Google Analytics 4; no personally identifying data is collected.)
+**North-star metric** — The average time from the moment a print fails to the moment it is automatically detected. Today a failure sits unnoticed until someone comes to check — tens of minutes to several hours; our 8-week target is under 5 minutes on average.
 
 ---
 
