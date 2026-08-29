@@ -440,9 +440,9 @@ class RobotControlNode(Node):
             except Exception as e:
                 self.get_logger().warn(f'rerun 로깅 실패(무시): {e}')
 
-    # ─── ACT 모델 로드 ───
+    # ─── ACT/정책 모델 로드 ───
     def _load_act_policy(self, model_path: str = None) -> bool:
-        """LeRobot ACTPolicy 로드. model_path 미지정 시 현재 self._act_model_path 사용.
+        """LeRobot 정책 로드. model_path 미지정 시 현재 self._act_model_path 사용.
 
         성공 시 self._act_policy 교체 + self._act_model_path 갱신 + True 반환.
         실패 시 기존 정책을 유지하고 False 반환.
@@ -452,7 +452,8 @@ class RobotControlNode(Node):
                 if _lerobot_src not in sys.path:
                     sys.path.insert(0, _lerobot_src)
             import torch
-            from lerobot.policies.act.modeling_act import ACTPolicy
+            from lerobot.configs.policies import PreTrainedConfig
+            from lerobot.policies.factory import get_policy_class
         except ImportError as e:
             self.get_logger().error(f'LeRobot/torch 미설치: {e}')
             return False
@@ -463,24 +464,46 @@ class RobotControlNode(Node):
             resolved_path = Path('/workspace') / resolved_path
         resolved_path = resolved_path.resolve()
 
-        self.get_logger().info(f'ACT 모델 로드 중: {resolved_path}')
+        self.get_logger().info(f'정책 모델 로드 중: {resolved_path}')
         try:
             if not resolved_path.exists():
                 raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
-            policy = ACTPolicy.from_pretrained(str(resolved_path))
+            config = PreTrainedConfig.from_pretrained(str(resolved_path))
+            policy_cls = get_policy_class(config.type)
+            policy = policy_cls.from_pretrained(str(resolved_path), config=config)
             policy.eval()
             device = self._act_device
             policy = policy.to(device)
+
+            # ─── CUDA 워밍업 (첫 추론 지연에 의한 제어 루프 끊김 방지) ───
+            if torch.device(device).type == 'cuda':
+                try:
+                    dummy_obs = {
+                        k: torch.zeros((1, *ft.shape), dtype=torch.float32, device=device)
+                        for k, ft in policy.config.input_features.items()
+                    }
+                    with torch.no_grad():
+                        policy.select_action(dummy_obs)
+                        if torch.cuda.is_available():
+                            torch.cuda.synchronize()
+                    self.get_logger().info(f'CUDA 워밍업 완료 ({config.type})')
+                except Exception as e:
+                    self.get_logger().warn(f'CUDA 워밍업 실패(무시): {e}')
+                finally:
+                    # 더미 추론으로 큐에 채워진 잔여 액션을 비워 실동작 오염 방지
+                    policy.reset()
+
             # 성공 후 원자적으로 교체
             self._act_policy = policy
             self._act_device_obj = device
             self._act_model_path = str(resolved_path)
             self._act_ready = True
             self._save_last_act_model(str(resolved_path))
-            self.get_logger().info(f'ACT 모델 로드 완료: {resolved_path} (device={device})')
+            self.get_logger().info(
+                f'정책 모델 로드 완료: {resolved_path} (type={config.type}, device={device})')
             return True
         except Exception as e:
-            self.get_logger().error(f'ACT 모델 로드 실패: {e}')
+            self.get_logger().error(f'정책 모델 로드 실패: {e}')
             return False
 
     def _restore_last_act_model(self) -> bool:
