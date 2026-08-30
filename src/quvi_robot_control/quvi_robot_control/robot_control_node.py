@@ -334,6 +334,8 @@ class RobotControlNode(Node):
         self.declare_parameter('act_model_path',
             '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
         self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
+        # VLA/프롬프트 (VLA 계열 정책 모델 도입 시 전달할 기본 언어 태스크)
+        self.declare_parameter('act_task_prompt', 'grasp 3d printed object')
         # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
         self.declare_parameter('act_models_root',
             '/physical_ai_tools/lerobot/outputs/train')
@@ -363,6 +365,7 @@ class RobotControlNode(Node):
         self._use_act           = self.get_parameter('use_act').value
         self._act_model_path    = self.get_parameter('act_model_path').value
         self._act_device        = self.get_parameter('act_device').value
+        self._act_task_prompt   = self.get_parameter('act_task_prompt').value
         self._act_models_root   = self.get_parameter('act_models_root').value
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
         self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
@@ -469,6 +472,13 @@ class RobotControlNode(Node):
             if not resolved_path.exists():
                 raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
             config = PreTrainedConfig.from_pretrained(str(resolved_path))
+            # 실기 카메라는 사이드캠 1대뿐이다. 이미지 입력이 2개 이상인 정책은
+            # 남는 슬롯에 같은 사이드캠 프레임이 들어가 조용히 틀린 액션을 내므로 거부한다.
+            n_img = sum(1 for k in config.input_features if 'image' in k)
+            if n_img != 1:
+                raise ValueError(
+                    f'이미지 입력 {n_img}개 정책은 지원하지 않습니다(사이드캠 1대). '
+                    '탑뷰 추가 시 _build_policy_obs 의 카메라 매핑부터 확장할 것.')
             policy_cls = get_policy_class(config.type)
             policy = policy_cls.from_pretrained(str(resolved_path), config=config)
             policy.eval()
@@ -482,6 +492,7 @@ class RobotControlNode(Node):
                         k: torch.zeros((1, *ft.shape), dtype=torch.float32, device=device)
                         for k, ft in policy.config.input_features.items()
                     }
+                    dummy_obs['task'] = [self._act_task_prompt]
                     with torch.no_grad():
                         policy.select_action(dummy_obs)
                         if torch.cuda.is_available():
@@ -505,6 +516,26 @@ class RobotControlNode(Node):
         except Exception as e:
             self.get_logger().error(f'정책 모델 로드 실패: {e}')
             return False
+
+    def _build_policy_obs(self, img_tensor: 'torch.Tensor', state_tensor: 'torch.Tensor') -> dict:
+        """현재 로드된 정책의 input_features 스펙에 맞춰 관측 딕셔너리를 구성한다."""
+        obs = {}
+        features = getattr(getattr(self._act_policy, 'config', None), 'input_features', None)
+        for k in (features or {}):
+            if 'state' in k:
+                obs[k] = state_tensor
+            elif 'image' in k:
+                # 로드 시 이미지 입력 1개만 통과시키므로 여기서 매핑은 항상 1:1이다.
+                obs[k] = img_tensor
+        if not obs:
+            obs = {
+                'observation.images.camera1': img_tensor,
+                'observation.state': state_tensor,
+            }
+        # task 는 input_features 에 없지만 VLA 계열이 batch['task'] 로 직접 읽는다.
+        # ACT 는 자기 features 만 순회하므로 여분 키를 무시한다.
+        obs['task'] = [self._act_task_prompt]
+        return obs
 
     def _restore_last_act_model(self) -> bool:
         """직전 세션에서 선택한 모델 경로 복원. 성공 시 True, 파일 없거나 경로 소실 시 False."""
@@ -533,8 +564,8 @@ class RobotControlNode(Node):
 
         구조: <root>/<run_name>/checkpoints/<step>/pretrained_model/config.json
         각 run 은 가장 최신(step 최대) 체크포인트를 대표로 사용한다.
-        호환 조건: input 에 observation.images.camera1 + observation.state,
-                   output action shape == [6].
+        호환 조건: input 에 이미지 1개(사이드캠) + observation.state,
+                   output action shape == [6] (또는 마지막 차원 6).
         반환: [{'name','path','step'}] (name 오름차순)
         """
         roots = []
@@ -576,16 +607,18 @@ class RobotControlNode(Node):
                     cfg = json.load(open(pm / 'config.json'))
                     inp = cfg.get('input_features', {})
                     act = cfg.get('output_features', {}).get('action', {}).get('shape')
-                    compatible = ('observation.images.camera1' in inp
-                                  and 'observation.state' in inp and act == [6])
+                    has_image = sum(1 for k in inp if 'image' in k) == 1
+                    has_state = ('observation.state' in inp)
+                    is_action_6d = (act == [6] or (isinstance(act, list) and len(act) > 0 and act[-1] == 6))
+                    compatible = (has_image and has_state and is_action_6d)
                     if not compatible:
-                        self.get_logger().warn(f'ACT 모델 호환 불가(건너뜀): {run_dir.name}')
+                        self.get_logger().warn(f'정책 모델 호환 불가(건너뜀): {run_dir.name}')
                         continue
                     models.append({'name': run_dir.name,
                                    'path': str(pm.resolve()),
                                    'step': latest.name})
                 except Exception as e:
-                    self.get_logger().warn(f'ACT 모델 config 읽기 실패({run_dir.name}): {e}')
+                    self.get_logger().warn(f'정책 모델 config 읽기 실패({run_dir.name}): {e}')
         models.sort(key=lambda m: m['name'])
         return models
 
@@ -983,10 +1016,16 @@ class RobotControlNode(Node):
             return False
 
     def _act_image_tensor(self, frame):
-        """사이드캠 BGR 프레임 → ACT 정책 입력용 정규화 이미지 텐서."""
+        """사이드캠 BGR 프레임 → 정책 입력용 정규화 이미지 텐서."""
         import torch
+        h, w = 480, 640
+        if self._act_policy and hasattr(self._act_policy, 'config') and hasattr(self._act_policy.config, 'input_features'):
+            for k, ft in self._act_policy.config.input_features.items():
+                if 'image' in k and hasattr(ft, 'shape') and len(ft.shape) == 3:
+                    h, w = int(ft.shape[1]), int(ft.shape[2])
+                    break
         frame_rgb = cv2.cvtColor(
-            cv2.resize(frame, (640, 480)), cv2.COLOR_BGR2RGB)
+            cv2.resize(frame, (w, h)), cv2.COLOR_BGR2RGB)
         img_tensor = torch.from_numpy(
             frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
         img_tensor = img_tensor.to(self._act_device_obj)
@@ -1054,8 +1093,9 @@ class RobotControlNode(Node):
 
                 img_tensor = self._act_image_tensor(frame)
 
-                acquired = self._dxl_io_lock.acquire(blocking=False)
+                acquired = self._dxl_io_lock.acquire(blocking=True, timeout=0.03)
                 if not acquired:
+                    time.sleep(0.002)
                     continue
                 try:
                     raw_positions = self._follower.bus.sync_read('Present_Position', normalize=False)
@@ -1076,17 +1116,17 @@ class RobotControlNode(Node):
                     joint_vals, dtype=torch.float32).unsqueeze(0)
                 state_tensor = state_tensor.to(self._act_device_obj)
 
-                obs = {
-                    'observation.images.camera1': img_tensor,
-                    'observation.state': state_tensor,
-                }
+                obs = self._build_policy_obs(img_tensor, state_tensor)
 
                 infer_start = time.time()
                 with torch.no_grad():
                     action_chunk = self._act_policy.select_action(obs)
-                    if action_chunk.ndim == 3:
-                        action_chunk = action_chunk.squeeze(0)
-                    action_chunk = action_chunk.cpu().numpy()
+                    if torch.is_tensor(action_chunk):
+                        if action_chunk.ndim == 3:
+                            action_chunk = action_chunk.squeeze(0)
+                        action_chunk = action_chunk.cpu().numpy()
+                    if isinstance(action_chunk, np.ndarray) and action_chunk.ndim == 1:
+                        action_chunk = np.expand_dims(action_chunk, axis=0)
                 chunk_count += 1
                 self.get_logger().info(
                     f'ACT 청크#{chunk_count} 추론 완료 | 크기={len(action_chunk)} | '
@@ -1099,19 +1139,22 @@ class RobotControlNode(Node):
                     except queue.Full:
                         pass
 
+                # 고정 주기(30Hz) 누적 드리프트 방지 페이싱
+                next_step_time = time.perf_counter()
                 for i, action in enumerate(action_chunk):
                     if (time.time() - start) >= ACT_GRASP_DURATION:
                         break
                     if self._act_check_abort(f'ESTOP 감지 — ACT 실행 중단 (청크#{chunk_count} 스텝 {i})'):
                         return False
 
-                    step_start = time.time()
                     self._act_send_action_step(action)
 
-                    elapsed = time.time() - step_start
-                    remaining = dt - elapsed
-                    if remaining > 0:
-                        time.sleep(remaining)
+                    next_step_time += dt
+                    sleep_time = next_step_time - time.perf_counter()
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+                    else:
+                        next_step_time = time.perf_counter()
 
             total_time = time.time() - start
             self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s | 청크 수={chunk_count}')
@@ -1708,13 +1751,13 @@ class RobotControlNode(Node):
 
     def _teleop_loop(self):
         dt = 1.0 / 50.0
+        next_tick = time.perf_counter()
 
         while self._teleop_running and rclpy.ok():
             if self._should_abort():   # STOP/ESTOP → 루프 종료 (RESET 후 급작동 방지)
                 self.get_logger().warn('텔레옵 중단 감지 (STOP/ESTOP) — 루프 종료')
                 self._teleop_running = False
                 break
-            start_time = time.time()
 
             if self._use_real_hardware and self._leader and self._follower:
                 try:
@@ -1738,10 +1781,12 @@ class RobotControlNode(Node):
                     if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
                         self._leader.bus.port_handler.is_using = False
 
-            elapsed = time.time() - start_time
-            sleep_time = dt - elapsed
+            next_tick += dt
+            sleep_time = next_tick - time.perf_counter()
             if sleep_time > 0:
                 time.sleep(sleep_time)
+            else:
+                next_tick = time.perf_counter()
 
 
 # ─── 진입점 ───

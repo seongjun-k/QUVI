@@ -90,6 +90,7 @@ class InspectNode(Node):
                 Image, self._debug_topic, 5)
 
         self._latest_frame: Optional[np.ndarray] = None
+        self._frame_lock = threading.Lock()
         self._captured_images: Dict[int, np.ndarray] = {}
         self._inspection_active = False
         # MultiThreadedExecutor에서 _capture_angle과 _watchdog_cb가 동시에
@@ -253,7 +254,9 @@ class InspectNode(Node):
         frame = decode_compressed(msg)
         if frame is not None:
             # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전 → 동시 -1
-            self._latest_frame = cv2.flip(frame, -1)
+            flipped = cv2.flip(frame, -1)
+            with self._frame_lock:
+                self._latest_frame = flipped
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
         self._current_object_index = msg.object_index
@@ -319,8 +322,10 @@ class InspectNode(Node):
         """현재 프레임을 해당 각도로 캡처."""
         if not self._inspection_active:
             return
-        if self._latest_frame is not None:
-            self._captured_images[angle] = self._latest_frame.copy()
+        with self._frame_lock:
+            frame = self._latest_frame.copy() if self._latest_frame is not None else None
+        if frame is not None:
+            self._captured_images[angle] = frame
             self.get_logger().info(f'캡처 완료: {angle}°')
             if len(self._captured_images) == len(self._angles):
                 self._run_inspection()
@@ -375,11 +380,13 @@ class InspectNode(Node):
 
     def _capture_reference_angle(self, angle: int):
         """현재 프레임을 기준 이미지로 캡처 후 파일 저장."""
-        if self._latest_frame is None:
+        with self._frame_lock:
+            frame = self._latest_frame.copy() if self._latest_frame is not None else None
+        if frame is None:
             self.get_logger().warn(f'{angle}° 기준 캡처 실패: 카메라 프레임 없음')
             return
 
-        gray = self._preprocess(self._latest_frame)
+        gray = self._preprocess(frame)
         self._captured_images[angle] = gray
 
         os.makedirs(self._ref_dir, exist_ok=True)
@@ -426,7 +433,9 @@ class InspectNode(Node):
         기준 이미지(_reference_images)와 무관한 별도 경로로,
         grayscale 전처리 없이 원본을 저장한다.
         """
-        if self._latest_frame is None:
+        with self._frame_lock:
+            frame = self._latest_frame.copy() if self._latest_frame is not None else None
+        if frame is None:
             self.get_logger().warn(f'{angle}° 데이터셋 캡처 실패: 카메라 프레임 없음')
             return
 
