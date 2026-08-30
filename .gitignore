@@ -97,3 +97,7 @@ docs/workshop_plan.md
 docs/trial_log.md
 docs/trial_log.csv
 docs/interview_guide.md
+
+# 에이전트 작업 부산물 (로컬 전용)
+.orca/
+scratchpad/
