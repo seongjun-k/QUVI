@@ -105,6 +105,14 @@ def generate_launch_description():
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
+    moonraker_url_arg = DeclareLaunchArgument(
+        'moonraker_url', default_value='http://localhost:7125',
+        description='Moonraker API 기본 URL')
+
+    poll_sec_arg = DeclareLaunchArgument(
+        'poll_sec', default_value='2.0',
+        description='Moonraker 상태 폴링 주기(초)')
+
     # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -149,7 +157,9 @@ def generate_launch_description():
             'use_act': LaunchConfiguration('use_act'),
             'dxl_port': LaunchConfiguration('dxl_port'),
             'leader_dxl_port': LaunchConfiguration('leader_dxl_port'),
-            'act_device': 'cpu',
+            # CPU 추론은 1회 3.1초가 걸려(chunk_size=100, 50스텝마다 1회) 학습 궤적
+            # 150프레임 중 앞 50프레임만 실행하고 예산에 잘린다 — 파지 구간에 도달 못 함.
+            'act_device': 'cuda',
             'sidecam_topic': '/camera1/image_raw/compressed',
             'rerun_save_path': LaunchConfiguration('rerun_save_path'),
         }],
@@ -168,6 +178,18 @@ def generate_launch_description():
             'loop_rate_hz': 10.0,
             # micro_ros_port 와 동일한 장치 — 미전달 시 하드리셋이 기본값 포트를 써서 어긋난다
             'esp32_reset_port': LaunchConfiguration('micro_ros_port'),
+        }],
+        output='screen',
+    )
+
+    # ─── PRINTER_MONITOR_NODE (3D 프린터 모니터) ───
+    printer_monitor_node = Node(
+        package='quvi_robot_control',
+        executable='printer_monitor_node',
+        name='printer_monitor_node',
+        parameters=[{
+            'moonraker_url': LaunchConfiguration('moonraker_url'),
+            'poll_sec': ParameterValue(LaunchConfiguration('poll_sec'), value_type=float),
         }],
         output='screen',
     )
@@ -214,6 +236,8 @@ def generate_launch_description():
         micro_ros_port_arg,
         micro_ros_baud_arg,
         anomaly_enabled_arg,
+        moonraker_url_arg,
+        poll_sec_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
@@ -226,4 +250,5 @@ def generate_launch_description():
         hmi_node,
         robot_control_node,
         main_orchestrator_node,
+        printer_monitor_node,
     ])

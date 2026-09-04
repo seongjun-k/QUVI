@@ -21,6 +21,7 @@ setup(
         'console_scripts': [
             'robot_control_node = quvi_robot_control.robot_control_node:main',
             'main_orchestrator_node = quvi_robot_control.main_orchestrator_node:main',
+            'printer_monitor_node = quvi_robot_control.printer_monitor_node:main',
         ],
     },
 )

@@ -53,3 +53,9 @@ TOPIC_ROBOT_JOINT_STATES = '/robot/joint_states'
 TOPIC_ACT_MODELS = '/robot/act_models'
 TOPIC_ACT_CURRENT = '/robot/act_current'
 TOPIC_ACT_MODEL_SELECT = '/robot/act_model_select'
+
+# ─── 3D 프린터 (Moonraker) ───
+TOPIC_PRINTER_STATUS = '/printer/status'        # String(JSON) — Moonraker 폴링 상태
+TOPIC_PRINTER_PRINT_DONE = '/printer/print_done' # Bool — 출력 완료 1회 신호
+SRV_PRINTER_START_PRINT = '/printer/start_print'    # Trigger — 마지막 gcode 재출력
+SRV_PRINTER_CANCEL_PRINT = '/printer/cancel_print'  # Trigger — 출력 취소

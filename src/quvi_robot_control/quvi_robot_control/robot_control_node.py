@@ -175,8 +175,33 @@ PROFILE_ACCEL_ACT     = 25     # 가속시간 ms
 # 도달하지 못하므로 위치 수렴 폴링 대신 고정 시간만 대기한다.
 GRIPPER_SETTLE_SEC    = 1.2
 
+# ─── 파지 성공 판정 ───
+# 판정 원리: 그리퍼는 전류기반 위치제어라 닫기 명령을 주면 물리적으로 막힐
+# 때까지 닫힌다. 빈 손이면 손가락끼리 맞닿는 위치까지, 물체를 물면 그보다
+# 높은(=덜 닫힌) 위치에서 멈춘다. 따라서 판정 기준은 **빈 그리퍼의 기계적
+# 정지 위치** 하나뿐이다.
+#   held = present_gripper >= GRIPPER_EMPTY_CLOSED_RAW + margin
+#
+# ⚠ 명령값(Goal_Position)을 기준으로 삼으면 안 된다. ACT 경로는
+# _act_send_action_step 이 목표를 "현재 위치 ± cap" 으로 잘라 쓰므로,
+# 명령값은 물리 목표가 아니라 상대 스텝 제한이다. 그 값과 비교하면 물체
+# 유무와 무관하게 항상 cap 만큼 차이가 나 빈 손을 성공으로 오판한다.
+#
+# GRIPPER_EMPTY_CLOSED_RAW 는 실측값이다. 미측정(-1)이면 판정하지 않고
+# 관측치만 로그로 남긴다(shadow) — 근거 없는 임계로 오판하는 것보다 안전하다.
+# 실측 절차: 그리퍼를 빈 상태로 두고 /robot/close_gripper 호출 → 1.2s 후
+# /robot/joint_states 의 gripper 값을 읽어 파라미터에 넣는다.
+GRIPPER_EMPTY_CLOSED_RAW = -1    # 미측정 = shadow 모드
+GRASP_CHECK_MARGIN_TICKS = 30    # 실측값 위로 이만큼 높으면 물체를 문 것
+GRASP_CHECK_SETTLE_SEC   = 0.4   # 판정 전 정착 대기
+GRASP_CHECK_READ_RETRY   = 3     # 위치 읽기 재시도(락 경합 대비)
+
 # ACT 실행 주기 (Hz)
 ACT_CONTROL_HZ = 30
+
+# ACT 파지 1스텝마다 명령값·실제위치를 남기는 진단 트레이스 저장 위치.
+# 궤적 떨림 진단용 — 동작에는 관여하지 않고 CSV 로만 기록한다.
+ACT_TRACE_DIR = '/workspace/data/act_traces'
 
 # 대시보드에서 마지막으로 선택한 ACT 모델 경로 저장 파일 —
 # 재기동 시 파라미터 기본값 대신 이 경로를 우선 복원한다.
@@ -333,12 +358,17 @@ class RobotControlNode(Node):
         self.declare_parameter('use_act', False)
         self.declare_parameter('act_model_path',
             '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
-        self.declare_parameter('act_device', 'cpu')   # 'cuda' or 'cpu'
+        self.declare_parameter('act_device', 'cuda')  # 'cuda' or 'cpu' — CPU 는 추론 3.1s 라 궤적이 잘린다
         # VLA/프롬프트 (VLA 계열 정책 모델 도입 시 전달할 기본 언어 태스크)
-        self.declare_parameter('act_task_prompt', 'grasp 3d printed object')
+        # VLA 계열은 이 문자열로 조건화되므로 학습 데이터셋 meta/tasks.jsonl 의
+        # task 값과 반드시 일치해야 한다 (불일치 시 분포 밖 입력이 된다).
+        # ACT 는 자기 input_features 만 순회해 이 값을 무시한다.
+        self.declare_parameter('act_task_prompt', 'pick')
         # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
+        # ':' 로 여러 루트 지정 가능. /physical_ai_tools 는 컨테이너에 읽기 전용으로
+        # 마운트돼 학습 출력을 쓸 수 없어, 신규 학습분은 /workspace/data/models 에 둔다.
         self.declare_parameter('act_models_root',
-            '/physical_ai_tools/lerobot/outputs/train')
+            '/physical_ai_tools/lerobot/outputs/train:/workspace/data/models')
         # 안전: send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
@@ -357,6 +387,10 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_move_timeout_sec', 30.0)
         self.declare_parameter('grasp_timeout_sec', 20.0)
         self.declare_parameter('home_timeout_sec', 10.0)
+        # 파지 성공 판정 — 빈 그리퍼 완전 닫힘 위치(raw) 실측값.
+        # -1 이면 판정하지 않고 관측치만 로그로 남긴다(shadow 모드).
+        self.declare_parameter('gripper_empty_closed_raw', GRIPPER_EMPTY_CLOSED_RAW)
+        self.declare_parameter('grasp_check_margin_ticks', GRASP_CHECK_MARGIN_TICKS)
 
     def _load_params(self):
         self._use_real_hardware = self.get_parameter('use_real_hardware').value
@@ -369,6 +403,9 @@ class RobotControlNode(Node):
         self._act_models_root   = self.get_parameter('act_models_root').value
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
         self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
+        # ACT 진단 트레이스 (None = 비활성). 파지 시작 시 리스트로 열고 종료 시 CSV 로 덤프.
+        self._act_trace = None
+        self._act_trace_pos = (0, 0)
         self._rerun_enable      = self.get_parameter('rerun_enable').value
         self._rerun_save_path   = self.get_parameter('rerun_save_path').value
         self._rail_mm = {
@@ -381,6 +418,8 @@ class RobotControlNode(Node):
         self._rail_timeout   = self.get_parameter('rail_move_timeout_sec').value
         self._grasp_timeout  = self.get_parameter('grasp_timeout_sec').value
         self._home_timeout   = self.get_parameter('home_timeout_sec').value
+        self._grip_empty_closed  = int(self.get_parameter('gripper_empty_closed_raw').value)
+        self._grasp_margin_ticks = int(self.get_parameter('grasp_check_margin_ticks').value)
 
     # ─── lerobot OmxFollower 초기화 ───
     def _init_follower(self):
@@ -570,7 +609,7 @@ class RobotControlNode(Node):
         """
         roots = []
         if self._act_models_root:
-            roots.append(Path(self._act_models_root))
+            roots.extend(Path(r) for r in self._act_models_root.split(':') if r)
         # act_model_path 로부터 train 루트 유추 (.../train/<run>/checkpoints/<step>/pretrained_model)
         try:
             p = Path(self._act_model_path)
@@ -986,6 +1025,69 @@ class RobotControlNode(Node):
         response.message = '그리퍼 닫기 완료 (OmxFollower ID16)'
         return response
 
+    # ─── 파지 성공 판정 ───
+    def _read_gripper_current(self) -> Optional[int]:
+        """그리퍼 Present_Current 절대값(mA). 읽기 불가 시 None."""
+        acquired = self._dxl_io_lock.acquire(blocking=True, timeout=0.5)
+        if not acquired:
+            return None
+        try:
+            cur = self._follower.bus.sync_read('Present_Current', normalize=False)
+            return abs(int(cur['gripper']))
+        except Exception as e:
+            # 전류는 보조 신호 — 모델/펌웨어가 미지원이어도 위치 판정으로 계속 간다.
+            self.get_logger().warn(f'그리퍼 전류 읽기 실패(위치 판정만 사용): {e}')
+            return None
+        finally:
+            self._dxl_io_lock.release()
+
+    def _check_grasp_success(self) -> Optional[bool]:
+        """그리퍼가 실제로 물체를 물었는지 판정한다.
+
+        새 동작을 만들지 않는다 — 그리퍼의 현재 위치 하나만 본다.
+        빈 그리퍼 완전 닫힘 위치(실측)보다 margin 이상 높으면 물체를 문 것.
+
+        반환: True=파지됨 / False=빈 손 / None=중단(ESTOP·STOP)되어 판정 불가.
+        실측값 미설정 시에는 판정하지 않고 관측치만 로그로 남긴 뒤 True.
+        """
+        if not self._use_real_hardware or not self._dxl_ready:
+            return True   # SIM 에서는 판정할 실물 신호가 없다
+
+        self._wait_gripper(GRASP_CHECK_SETTLE_SEC)
+        if self._should_abort():
+            return None
+
+        # 10Hz joint 발행 타이머와 락을 다투므로 단발 실패로 판정을 포기하지 않는다.
+        positions = None
+        for _ in range(GRASP_CHECK_READ_RETRY):
+            positions = self._read_raw_positions()
+            if positions is not None and 'gripper' in positions:
+                break
+            time.sleep(0.05)
+        else:
+            # 끝내 못 읽었으면 빈 손으로 다음 단계를 진행시키지 않는다(fail-closed).
+            self.get_logger().error('그리퍼 위치 읽기 실패 — 파지 실패로 처리')
+            return False
+
+        present = int(positions['gripper'])
+        current = self._read_gripper_current()   # 판정에는 안 쓰고 캘리브레이션 근거로만 기록
+
+        if self._grip_empty_closed < 0:
+            self.get_logger().warn(
+                f'[파지 판정 shadow] 빈 그리퍼 닫힘 위치 미측정 — 판정 생략(성공 처리) | '
+                f'현재 그리퍼={present} | 전류={current if current is not None else "N/A"}mA | '
+                f'gripper_empty_closed_raw 파라미터에 실측값을 넣으면 판정이 켜진다')
+            return True
+
+        threshold = self._grip_empty_closed + self._grasp_margin_ticks
+        held = present >= threshold
+        self.get_logger().info(
+            f'파지 판정: {"성공" if held else "실패(빈 손)"} | '
+            f'현재={present} 임계={threshold} '
+            f'(빈손 실측={self._grip_empty_closed} + margin={self._grasp_margin_ticks}) | '
+            f'전류={current if current is not None else "N/A"}mA')
+        return held
+
     # ─── 실행 함수 — ACT 파지 ───
     def _execute_rule_based_grasp(self) -> bool:
         """ACT 미사용/미로드 시 룰베이스(티칭 기반) 파지."""
@@ -1004,11 +1106,16 @@ class RobotControlNode(Node):
             # 그리퍼는 물체를 쥐어 목표(GRIPPER_CLOSE)에 도달 못 하므로 대기 대상에서 제외 — 안 하면 매 회 10s 풀타임아웃.
             self._wait_motion_done(_arm_only(p1_pose))
 
-            self._grasp_done_pub.publish(Bool(data=True))
+            held = self._check_grasp_success()
+            if held is None:   # 중단 — 실패로 발행하면 GRASP_FAILED 로 오인된다
+                self._set_state_if_current(RobotState.IDLE, gen)
+                self._publish_status('룰베이스 파지 중단')
+                return False
+            self._grasp_done_pub.publish(Bool(data=held))
 
             self._set_state_if_current(RobotState.IDLE, gen)
-            self._publish_status('룰베이스 파지 완료')
-            return True
+            self._publish_status('룰베이스 파지 완료' if held else '파지 실패 — 그리퍼가 비어 있음')
+            return held
         except Exception as e:
             self.get_logger().error(f'룰베이스 파지 중 오류: {e}')
             self._set_state_if_current(RobotState.ERROR, gen)
@@ -1040,6 +1147,7 @@ class RobotControlNode(Node):
             goal_raw = {
                 name: int(round(rad_to_raw(float(action[j]))))
                 for j, name in enumerate(JOINT_NAMES)}
+            raw_want = dict(goal_raw)   # 캡·클램프 적용 전 정책 원본 목표 (트레이스용)
             with self._dxl_io_lock:
                 present = self._follower.bus.sync_read('Present_Position', normalize=False)
                 # send_action 의 max_relative_target(정규화 단위) 대체 —
@@ -1051,6 +1159,13 @@ class RobotControlNode(Node):
                 goal_raw = {n: int(max(0, min(4095, v))) for n, v in goal_raw.items()}
                 goal_raw = self._clip_safe_targets(goal_raw, is_raw=True)
                 self._follower.bus.sync_write('Goal_Position', goal_raw, normalize=False)
+                if self._act_trace is not None:
+                    ck, st = self._act_trace_pos
+                    self._act_trace.append(
+                        [f'{time.time():.4f}', ck, st]
+                        + [raw_want[n] for n in JOINT_NAMES]
+                        + [goal_raw[n] for n in JOINT_NAMES]
+                        + [present.get(n, '') for n in JOINT_NAMES])
         else:
             goal_dict = {
                 name: int(np.clip(rad_to_raw(float(action[j])), 0, DXL_RAW_MAX))
@@ -1076,6 +1191,7 @@ class RobotControlNode(Node):
             self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
             ACT_GRASP_DURATION = 7.0
             dt = 1.0 / ACT_CONTROL_HZ
+            self._act_trace = []
             start = time.time()
             chunk_count = 0
 
@@ -1147,6 +1263,7 @@ class RobotControlNode(Node):
                     if self._act_check_abort(f'ESTOP 감지 — ACT 실행 중단 (청크#{chunk_count} 스텝 {i})'):
                         return False
 
+                    self._act_trace_pos = (chunk_count, i)
                     self._act_send_action_step(action)
 
                     next_step_time += dt
@@ -1159,11 +1276,16 @@ class RobotControlNode(Node):
             total_time = time.time() - start
             self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s | 청크 수={chunk_count}')
 
-            self._grasp_done_pub.publish(Bool(data=True))
+            held = self._check_grasp_success()
+            if held is None:   # 중단 — 실패로 발행하면 GRASP_FAILED 로 오인된다
+                self._set_state_if_current(RobotState.IDLE, gen)
+                self._publish_status('ACT 파지 중단')
+                return False
+            self._grasp_done_pub.publish(Bool(data=held))
 
             self._set_state_if_current(RobotState.IDLE, gen)
-            self._publish_status('ACT 파지 완료')
-            return True
+            self._publish_status('ACT 파지 완료' if held else '파지 실패 — 그리퍼가 비어 있음')
+            return held
 
         except Exception as e:
             self.get_logger().error(f'ACT 파지 중 오류: {e}')
@@ -1172,6 +1294,40 @@ class RobotControlNode(Node):
             self._set_state_if_current(RobotState.ERROR, gen)
             self._publish_status(f'ERROR: {e}')
             return False
+        finally:
+            self._act_trace_dump()
+
+    def _act_trace_dump(self) -> None:
+        """ACT 파지 1회분 트레이스를 CSV 로 저장하고 떨림 지표를 로그에 남긴다.
+
+        떨림 지표 = 명령 증분의 부호가 뒤집힌 비율(joint 별). 매 스텝 방향이
+        바뀌면 1.0 에 가까워진다. 진단 전용 — 동작에는 영향이 없다.
+        """
+        rows, self._act_trace = self._act_trace, None
+        if not rows:
+            return
+        try:
+            Path(ACT_TRACE_DIR).mkdir(parents=True, exist_ok=True)
+            path = Path(ACT_TRACE_DIR) / f'act_{time.strftime("%Y%m%d_%H%M%S")}.csv'
+            header = (['t', 'chunk', 'step']
+                      + [f'want_{n}' for n in JOINT_NAMES]
+                      + [f'goal_{n}' for n in JOINT_NAMES]
+                      + [f'present_{n}' for n in JOINT_NAMES])
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(','.join(header) + '\n')
+                f.writelines(','.join(str(v) for v in r) + '\n' for r in rows)
+
+            g = np.array([r[3 + len(JOINT_NAMES):3 + 2 * len(JOINT_NAMES)] for r in rows],
+                         dtype=float)
+            flip = 'n/a'
+            if len(g) >= 3:
+                d = np.diff(g, axis=0)
+                flips = (np.sign(d[1:]) * np.sign(d[:-1]) < 0).mean(axis=0)
+                flip = ' '.join(f'{n}={v:.2f}' for n, v in zip(JOINT_NAMES, flips))
+            self.get_logger().info(
+                f'ACT 트레이스 저장: {path} | 스텝={len(rows)} | 명령 방향전환율 {flip}')
+        except Exception as e:
+            self.get_logger().warning(f'ACT 트레이스 저장 실패(무시): {e}')
 
     # ─── 실행 함수 — 레일 이동 ───
     def _execute_rail_move(self, position: RailPosition) -> bool:
@@ -1271,26 +1427,21 @@ class RobotControlNode(Node):
         self.get_logger().info('검사장 안착 시퀀스 시작')
 
         # 물체 파지 중 이송 — 낙하/파손 방지 저속(SEQ) 프로파일
-        self._write_raw_position(_arm_only(POSE_P1), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P1))
+        self._move_arm(POSE_P1)
 
         time.sleep(2.0)  # 파지물 흔들림 안정화 후 회전 진입
 
-        self._write_raw_position(_arm_only(POSE_P2), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P2))
+        self._move_arm(POSE_P2)
 
-        self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P3))
+        self._move_arm(POSE_P3)
 
-        self._write_raw_position(_arm_only(POSE_P4), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P4))
+        self._move_arm(POSE_P4)
 
         self._write_raw_position({'gripper': GRIPPER_OPEN})
         self._wait_gripper()
 
         # 검사 동안 팔은 P3에서 후퇴 대기
-        success = self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P3))
+        success = self._move_arm(POSE_P3)
         success = success and not self._should_abort()   # abort 시 실패로 보고
         self._place_chamber_done_pub.publish(Bool(data=success))
 
@@ -1309,18 +1460,22 @@ class RobotControlNode(Node):
         self._wait_gripper()
 
         # 물체 파지 중 이송 — 낙하/파손 방지 저속(SEQ) 프로파일
-        self._write_raw_position(_arm_only(POSE_P4), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P4))
+        self._move_arm(POSE_P4)
 
         self._write_raw_position({'gripper': GRIPPER_CLOSE})
         self._wait_gripper()
 
-        self._write_raw_position(_arm_only(POSE_P3), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P3))
+        # 재파지도 빈 손으로 분류 적재까지 진행되면 안 되므로 동일하게 판정한다.
+        # (중단(None)은 아래 _should_abort 가 이미 실패로 잡는다)
+        held = self._check_grasp_success()
+        if held is False:
+            self.get_logger().error('검사장 재파지 실패 — 그리퍼가 비어 있음')
 
-        success = self._write_raw_position(_arm_only(POSE_P5), velocity=PROFILE_VELOCITY_SEQ, accel=PROFILE_ACCEL_SEQ)
-        self._wait_motion_done(_arm_only(POSE_P5))  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
+        self._move_arm(POSE_P3)
+
+        success = self._move_arm(POSE_P5)  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
         success = success and not self._should_abort()   # abort 시 실패로 보고
+        success = success and held is not False
         self._pick_chamber_done_pub.publish(Bool(data=success))
 
         self._set_state_if_current(RobotState.IDLE, gen)
@@ -1415,6 +1570,14 @@ class RobotControlNode(Node):
             if self._should_abort():
                 return
             time.sleep(0.05)
+
+    # ─── 팔 관절 이동 (저속 SEQ 프로파일 기본) ───
+    def _move_arm(self, pose: dict, velocity: int = PROFILE_VELOCITY_SEQ,
+                  accel: int = PROFILE_ACCEL_SEQ) -> bool:
+        arm = _arm_only(pose)
+        success = self._write_raw_position(arm, velocity=velocity, accel=accel)
+        self._wait_motion_done(arm)
+        return success
 
     # ─── lerobot bus 기반 모터 I/O ───
     def _write_raw_position(self, positions: dict,
@@ -1570,13 +1733,7 @@ class RobotControlNode(Node):
                 self.get_logger().warn(f'시퀀스 중단 감지 — {label} 생략')
                 return False
             self.get_logger().info(f'이동: {label}')
-            arm_only = _arm_only(pose)
-            success = self._write_raw_position(
-                arm_only,
-                velocity=PROFILE_VELOCITY_SEQ,
-                accel=PROFILE_ACCEL_SEQ,
-            )
-            self._wait_motion_done(arm_only)
+            success = self._move_arm(pose)
             return success and not self._should_abort()
 
         def grip_open():

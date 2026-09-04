@@ -108,6 +108,7 @@ class MainOrchestratorNode(Node):
 
         # 완료 토픽 수신 플래그
         self._robot_grasp_done = False
+        self._robot_grasp_failed = False
         self._robot_rail_done = False
         self._robot_release_done = False
         self._robot_home_done = False
@@ -214,7 +215,7 @@ class MainOrchestratorNode(Node):
         elif command == "STOP":
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
             self._state = FsmState.IDLE
-            # INSPECTING 계열에서 정지해도 링 조명 소등을 보장한다.
+            # INSPECTING 계열에서 정지해도 바 조명 소등을 보장한다.
             self._led_pub.publish(Bool(data=False))
         elif command == "ESTOP":
             self.get_logger().error('비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.')
@@ -284,9 +285,14 @@ class MainOrchestratorNode(Node):
             self._error_msg = "ESTOP ACTIVE"
 
     def _robot_grasp_done_cb(self, msg: Bool):
-        # 파지 완료 전용
-        if msg.data and self._state == FsmState.GRASPING_WAIT:
+        # 파지 완료 전용. False = 그리퍼가 비었다는 판정이므로 타임아웃을
+        # 기다리지 않고 즉시 실패로 끊는다(빈 손으로 검사까지 진행 방지).
+        if self._state != FsmState.GRASPING_WAIT:
+            return
+        if msg.data:
             self._robot_grasp_done = True
+        else:
+            self._robot_grasp_failed = True
 
     def _place_chamber_done_cb(self, msg: Bool):
         if msg.data and self._state == FsmState.PLACING_CHAMBER_WAIT:
@@ -456,6 +462,7 @@ class MainOrchestratorNode(Node):
 
             self.get_logger().info('로봇 ACT 파지 명령 발행')
             self._robot_grasp_done = False
+            self._robot_grasp_failed = False
             self._state_timer_counter = 0
             self._robot_grasp_pub.publish(goal)
             self._state = FsmState.GRASPING_WAIT
@@ -465,6 +472,10 @@ class MainOrchestratorNode(Node):
             if self._robot_grasp_done:
                 self.get_logger().info('로봇 ACT 파지 완료. 검사장 안착 단계로 진입')
                 self._state = FsmState.PLACING_CHAMBER_TRIGGER
+            elif self._robot_grasp_failed:
+                self.get_logger().error('파지 실패(그리퍼가 비어 있음). ERROR 상태로 전환')
+                self._error_msg = 'GRASP_FAILED'
+                self._state = FsmState.ERROR
             elif self._state_timer_counter > int(self._grasp_timeout * self._loop_rate):
                 self.get_logger().error('로봇 파지 대기 타임아웃! ERROR 상태로 전환')
                 self._error_msg = 'GRASP_TIMEOUT'
