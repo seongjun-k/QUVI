@@ -51,10 +51,9 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir --def
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     opencv-python-headless>=4.9.0 \
-    scikit-image>=0.22.0 \
     pyserial>=3.5 \
     Pillow>=10.0.0 \
-    scipy>=1.12.0 \
+    "scipy>=1.12.0,<1.15" \
     matplotlib>=3.8.0 \
     flask>=3.0.0 \
     flask-socketio>=5.3.0 \
@@ -65,10 +64,19 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
 # 3단계: colcon-core와의 호환성을 위해 setuptools 버전을 <80으로 명시적 강제 다운그레이드
 #        numpy<2 강제: pip numpy 2.x가 apt ros-jazzy-cv-bridge(numpy1 ABI)를 깨뜨려
 #        import cv_bridge 실패 → 비전 노드 전체가 새 컨테이너에서 기동 불가
+#        (scipy 상한도 같은 이유 — 1.15+ 는 numpy>=2 를 요구해 np.long 에서 깨진다)
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     "setuptools<80" \
     "numpy<2"
+
+# 4단계: VLA(smolvla) 정책 학습·추론용. transformers 상한은 lerobot pyproject 의
+#        transformers-dep 핀과 동일하게 맞춘다 — 5.x 를 깔면 lerobot 이 깨진다.
+RUN pip3 install --break-system-packages --no-cache-dir \
+    "transformers>=4.50.3,<4.52.0" \
+    "num2words>=0.5.14" \
+    "accelerate>=1.7.0" \
+    "safetensors>=0.4.3"
 
 # ─── micro-ROS agent 빌드 ───
 # micro_ros_agent는 apt 패키지가 없으므로 소스에서 직접 빌드

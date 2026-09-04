@@ -52,14 +52,11 @@
 #define STEPPER_STEPS_PER_REV 200   // 표준 1.8도 스테퍼 모터
 
 // 1. 리니어 레일 설정
-#define RAIL_MICROSTEPPING    16    // TB6600 DIP 스위치 설정값 (16 마이크로스텝)
-#define RAIL_PULLEY_TEETH     20    // 20T 풀리
-#define RAIL_BELT_PITCH       2.0f  // GT2 벨트 피치 (2mm)
-#define RAIL_MM_PER_REV       (RAIL_PULLEY_TEETH * RAIL_BELT_PITCH) // 1회전당 40.0mm
-// SSoT: 이 값(80.0)의 근거 — ROS 쪽은 quvi_robot_control/topics.py 의
-// RAIL_STEPS_PER_MM 이 이 값을 미러링하므로(hmi_node 등이 그걸 import),
-// 위 스텝퍼/풀리/벨트 상수를 바꾸면 topics.py 도 함께 수정한다.
-#define RAIL_STEPS_PER_MM     ((float)(STEPPER_STEPS_PER_REV * RAIL_MICROSTEPPING) / RAIL_MM_PER_REV) // 80.0 steps/mm
+// 펌웨어는 스텝 수로만 동작하므로 steps/mm 를 정의하지 않는다. SSoT 는
+// quvi_robot_control/topics.py 의 RAIL_STEPS_PER_MM(80.0).
+// 그 값의 근거가 되는 실물 스펙: 20T 풀리 · GT2 벨트 2mm 피치 · TB6600 16 마이크로스텝
+//   → 200 * 16 / (20 * 2.0) = 80.0 steps/mm
+// 이 하드웨어 중 하나라도 바꾸면 topics.py 를 함께 수정해야 한다.
 
 // 2. 턴테이블 설정
 #define TURN_MICROSTEPPING    16    // TB6600 DIP 스위치 설정값 (예: 16이면 회전당 3200 스텝)

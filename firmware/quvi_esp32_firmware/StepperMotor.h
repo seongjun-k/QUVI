@@ -21,7 +21,6 @@ public:
     // 모터 활성화/비활성화
     void enable();
     void disable();
-    bool isEnabled() const;
 
     // 이동 업데이트
     // 가능한 한 자주(예: 고속 루프에서) 호출해야 한다
@@ -40,7 +39,6 @@ public:
     // 위치 접근자
     long getCurrentPosition() const;
     long getTargetPosition() const;
-    float getCurrentSpeed() const;
     bool isMoving() const;
 
 private:

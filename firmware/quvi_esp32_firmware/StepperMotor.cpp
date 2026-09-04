@@ -42,10 +42,6 @@ void StepperMotor::disable() {
     _stepper.stop();
 }
 
-bool StepperMotor::isEnabled() const {
-    return _enabled;
-}
-
 // 목표 위치 설정 (steps 단위)
 void StepperMotor::setTargetPosition(long target) {
     _stepper.moveTo(target);
@@ -194,10 +190,6 @@ long StepperMotor::getCurrentPosition() const {
 
 long StepperMotor::getTargetPosition() const {
     return _stepper.targetPosition();
-}
-
-float StepperMotor::getCurrentSpeed() const {
-    return _stepper.speed();
 }
 
 bool StepperMotor::isMoving() const {

@@ -4,15 +4,12 @@
 # 완료 후 TARGET_CONTAINER 변수에 컨테이너 ID가 채워짐.
 # ------------------------------------------------------------------
 
-# docker compose 커맨드 자동 확인
-if docker compose version >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker compose"
-elif command -v docker-compose >/dev/null 2>&1; then
-    DOCKER_COMPOSE="docker-compose"
-else
-    echo "오류: docker compose 또는 docker-compose 명령을 찾을 수 없습니다."
+# docker compose 커맨드 확인 (v2 필수)
+if ! docker compose version >/dev/null 2>&1; then
+    echo "오류: docker compose v2가 설치되어 있지 않습니다."
     exit 1
 fi
+DOCKER_COMPOSE="docker compose"
 
 # 1. 먼저 실행 중인 컨테이너가 있는지 확인
 TARGET_CONTAINER=$(docker ps -q --filter "name=${CONTAINER_NAME}" | head -n 1)

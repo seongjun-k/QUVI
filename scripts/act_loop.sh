@@ -66,7 +66,7 @@ if ! have_service; then
     ros2 run quvi_robot_control robot_control_node --ros-args \
         -p use_real_hardware:=true -p use_act:=true \
         -p dxl_port:=/dev/ttyFollower -p dxl_baudrate:=1000000 \
-        -p act_device:=cpu \
+        -p act_device:=cuda \
         -p sidecam_topic:=/camera1/image_raw/compressed -p use_compressed:=true \
         > /tmp/act_loop_robot.log 2>&1 &
     SPAWNED_PIDS+=($!)
