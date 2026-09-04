@@ -2,7 +2,7 @@
 """
 QUVI 섀도우 모드 리포트
 ──────────────────────
-data/inspection_logs/*/result.txt 를 순회해 룰 판정과 ML 판정(섀도우, 참고용)의
+data/inspection_logs/*/result.json 을 순회해 룰 판정과 ML 판정(섀도우, 참고용)의
 일치율/불일치 케이스를 집계한다. passed 판정 자체에는 영향 없음 — 순수 리포팅.
 
 참고: docs/ml_anomaly_inspection_plan.md §4 Phase 3
@@ -11,25 +11,20 @@ data/inspection_logs/*/result.txt 를 순회해 룰 판정과 ML 판정(섀도�
 """
 import argparse
 import glob
+import json
 import os
-import re
 
 
-def _parse_result_txt(path):
-    """result.txt 한 개를 파싱해 dict 반환 (누락 필드는 None)."""
+def _load_result_json(path):
+    """result.json 한 개를 읽어 dict 반환 (누락 필드는 None)."""
     with open(path, encoding='utf-8') as f:
-        text = f.read()
-    fields = dict(re.findall(r'^(판정|ML판정|ML점수\(worst\)):\s*(\S+)', text, re.MULTILINE))
-    rule = fields.get('판정')
-    ml = fields.get('ML판정')
-    ml_score_raw = fields.get('ML점수(worst)')
-    ml_score = None
-    if ml_score_raw is not None and ml_score_raw != 'N/A':
-        try:
-            ml_score = float(ml_score_raw)
-        except ValueError:
-            pass
-    return {'rule': rule, 'ml': ml, 'ml_score': ml_score}
+        data = json.load(f)
+    ml_passed = data.get('ml_passed')
+    return {
+        'rule': 'PASS' if data.get('passed') else 'FAIL',
+        'ml': None if ml_passed is None else ('PASS' if ml_passed else 'FAIL'),
+        'ml_score': data.get('anomaly_score_worst'),
+    }
 
 
 def _fmt(s):
@@ -41,7 +36,7 @@ def main():
     parser.add_argument('--log-dir', default='/workspace/data/inspection_logs')
     args = parser.parse_args()
 
-    result_files = sorted(glob.glob(os.path.join(args.log_dir, '*', 'result.txt')))
+    result_files = sorted(glob.glob(os.path.join(args.log_dir, '*', 'result.json')))
     total = len(result_files)
 
     ml_recorded = 0
@@ -50,7 +45,7 @@ def main():
 
     for path in result_files:
         folder = os.path.basename(os.path.dirname(path))
-        info = _parse_result_txt(path)
+        info = _load_result_json(path)
         if info['ml'] is None or info['ml'] == 'N/A':
             continue
         ml_recorded += 1

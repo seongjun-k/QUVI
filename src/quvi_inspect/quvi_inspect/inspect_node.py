@@ -772,6 +772,25 @@ class InspectNode(Node):
             f.write(f'ML점수(worst): {worst_str}\n')
             f.write(f'ML상세: {surface["ml_detail"]}\n')
 
+        # result.json — 기계 판독용(shadow_report 등). result.txt 는 사람이 읽는 용도로 유지.
+        # json.dump 의 기본 NaN 출력은 비표준이라 파서가 깨진다 — None 으로 정규화.
+        def _n(v):
+            return None if isinstance(v, float) and math.isnan(v) else v
+
+        result_json = {
+            'passed':              bool(passed),
+            'solidity':            _n(surface['solidity']),
+            'area_ratio':          _n(surface['area_ratio']),
+            'hole_count':          surface['hole_count'],
+            'hole_area_ratio':     _n(surface['hole_area_ratio']),
+            'texture_variance':    _n(surface['texture_variance']),
+            'ml_passed':           surface['ml_passed'],
+            'anomaly_score_worst': _n(surface['anomaly_score_worst']),
+            'ml_detail':           surface['ml_detail'],
+        }
+        with open(os.path.join(log_subdir, 'result.json'), 'w', encoding='utf-8') as f:
+            json.dump(result_json, f, ensure_ascii=False, indent=2)
+
         self.get_logger().info(f'검사 로그 저장: {log_subdir}')
 
 

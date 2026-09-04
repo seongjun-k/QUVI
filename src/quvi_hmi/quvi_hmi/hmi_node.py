@@ -137,7 +137,7 @@ class HmiNode(Node):
             'rail_position': 0.0,   # mm 단위 float (마지막 명령 목표값)
             'turntable_angle': 0,
             'rail_station_map': RAIL_STATION_MAP,
-            'led_state': False,          # LED(턴테이블 링 조명) 현재 상태
+            'led_state': False,          # LED(턴테이블 바 조명) 현재 상태
         }
         self._inspection_history = []  # 최근 100건
         self._jpeg_cache = {
@@ -327,7 +327,7 @@ class HmiNode(Node):
         self.get_logger().info(f'턴테이블 명령: {angle}°')
 
     def send_led_command(self, on: bool):
-        """LED(턴테이블 링 조명) ON/OFF 발행."""
+        """LED(턴테이블 바 조명) ON/OFF 발행."""
         self._led_pub.publish(Bool(data=bool(on)))
         with self._lock:
             self._system_status['led_state'] = bool(on)
