@@ -17,6 +17,7 @@ import time
 import math
 import json
 import threading
+import subprocess
 from datetime import datetime
 from typing import Dict, List, Optional
 
@@ -81,6 +82,10 @@ class InspectNode(Node):
         self._grasp_cmd_sub = self.create_subscription(
             GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
             self._grasp_cmd_callback, 10)
+
+        # 검사 조명 ON/OFF에 맞춰 검사캠 노출 전환 (orchestrator·HMI 어느 쪽이 켜도 잡힘)
+        self._led_exposure_sub = self.create_subscription(
+            Bool, topics.TOPIC_MOTOR_LED, self._led_exposure_cb, 10)
 
         self._result_pub = self.create_publisher(
             InspectionResult, topics.TOPIC_INSPECTION_RESULT, 10)
@@ -166,6 +171,14 @@ class InspectNode(Node):
             ('anomaly_enabled',         False,                              '_anomaly_enabled'),
             ('anomaly_model_dir',       '/workspace/data/models',           '_anomaly_model_dir'),
             ('anomaly_device',          'cuda',                             '_anomaly_device'),
+            # ─── 검사 LED 연동 노출 (흰 출력물 링조명 정반사 과노출 방지, 2026-09-05 실측) ───
+            ('inspection_cam_device',   '/dev/fixed_cam',                   '_insp_cam_dev'),
+            ('led_on_exposure',         3,                                  '_led_on_exp'),
+            ('led_on_brightness',       -30,                                '_led_on_bright'),
+            ('led_on_gain',             0,                                  '_led_on_gain'),
+            ('led_off_exposure',        400,                                '_led_off_exp'),
+            ('led_off_brightness',      0,                                  '_led_off_bright'),
+            ('led_off_gain',            30,                                 '_led_off_gain'),
         ]
 
         for name, default, attr_name in params:
@@ -261,6 +274,31 @@ class InspectNode(Node):
     def _grasp_cmd_callback(self, msg: GraspGoal):
         self._current_object_index = msg.object_index
         self.get_logger().info(f'Object index 동기화: {self._current_object_index}')
+
+    # ─── 검사 LED 연동 노출 ───
+    def _led_exposure_cb(self, msg: Bool):
+        """검사 LED ON/OFF에 맞춰 검사캠 노출을 전환한다.
+        흰 출력물이 링조명 정반사로 과노출되어 표면 결이 사라지는 것을 막는다 —
+        LED ON 시 저노출 고정, OFF 시 일반 노출로 원복. usb_cam은 기동 시 한 번만
+        컨트롤을 걸므로 스트리밍 중 외부 v4l2 설정이 그대로 유지된다."""
+        if msg.data:
+            self._set_cam_exposure(self._led_on_exp, self._led_on_bright, self._led_on_gain)
+        else:
+            self._set_cam_exposure(self._led_off_exp, self._led_off_bright, self._led_off_gain)
+
+    def _set_cam_exposure(self, exposure: int, brightness: int, gain: int):
+        """v4l2-ctl로 검사캠 노출/밝기/게인을 즉시 설정한다. auto_exposure=1(Manual)을
+        먼저 걸어야 exposure_time_absolute가 적용된다(콤마 인자는 좌→우 순차 적용)."""
+        try:
+            subprocess.run(
+                ['v4l2-ctl', '-d', self._insp_cam_dev, '--set-ctrl',
+                 f'auto_exposure=1,exposure_time_absolute={int(exposure)},'
+                 f'gain={int(gain)},brightness={int(brightness)}'],
+                check=True, timeout=2, capture_output=True)
+            self.get_logger().info(
+                f'검사캠 노출 전환: exposure={exposure}, brightness={brightness}, gain={gain}')
+        except (subprocess.SubprocessError, OSError) as exc:
+            self.get_logger().warn(f'검사캠 노출 설정 실패({exc}) — 무시하고 진행')
 
     def _turntable_done_callback(self, msg: Bool):
         """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약한다.

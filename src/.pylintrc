@@ -8,4 +8,5 @@ generated-members=cv2.*,
     _bin_thresh,_blur_k,_camera_topic,_capture_settle,_debug_topic,
     _ds_dir,_ds_settle_sec,_f_area_max,_f_area_min,_finalize_sec,
     _hole_area_max,_hole_max,_log_dir,_min_hole_px,_pub_debug,
-    _ref_dir,_save_images,_sol_max,_sol_min,_tex_var_max,_use_compressed
+    _ref_dir,_save_images,_sol_max,_sol_min,_tex_var_max,_use_compressed,
+    _insp_cam_dev,_led_on_exp,_led_on_bright,_led_on_gain,_led_off_exp,_led_off_bright,_led_off_gain
