@@ -34,6 +34,10 @@
             'control.estop': 'E-STOP',
             'control.estopFull': 'E-STOP (비상 정지)',
             'control.reset': '리셋',
+            'control.endMacro': 'END 매크로',
+            'control.endMacroTitle': '프린터 베드 배출 (PRINT_END 매크로)',
+            'control.autoEndMacro': '자동 END',
+            'control.autoEndMacroTitle': '시작 시 프린터 END 매크로 자동 실행 및 베드 배출 대기',
 
             'stat.total': '총 출력물',
             'stat.processed': '처리 완료',
@@ -274,6 +278,10 @@
             'control.estop': 'E-STOP',
             'control.estopFull': 'E-STOP (Emergency Stop)',
             'control.reset': 'Reset',
+            'control.endMacro': 'END Macro',
+            'control.endMacroTitle': 'Eject Printer Bed (PRINT_END Macro)',
+            'control.autoEndMacro': 'Auto END',
+            'control.autoEndMacroTitle': 'Auto-run END macro on START and wait for bed ejection',
 
             'stat.total': 'Total Objects',
             'stat.processed': 'Processed',
@@ -514,6 +522,10 @@
             'control.estop': 'E-STOP',
             'control.estopFull': 'E-STOP（非常停止）',
             'control.reset': 'リセット',
+            'control.endMacro': 'ENDマクロ',
+            'control.endMacroTitle': 'プリンターベッド排出 (PRINT_ENDマクロ)',
+            'control.autoEndMacro': '自動END',
+            'control.autoEndMacroTitle': '開始時にプリンターENDマクロを自動実行しベッド排出を待機',
 
             'stat.total': '総出力物',
             'stat.processed': '処理完了',

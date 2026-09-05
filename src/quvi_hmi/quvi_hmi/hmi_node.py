@@ -144,6 +144,7 @@ class HmiNode(Node):
             'turntable_angle': 0,
             'rail_station_map': RAIL_STATION_MAP,
             'led_state': False,          # LED(턴테이블 바 조명) 현재 상태
+            'printer': {},
         }
         self._inspection_history = []  # 최근 100건
         self._jpeg_cache = {
@@ -153,6 +154,7 @@ class HmiNode(Node):
             'inspect_debug': None,
         }
         self._printer_status = {}
+        self._auto_end_macro = False
 
         # ─── ACT 모델 선택 (대시보드) ───
         self._act_models = []       # [{'name','path','step'}]
@@ -223,6 +225,7 @@ class HmiNode(Node):
         self._ref_capture_pub = self.create_publisher(Bool, TOPIC_CAPTURE_REFERENCE, 10)
         self._ds_capture_pub = self.create_publisher(Bool, TOPIC_CAPTURE_DATASET, 10)
         self._capture_now_pub = self.create_publisher(Bool, TOPIC_INSPECTION_CAPTURE_NOW, 10)
+        self._auto_end_pub = self.create_publisher(Bool, topics.TOPIC_PRINTER_AUTO_END, 10)
 
         # ─── 기준 이미지 캡처 턴테이블 동기화 ───
         self._ref_turntable_done_event = threading.Event()
@@ -505,6 +508,7 @@ class HmiNode(Node):
     # ─── 데이터 접근 ───
     def get_status(self) -> dict:
         with self._lock:
+            self._system_status['printer']['auto_end_macro'] = self._auto_end_macro
             return self._system_status.copy()
 
     def get_inspection_history(self) -> list:
@@ -788,6 +792,37 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         return jsonify({'ok': True})
 
     # ─── 데이터셋 촬영 API (ML 정상품 수집) ───
+    @app.route('/api/printer/gcode', methods=['POST'])
+    def api_printer_gcode():
+        data = request.get_json(silent=True) or {}
+        script = data.get('script')
+        if not script:
+            return jsonify({'error': 'script required'}), 400
+        url = hmi_node.load_device_config().get('moonraker_url', DEVICE_DEFAULTS['moonraker_url'])
+        try:
+            requests.post(f"{url}/printer/gcode/script", params={'script': script}, timeout=2)
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/printer/end_macro', methods=['POST'])
+    def api_printer_end_macro():
+        url = hmi_node.load_device_config().get('moonraker_url', DEVICE_DEFAULTS['moonraker_url'])
+        try:
+            requests.post(f"{url}/printer/gcode/script", params={'script': 'M117 RUNNING_END_MACRO\nPRINT_END'}, timeout=2)
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+
+    @app.route('/api/printer/auto_end', methods=['POST'])
+    def api_printer_auto_end():
+        data = request.get_json(silent=True) or {}
+        enabled = bool(data.get('enabled'))
+        with hmi_node._lock:
+            hmi_node._auto_end_macro = enabled
+        hmi_node._auto_end_pub.publish(Bool(data=enabled))
+        return jsonify({'ok': True, 'auto_end_macro': enabled})
+
     @app.route('/api/capture/dataset/start', methods=['POST'])
     def api_capture_dataset_start():
         """데이터셋(ML 정상품 수집) 촬영을 시작한다.

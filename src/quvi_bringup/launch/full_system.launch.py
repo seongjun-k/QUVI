@@ -133,6 +133,10 @@ def generate_launch_description():
         'bed_temp_max_age_sec', default_value='10.0',
         description='베드 온도 수신이 이보다 오래되면 모름으로 취급(초)')
 
+    auto_end_macro_arg = DeclareLaunchArgument(
+        'auto_end_macro', default_value='false',
+        description='시작 시 END 매크로 자동 실행 여부')
+
     # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -207,6 +211,8 @@ def generate_launch_description():
                 LaunchConfiguration('bed_temp_start_max'), value_type=float),
             'bed_temp_max_age_sec': ParameterValue(
                 LaunchConfiguration('bed_temp_max_age_sec'), value_type=float),
+            'auto_end_macro': LaunchConfiguration('auto_end_macro'),
+            'moonraker_url': LaunchConfiguration('moonraker_url'),
         }],
         output='screen',
     )
@@ -272,6 +278,7 @@ def generate_launch_description():
         print_done_delay_arg,
         bed_temp_start_max_arg,
         bed_temp_max_age_arg,
+        auto_end_macro_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),

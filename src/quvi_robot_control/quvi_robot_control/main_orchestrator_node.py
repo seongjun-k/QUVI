@@ -9,11 +9,14 @@ FSM(유한상태머신)으로 자율 조율 및 통합합니다.
 
 from enum import Enum
 import json
+import threading
 import time
+import requests
 
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Int32, String
+from std_srvs.srv import Trigger
 from quvi_msgs.msg import GraspGoal, InspectionResult, SystemStatus, MotorStatus
 import quvi_robot_control.topics as topics
 
@@ -82,10 +85,11 @@ class MainOrchestratorNode(Node):
         # 파지 시작을 허용하는 베드 온도 상한(℃). 갓 뽑힌 출력물은 베드에 밀착돼
         # 있어 식기 전에는 뜯기지 않는다. 온도를 모르면(미연결·히터 없음) 시작하지 않는다.
         self.declare_parameter('bed_temp_start_max', 35.0)
-        # 베드 온도 수신이 이보다 오래되면 '모름'으로 취급한다(폴링 2초의 여유 배수).
         self.declare_parameter('bed_temp_max_age_sec', 10.0)
         # RESET 명령 시 ESP32 하드 리셋(DTR/RTS 펄스)에 쓰는 시리얼 포트
         self.declare_parameter('esp32_reset_port', '/dev/ttyESP32')
+        self.declare_parameter('auto_end_macro', False)
+        self.declare_parameter('moonraker_url', 'http://100.122.38.13:7125')
 
         # ─── 파라미터 로드 ───
         self._use_act = self.get_parameter('use_act').value
@@ -97,6 +101,11 @@ class MainOrchestratorNode(Node):
         self._home_timeout = self.get_parameter('home_timeout_sec').value
         self._rail_timeout = self.get_parameter('rail_timeout_sec').value
         self._inspect_timeout = self.get_parameter('inspect_timeout_sec').value
+
+        self._auto_end_macro = bool(self.get_parameter('auto_end_macro').value)
+        self._moonraker_url = str(self.get_parameter('moonraker_url').value).rstrip('/')
+        self._end_macro_triggered = False
+        self._printer_pickup_ready = False
 
         # ─── 내부 상태 변수 ───
         self._state = FsmState.INIT
@@ -151,6 +160,9 @@ class MainOrchestratorNode(Node):
         self._setup_subscribers()
 
         # FSM 주기 제어 타이머 기동 (10 Hz)
+        self.create_subscription(Bool, topics.TOPIC_PRINTER_AUTO_END, self._auto_end_macro_cb, 10)
+        self._end_macro_cli = self.create_client(Trigger, topics.SRV_PRINTER_END_MACRO)
+
         self._fsm_timer = self.create_timer(1.0 / self._loop_rate, self._fsm_loop)
 
         # HMI 상태 전송 타이머 (2 Hz)
@@ -236,6 +248,14 @@ class MainOrchestratorNode(Node):
         self._startup_rail_done = False
         self._startup_turntable_done = False
         self._startup_home_done = False
+        
+        if self._auto_end_macro:
+            self._end_macro_triggered = True
+            self._printer_pickup_ready = False
+            self._call_printer_end_macro()
+        else:
+            self._end_macro_triggered = False
+
         self._state = FsmState.STARTUP_RAIL_HOME_TRIGGER
         self.get_logger().info('시작 초기화 시퀀스: 레일 0mm 홈 이동 시작')
 
@@ -255,6 +275,21 @@ class MainOrchestratorNode(Node):
         self.get_logger().info(
             f'출력 완료 감지 — {self._print_done_delay:.0f}초 후 자동 시작을 예약했습니다.')
 
+    def _auto_end_macro_cb(self, msg: Bool):
+        self._auto_end_macro = msg.data
+
+    def _call_printer_end_macro(self):
+        threading.Thread(target=self._call_printer_end_macro_thread, daemon=True).start()
+
+    def _call_printer_end_macro_thread(self):
+        if self._end_macro_cli.service_is_ready():
+            self._end_macro_cli.call_async(Trigger.Request())
+        else:
+            try:
+                requests.post(f"{self._moonraker_url}/printer/gcode/script", params={'script': 'M117 RUNNING_END_MACRO\nPRINT_END'}, timeout=3.0)
+            except Exception as e:
+                self.get_logger().error(f"END 매크로 HTTP fallback 호출 실패: {e}")
+
     def _printer_status_cb(self, msg: String):
         """프린터 상태 JSON 수신 — 자동 시작 게이트에 쓸 베드 온도만 보관한다."""
         try:
@@ -264,6 +299,8 @@ class MainOrchestratorNode(Node):
         temp = data.get('bed_temp')
         self._bed_temp = float(temp) if isinstance(temp, (int, float)) else None
         self._bed_temp_at = time.time()
+        if bool(data.get('pickup_ready', False)):
+            self._printer_pickup_ready = True
 
     def _bed_cool_enough(self) -> bool:
         """베드가 파지해도 될 만큼 식었는가. 모르면 False — fail-closed."""
@@ -310,6 +347,8 @@ class MainOrchestratorNode(Node):
             self._total_objects = 0
             self._act_ready = False
             self._motor_homed = False
+            self._end_macro_triggered = False
+            self._printer_pickup_ready = False
 
     def _hard_reset_esp32(self):
         """ESP32 USB 링크 재수립 — agent 종료 → DTR/RTS 하드 리셋.
@@ -515,6 +554,12 @@ class MainOrchestratorNode(Node):
                 if self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                     self.get_logger().error('[STARTUP] 로봇팔 홈 done 타임아웃! ERROR')
                     self._error_msg = 'STARTUP_ARM_HOME_TIMEOUT'
+                    self._state = FsmState.ERROR
+            elif self._auto_end_macro and self._end_macro_triggered and not self._printer_pickup_ready:
+                if self._state_timer_counter % max(1, int(5.0 * self._loop_rate)) == 0:
+                    self.get_logger().info('[STARTUP] 로봇 초기 위치 완료. 프린터 END 매크로 완료(PICKUP READY) 대기 중...')
+                if self._state_timer_counter > int(60.0 * self._loop_rate):
+                    self._error_msg = 'PRINTER_END_MACRO_TIMEOUT'
                     self._state = FsmState.ERROR
             else:
                 self._robot_rail_done = False

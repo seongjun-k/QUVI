@@ -122,6 +122,15 @@
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6M23 20v-6h-6"/><path d="M20.49 9A9 9 0 005.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 013.51 15"/></svg>
                     <span data-i18n="control.reset">리셋</span>
                 </button>
+                <div class="control-divider"></div>
+                <button class="btn btn-macro" id="btnEndMacro" onclick="runEndMacro()" title="프린터 베드 배출 (PRINT_END 매크로)" data-i18n-title="control.endMacroTitle">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 5l7 7-7 7"/></svg>
+                    <span data-i18n="control.endMacro">END 매크로</span>
+                </button>
+                <div class="auto-macro-toggle" title="시작 시 프린터 END 매크로 자동 실행 및 베드 배출 대기" data-i18n-title="control.autoEndMacroTitle">
+                    <label class="switch switch-sm"><input type="checkbox" id="autoEndMacroToggle" onchange="toggleAutoEndMacro(this.checked)"><span class="slider round"></span></label>
+                    <span data-i18n="control.autoEndMacro">자동 END</span>
+                </div>
             </div>
 
             <!-- 메인 그리드 -->

@@ -89,6 +89,12 @@ function updateStatus(status) {
         setTeleopBadge(isActive ? 'on' : (isTeleopError ? 'error' : 'off'));
     }
 
+    // END 매크로 토글 동기화
+    const autoEndToggle = document.getElementById('autoEndMacroToggle');
+    if (autoEndToggle && status.printer && status.printer.auto_end_macro !== undefined) {
+        autoEndToggle.checked = status.printer.auto_end_macro;
+    }
+
     // ─── 시스템 상태 탭 업데이트 ───
     updateStatusTab(status);
 }
@@ -1097,9 +1103,52 @@ if (localStorage.getItem('sidebarCollapsed') === '1') {
     try {
         const res = await fetch('/api/devices');
         const cfg = await res.json();
-        if (cfg && cfg.moonraker_url) {
-            const u = new URL(cfg.moonraker_url);
+        // /api/devices 는 {candidates, current, roles} 구조 — moonraker_url 은 current 안에 있다
+        const murl = cfg && cfg.current && cfg.current.moonraker_url;
+        if (murl) {
+            const u = new URL(murl);
             frame.src = `http://${u.hostname}/`;
         }
     } catch (e) { console.log('[QUVI] Mainsail 프레임 초기화 실패', e); }
 })();
+
+// ─── END 매크로 ───
+async function runEndMacro() {
+    const btn = document.getElementById('btnEndMacro');
+    if (btn) btn.disabled = true;
+    try {
+        const res = await fetch('/api/printer/end_macro', { method: 'POST' });
+        const data = await res.json();
+        if (data.ok) {
+            console.log('[QUVI] END 매크로 실행 완료');
+        } else {
+            alert(I18N.t('common.errorPrefix') + (data.error || 'Unknown Error'));
+        }
+    } catch (e) {
+        console.error('[QUVI] END 매크로 실행 실패:', e);
+        alert(I18N.t('common.networkError'));
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function toggleAutoEndMacro(checked) {
+    localStorage.setItem('quvi_auto_end_macro', checked ? '1' : '0');
+    try {
+        await fetch('/api/printer/auto_end', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: checked })
+        });
+    } catch (e) {
+        console.error('[QUVI] 자동 END 설정 실패:', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    if (localStorage.getItem('quvi_auto_end_macro') === '1') {
+        const autoEndToggle = document.getElementById('autoEndMacroToggle');
+        if (autoEndToggle) autoEndToggle.checked = true;
+        toggleAutoEndMacro(true);
+    }
+});

@@ -1778,3 +1778,52 @@ input:checked + .slider:before {
     border-radius: 8px;
     background: var(--bg-secondary, #1a1a1a);
 }
+
+/* END 매크로 관련 스타일 */
+.btn-macro {
+    border-color: rgba(88, 166, 255, 0.4);
+    color: var(--accent-blue);
+}
+.btn-macro:hover {
+    background: rgba(88, 166, 255, 0.15);
+    border-color: var(--accent-blue);
+}
+
+.auto-macro-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-secondary);
+    user-select: none;
+    cursor: pointer;
+}
+
+.switch-sm {
+    width: 32px;
+    height: 18px;
+    position: relative;
+    display: inline-block;
+}
+.switch-sm input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.switch-sm .slider {
+    border-radius: 18px;
+}
+.switch-sm .slider:before {
+    height: 12px;
+    width: 12px;
+    left: 2px;
+    bottom: 2px;
+    border-radius: 50%;
+}
+.switch-sm input:checked + .slider:before {
+    transform: translateX(14px);
+}

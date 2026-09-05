@@ -57,5 +57,7 @@ TOPIC_ACT_MODEL_SELECT = '/robot/act_model_select'
 # ─── 3D 프린터 (Moonraker) ───
 TOPIC_PRINTER_STATUS = '/printer/status'        # String(JSON) — Moonraker 폴링 상태
 TOPIC_PRINTER_PRINT_DONE = '/printer/print_done' # Bool — 출력 완료 1회 신호
+TOPIC_PRINTER_AUTO_END = '/printer/auto_end'        # Bool — 시작 시 END 매크로 자동 실행 토글 상태
 SRV_PRINTER_START_PRINT = '/printer/start_print'    # Trigger — 마지막 gcode 재출력
 SRV_PRINTER_CANCEL_PRINT = '/printer/cancel_print'  # Trigger — 출력 취소
+SRV_PRINTER_END_MACRO = '/printer/end_macro'        # Trigger — END 매크로(PRINT_END) 실행

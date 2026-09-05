@@ -65,6 +65,8 @@ class PrinterMonitorNode(Node):
         # 반드시 받아야 하는 외부 하드웨어 동작이라 fire-and-forget 이면 안 된다.
         self.create_service(Trigger, topics.SRV_PRINTER_START_PRINT, self._start_print_cb)
         self.create_service(Trigger, topics.SRV_PRINTER_CANCEL_PRINT, self._cancel_print_cb)
+        self.create_service(Trigger, topics.SRV_PRINTER_END_MACRO, self._end_macro_cb)
+        self._pickup_ready = False
 
         self.create_timer(poll_sec, self._poll)
         self.get_logger().info(
@@ -76,7 +78,7 @@ class PrinterMonitorNode(Node):
         try:
             resp = requests.get(
                 f'{self._url}/printer/objects/query',
-                params={'print_stats': '', 'virtual_sdcard': '', 'heater_bed': '', 'extruder': ''},
+                params={'print_stats': '', 'virtual_sdcard': '', 'heater_bed': '', 'extruder': '', 'display_status': '', 'toolhead': ''},
                 timeout=self._timeout)
             resp.raise_for_status()
             status = resp.json()['result']['status']
@@ -91,7 +93,7 @@ class PrinterMonitorNode(Node):
             # 연결이 끊긴 동안의 상태 변화는 알 수 없다. 재연결 직후를
             # 새 전이로 오인하지 않도록 이전 상태를 지운다.
             self._prev_state = None
-            self._publish_status(None, '', 0.0, None, None)
+            self._publish_status(None, '', 0.0, None, None, False, '')
             return
 
         if not self._connected:
@@ -113,7 +115,14 @@ class PrinterMonitorNode(Node):
         nozzle_temp = extruder.get('temperature')
         nozzle_temp = float(nozzle_temp) if nozzle_temp is not None else None
 
-        self._publish_status(state, filename, progress, bed_temp, nozzle_temp)
+        display_status = status.get('display_status') or {}
+        display_msg = str(display_status.get('message', '') or '')
+        if 'PICKUP READY' in display_msg or 'ready for robot pickup' in display_msg:
+            self._pickup_ready = True
+        elif 'RUNNING_END_MACRO' in display_msg:
+            self._pickup_ready = False
+
+        self._publish_status(state, filename, progress, bed_temp, nozzle_temp, self._pickup_ready, display_msg)
         self._check_done_edge(state, filename)
         self._prev_state = state
 
@@ -158,6 +167,11 @@ class PrinterMonitorNode(Node):
             self.get_logger().warning('출력 취소 요청 전송')
         return resp
 
+    def _end_macro_cb(self, _req, resp):
+        self._pickup_ready = False
+        resp.success, resp.message = self._post('/printer/gcode/script', {'script': 'M117 RUNNING_END_MACRO\nPRINT_END'})
+        return resp
+
     def _post(self, path: str, params):
         try:
             r = requests.post(f'{self._url}{path}', params=params, timeout=self._timeout)
@@ -167,7 +181,7 @@ class PrinterMonitorNode(Node):
             self.get_logger().error(f'Moonraker {path} 실패: {e}')
             return False, f'Moonraker {path} 실패: {e}'
 
-    def _publish_status(self, state, filename: str, progress: float, bed_temp, nozzle_temp):
+    def _publish_status(self, state, filename: str, progress: float, bed_temp, nozzle_temp, pickup_ready: bool, display_msg: str):
         self._status_pub.publish(String(data=json.dumps({
             'connected': self._connected,
             'state': state or 'unknown',
@@ -175,6 +189,8 @@ class PrinterMonitorNode(Node):
             'progress': round(progress, 4),
             'bed_temp': round(bed_temp, 1) if bed_temp is not None else None,
             'nozzle_temp': round(nozzle_temp, 1) if nozzle_temp is not None else None,
+            'pickup_ready': pickup_ready,
+            'display_message': display_msg,
         }, ensure_ascii=False)))
 
 

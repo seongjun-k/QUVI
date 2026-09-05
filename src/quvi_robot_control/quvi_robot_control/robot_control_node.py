@@ -138,7 +138,7 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 # ─── 티칭 웨이포인트 (test_sequence.py 티칭 모드로 기록 후 여기에 붙여넣기) ───
 # scripts/test_sequence.py 실행 → 't' 티칭 모드 → 자세 잡고 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
-POSE_P1 = {'shoulder_pan': 2053, 'shoulder_lift':  978, 'elbow_flex': 3050, 'wrist_flex': 3056, 'wrist_roll': 2029, 'gripper': 2100}  # 베드 위 대기
+POSE_P1 = {'shoulder_pan': 2037, 'shoulder_lift': 1114, 'elbow_flex': 2771, 'wrist_flex': 3257, 'wrist_roll': 2016, 'gripper': 2077}  # 베드 위 대기 (2026-09-05 HMI 실측으로 상향 조정)
 POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
 POSE_P3 = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
 POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
@@ -357,7 +357,7 @@ class RobotControlNode(Node):
         # ACT
         self.declare_parameter('use_act', False)
         self.declare_parameter('act_model_path',
-            '/physical_ai_tools/lerobot/outputs/train/GUVI0625100FF/checkpoints/100000/pretrained_model')
+            '/workspace/data/models/GUVI0625100FF/checkpoints/100000/pretrained_model')
         self.declare_parameter('act_device', 'cuda')  # 'cuda' or 'cpu' — CPU 는 추론 3.1s 라 궤적이 잘린다
         # VLA/프롬프트 (VLA 계열 정책 모델 도입 시 전달할 기본 언어 태스크)
         # VLA 계열은 이 문자열로 조건화되므로 학습 데이터셋 meta/tasks.jsonl 의
@@ -365,10 +365,9 @@ class RobotControlNode(Node):
         # ACT 는 자기 input_features 만 순회해 이 값을 무시한다.
         self.declare_parameter('act_task_prompt', 'pick')
         # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
-        # ':' 로 여러 루트 지정 가능. /physical_ai_tools 는 컨테이너에 읽기 전용으로
-        # 마운트돼 학습 출력을 쓸 수 없어, 신규 학습분은 /workspace/data/models 에 둔다.
+        # ':' 로 여러 루트 지정 가능.
         self.declare_parameter('act_models_root',
-            '/physical_ai_tools/lerobot/outputs/train:/workspace/data/models')
+            '/workspace/data/models')
         # 안전: send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
@@ -490,7 +489,7 @@ class RobotControlNode(Node):
         실패 시 기존 정책을 유지하고 False 반환.
         """
         try:
-            for _lerobot_src in ['/workspace/lerobot/src', '/physical_ai_tools/lerobot/src']:
+            for _lerobot_src in ['/workspace/lerobot/src']:
                 if _lerobot_src not in sys.path:
                     sys.path.insert(0, _lerobot_src)
             import torch

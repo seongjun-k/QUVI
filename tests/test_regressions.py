@@ -94,11 +94,12 @@ def test_safety_and_topic_split():
 
     # Create test control node
     # Set parameters to bypass real hardware and ACT model loading
-    node = RobotControlNode()
-    node.set_parameters([
-        rclpy.parameter.Parameter('use_real_hardware', rclpy.Parameter.Type.BOOL, False),
-        rclpy.parameter.Parameter('use_act', rclpy.Parameter.Type.BOOL, False)
-    ])
+    node = RobotControlNode(
+        parameter_overrides=[
+            rclpy.parameter.Parameter('use_real_hardware', rclpy.Parameter.Type.BOOL, False),
+            rclpy.parameter.Parameter('use_act', rclpy.Parameter.Type.BOOL, False)
+        ]
+    )
     
     # We must start the executor to spin the node
     executor = rclpy.executors.SingleThreadedExecutor()
