@@ -94,8 +94,8 @@ def generate_launch_description():
         description='고정캠 자동 노출 활성화 여부 (true/false)')
 
     fixed_cam_exposure_arg = DeclareLaunchArgument(
-        'fixed_cam_exposure', default_value='110',
-        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — ACT 학습 데이터 밝기 기준 실측 튜닝')
+        'fixed_cam_exposure', default_value='70',
+        description='고정캠(검사챔버) 수동 노출값 (autoexposure가 false일 때 적용) — 조명 ON 시 과노출 방지 실측 튜닝')
 
     micro_ros_port_arg = DeclareLaunchArgument(
         'micro_ros_port', default_value=_dev.get('micro_ros_port', '/dev/ttyESP32'),
@@ -145,6 +145,7 @@ def generate_launch_description():
         launch_arguments={
             'sidecam_device': LaunchConfiguration('sidecam_device'),
             'fixed_cam_device': LaunchConfiguration('fixed_cam_device'),
+            'topcam_device': LaunchConfiguration('topcam_device'),
             'sidecam_autoexposure': LaunchConfiguration('sidecam_autoexposure'),
             'sidecam_exposure': LaunchConfiguration('sidecam_exposure'),
             'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),

@@ -44,6 +44,10 @@ def generate_launch_description():
         'fixed_cam_device', default_value='/dev/fixed_cam',
         description='고정 카메라(Zone 2 검사 챔버) USB 장치 경로')
 
+    topcam_device_arg = DeclareLaunchArgument(
+        'topcam_device', default_value='/dev/topcam',
+        description='탑뷰 카메라(Zone 3 3D 프린터 상단) USB 장치 경로')
+
     data_dir_arg = DeclareLaunchArgument(
         'data_dir', default_value=default_data_dir,
         description='기준/로그 데이터 루트 (기본: $QUVI_DATA_DIR 또는 /workspace/data)')
@@ -81,29 +85,28 @@ def generate_launch_description():
         description='고정캠 자동 노출 활성화 여부 (true/false)')
 
     fixed_cam_exposure_arg = DeclareLaunchArgument(
-        'fixed_cam_exposure', default_value='110',
-        description='고정캠 수동 노출값 (autoexposure가 false일 때 적용) — ACT 학습 데이터 밝기 기준 실측 튜닝')
+        'fixed_cam_exposure', default_value='70',
+        description='고정캠(검사챔버) 수동 노출값 (autoexposure가 false일 때 적용) — 조명 ON 시 과노출 방지 실측 튜닝')
 
     anomaly_enabled_arg = DeclareLaunchArgument(
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
     # ─── 카메라 1: 사이드캠 (Zone 1 - 픽업 영역) ───
-    # fixed_cam_device → camera1 토픽 (사이드캠 위치 교체)
     camera1_node = Node(
         package='usb_cam',
         executable='usb_cam_node_exe',
         name='camera1',
         namespace='camera1',
         parameters=[{
-            'video_device': LaunchConfiguration('fixed_cam_device'),
+            'video_device': LaunchConfiguration('sidecam_device'),
             'image_width': 640,
             'image_height': 480,
             'pixel_format': 'mjpeg2rgb',
             'framerate': 30.0,
             'camera_name': 'sidecam',
-            'autoexposure': ParameterValue(LaunchConfiguration('fixed_cam_autoexposure'), value_type=bool),
-            'exposure': ParameterValue(LaunchConfiguration('fixed_cam_exposure'), value_type=int),
+            'autoexposure': ParameterValue(LaunchConfiguration('sidecam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('sidecam_exposure'), value_type=int),
             # ACT 학습 데이터가 brightness 0 기준 — 장치 잔존값(50 등)이 관측 분포를 흔들지 않게 고정
             'brightness': 0,
         }],
@@ -114,21 +117,42 @@ def generate_launch_description():
     )
 
     # ─── 카메라 2: 검사캠 (Zone 2 - 검사 챔버) ───
-    # sidecam_device → camera2 토픽 (검사캠 위치 교체)
     camera2_node = Node(
         package='usb_cam',
         executable='usb_cam_node_exe',
         name='camera2',
         namespace='camera2',
         parameters=[{
-            'video_device': LaunchConfiguration('sidecam_device'),
+            'video_device': LaunchConfiguration('fixed_cam_device'),
             'image_width': 1920,
             'image_height': 1080,
             'pixel_format': 'mjpeg2rgb',
             'framerate': 30.0,
             'camera_name': 'inspection_cam',
-            'autoexposure': ParameterValue(LaunchConfiguration('sidecam_autoexposure'), value_type=bool),
-            'exposure': ParameterValue(LaunchConfiguration('sidecam_exposure'), value_type=int),
+            'autoexposure': ParameterValue(LaunchConfiguration('fixed_cam_autoexposure'), value_type=bool),
+            'exposure': ParameterValue(LaunchConfiguration('fixed_cam_exposure'), value_type=int),
+            # 조명 ON 시 잔존값(50)에 의한 과노출 방지
+            'brightness': 0,
+        }],
+        remappings=[
+            ('image_raw', 'image_raw'),
+            ('image_raw/compressed', 'image_raw/compressed'),
+        ],
+    )
+
+    # ─── 카메라 3: 탑뷰캠 (Zone 3 - 3D 프린터 상단) ───
+    camera3_node = Node(
+        package='usb_cam',
+        executable='usb_cam_node_exe',
+        name='camera3',
+        namespace='camera3',
+        parameters=[{
+            'video_device': LaunchConfiguration('topcam_device'),
+            'image_width': 640,
+            'image_height': 480,
+            'pixel_format': 'mjpeg2rgb',
+            'framerate': 30.0,
+            'camera_name': 'topcam',
         }],
         remappings=[
             ('image_raw', 'image_raw'),
@@ -159,6 +183,7 @@ def generate_launch_description():
         # 인자
         sidecam_device_arg,
         fixed_cam_device_arg,
+        topcam_device_arg,
         data_dir_arg,
         reference_dir_arg,
         inspection_log_dir_arg,
@@ -176,5 +201,6 @@ def generate_launch_description():
         # 노드
         camera1_node,
         camera2_node,
+        camera3_node,
         inspect_node,
     ])
