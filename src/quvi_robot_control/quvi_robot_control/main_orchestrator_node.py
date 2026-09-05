@@ -8,6 +8,9 @@ FSM(유한상태머신)으로 자율 조율 및 통합합니다.
 """
 
 from enum import Enum
+import json
+import time
+
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool, Int32, String
@@ -70,6 +73,17 @@ class MainOrchestratorNode(Node):
         self.declare_parameter('inspect_timeout_sec', 15.0)
         # 검사장 안착/재파지 시퀀스 대기 — P계열 6이동+대기로 나면 20초로는 부족
         self.declare_parameter('chamber_timeout_sec', 40.0)
+        # 출력 완료 신호로 시퀀스를 자동 시작할지. 사람 없이 레일이 프린터 베드로
+        # 출발하는 동작이라 기본은 꺼둔다.
+        self.declare_parameter('auto_start_on_print_done', False)
+        # 출력 완료 후 실제 시작까지의 대기(초). 갓 뽑힌 출력물은 뜨겁고 베드에
+        # 밀착돼 있다 — 실측한 냉각 시간을 넣어야 한다. 기본 0 은 '미설정'이다.
+        self.declare_parameter('print_done_delay_sec', 0.0)
+        # 파지 시작을 허용하는 베드 온도 상한(℃). 갓 뽑힌 출력물은 베드에 밀착돼
+        # 있어 식기 전에는 뜯기지 않는다. 온도를 모르면(미연결·히터 없음) 시작하지 않는다.
+        self.declare_parameter('bed_temp_start_max', 35.0)
+        # 베드 온도 수신이 이보다 오래되면 '모름'으로 취급한다(폴링 2초의 여유 배수).
+        self.declare_parameter('bed_temp_max_age_sec', 10.0)
         # RESET 명령 시 ESP32 하드 리셋(DTR/RTS 펄스)에 쓰는 시리얼 포트
         self.declare_parameter('esp32_reset_port', '/dev/ttyESP32')
 
@@ -105,6 +119,15 @@ class MainOrchestratorNode(Node):
         # 하위 노드 헬스 체크용 플래그
         self._motor_homed = False
         self._act_ready = False
+
+        # 출력 완료 자동 시작. None = 예약 없음, 값 = 그 시각 이후 IDLE 이면 시작.
+        self._auto_start = bool(self.get_parameter('auto_start_on_print_done').value)
+        self._print_done_delay = float(self.get_parameter('print_done_delay_sec').value)
+        self._auto_start_at = None
+        self._bed_temp_max = float(self.get_parameter('bed_temp_start_max').value)
+        self._bed_temp_max_age = float(self.get_parameter('bed_temp_max_age_sec').value)
+        self._bed_temp = None        # 마지막 수신 베드 온도(℃), None = 모름
+        self._bed_temp_at = 0.0      # 그 수신 시각
 
         # 완료 토픽 수신 플래그
         self._robot_grasp_done = False
@@ -186,39 +209,86 @@ class MainOrchestratorNode(Node):
 
         # 헬스 체크용 정보 노드 상태 구독
         self.create_subscription(String, topics.TOPIC_ROBOT_STATUS, self._robot_node_status_cb, 10)
+        self.create_subscription(Bool, topics.TOPIC_PRINTER_PRINT_DONE, self._printer_done_cb, 10)
+        self.create_subscription(String, topics.TOPIC_PRINTER_STATUS, self._printer_status_cb, 10)
 
         # 비상정지 구독
         self.create_subscription(Bool, topics.TOPIC_ESTOP, self._estop_system_cb, 10)
 
     # ─── ROS 2 구독 콜백 함수 정의 ───
+    def _begin_start_sequence(self):
+        """START 진입 — HMI 버튼과 출력 완료 자동 시작이 공유하는 단 하나의 경로.
+
+        가드를 두 곳에 복제하면 한쪽만 고쳐지는 사고가 나므로 반드시 여기로 모은다.
+        호출 전에 상태가 IDLE 인지 확인하는 책임은 호출자에게 있다.
+        """
+        self._auto_start_at = None   # 어느 경로로 시작하든 남은 예약은 소멸시킨다
+        if self._use_act and not self._act_ready:
+            self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 차단합니다. ERROR 상태로 전환.')
+            self._error_msg = "ACT NOT READY"
+            self._state = FsmState.ERROR
+            return
+        if not self._motor_homed:
+            self.get_logger().error('ESP32 모터 원점 복귀(Homing)가 완료되지 않았습니다. 시작을 차단합니다. ERROR 상태로 전환.')
+            self._error_msg = "MOTOR NOT HOMED"
+            self._state = FsmState.ERROR
+            return
+        self._startup_rail_done = False
+        self._startup_turntable_done = False
+        self._startup_home_done = False
+        self._state = FsmState.STARTUP_RAIL_HOME_TRIGGER
+        self.get_logger().info('시작 초기화 시퀀스: 레일 0mm 홈 이동 시작')
+
+    def _printer_done_cb(self, msg: Bool):
+        """3D 프린터 출력 완료 → 시퀀스 자동 시작 예약.
+
+        여기서 바로 시작하지 않고 시각만 예약한다. 실제 진입은 FSM 루프의 IDLE
+        분기가 하므로, 대기 중 STOP/ESTOP 이 들어오면 예약이 취소된다.
+        """
+        if not msg.data or not self._auto_start:
+            return
+        if self._state != FsmState.IDLE:
+            self.get_logger().warn(
+                f'출력 완료 신호를 받았지만 IDLE 이 아닙니다({self._state.value}) — 무시합니다.')
+            return
+        self._auto_start_at = time.time() + self._print_done_delay
+        self.get_logger().info(
+            f'출력 완료 감지 — {self._print_done_delay:.0f}초 후 자동 시작을 예약했습니다.')
+
+    def _printer_status_cb(self, msg: String):
+        """프린터 상태 JSON 수신 — 자동 시작 게이트에 쓸 베드 온도만 보관한다."""
+        try:
+            data = json.loads(msg.data)
+        except ValueError:
+            return
+        temp = data.get('bed_temp')
+        self._bed_temp = float(temp) if isinstance(temp, (int, float)) else None
+        self._bed_temp_at = time.time()
+
+    def _bed_cool_enough(self) -> bool:
+        """베드가 파지해도 될 만큼 식었는가. 모르면 False — fail-closed."""
+        if self._bed_temp is None:
+            return False
+        if time.time() - self._bed_temp_at > self._bed_temp_max_age:
+            return False
+        return self._bed_temp <= self._bed_temp_max
+
     def _hmi_command_cb(self, msg: String):
         command = msg.data.upper()
         self.get_logger().info(f'HMI 명령 수신: {command}')
 
         if command == "START":
             if self._state == FsmState.IDLE:
-                if self._use_act and not self._act_ready:
-                    self.get_logger().error('ACT 노드가 아직 준비되지 않았습니다. 시작을 차단합니다. ERROR 상태로 전환.')
-                    self._error_msg = "ACT NOT READY"
-                    self._state = FsmState.ERROR
-                    return
-                if not self._motor_homed:
-                    self.get_logger().error('ESP32 모터 원점 복귀(Homing)가 완료되지 않았습니다. 시작을 차단합니다. ERROR 상태로 전환.')
-                    self._error_msg = "MOTOR NOT HOMED"
-                    self._state = FsmState.ERROR
-                    return
-                self._startup_rail_done = False
-                self._startup_turntable_done = False
-                self._startup_home_done = False
-                self._state = FsmState.STARTUP_RAIL_HOME_TRIGGER
-                self.get_logger().info('시작 초기화 시퀀스: 레일 0mm 홈 이동 시작')
+                self._begin_start_sequence()
         elif command == "STOP":
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
+            self._auto_start_at = None   # 정지 직후 예약이 남아 스스로 재시작하면 안 된다
             self._state = FsmState.IDLE
             # INSPECTING 계열에서 정지해도 바 조명 소등을 보장한다.
             self._led_pub.publish(Bool(data=False))
         elif command == "ESTOP":
             self.get_logger().error('비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.')
+            self._auto_start_at = None
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
             self._led_pub.publish(Bool(data=False))
@@ -361,8 +431,19 @@ class MainOrchestratorNode(Node):
             self._state = FsmState.IDLE
 
         elif self._state == FsmState.IDLE:
-            # HMI로부터 START 대기 (Callback에서 처리)
-            pass
+            # HMI START 대기(콜백 처리) + 출력 완료 자동 시작 예약 확인
+            if self._auto_start_at is not None and time.time() >= self._auto_start_at:
+                if self._bed_cool_enough():
+                    self.get_logger().info(
+                        f'출력 완료 자동 시작 — 베드 {self._bed_temp:.1f}℃ '
+                        f'(<= {self._bed_temp_max:.0f}℃), 시퀀스를 시작합니다.')
+                    self._begin_start_sequence()
+                else:
+                    cur = '모름' if self._bed_temp is None else f'{self._bed_temp:.1f}℃'
+                    self.get_logger().info(
+                        f'자동 시작 대기 — 베드 온도 {cur} '
+                        f'(기준 {self._bed_temp_max:.0f}℃ 이하)',
+                        throttle_duration_sec=15.0)
 
         # ─── 시작 초기화 시퀀스: 레일 0mm → 12.5mm → 턴테이블 0° ───
         elif self._state == FsmState.STARTUP_RAIL_HOME_TRIGGER:

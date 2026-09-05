@@ -57,6 +57,14 @@
                 </svg>
                 <span class="nav-item-label" data-i18n="nav.inspection">검사 상세 내역</span>
             </a>
+            <a href="#" id="menu-printer" class="nav-item" onclick="switchTab('printer')" title="프린터" data-i18n-title="nav.printer">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="6 9 6 2 18 2 18 9"/>
+                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
+                    <rect x="6" y="14" width="12" height="8"/>
+                </svg>
+                <span class="nav-item-label" data-i18n="nav.printer">프린터</span>
+            </a>
         </nav>
         <button type="button" id="sidebarToggle" class="sidebar-toggle" onclick="toggleSidebar()" title="사이드바 접기/펼치기" data-i18n-title="sidebar.toggleTitle">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -905,6 +913,56 @@
                                 </tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══ 프린터 탭 (Klipper/Moonraker 하이브리드: 운영 제어는 여기, 심화관리는 Mainsail) ═══ -->
+        <div id="tab-printer" class="tab-pane">
+            <div class="printer-grid">
+                <!-- 상태 -->
+                <div class="card status-card">
+                    <div class="card-header">
+                        <span class="card-title" data-i18n="printer.title">프린터</span>
+                        <span id="printerStateBadge" class="result-badge" data-i18n="printer.state.standby">대기</span>
+                    </div>
+                    <div class="card-body" style="padding:16px;">
+                        <div class="printer-temps">
+                            <div><span data-i18n="printer.nozzle">노즐</span> <b id="printerNozzle">—</b> °C</div>
+                            <div><span data-i18n="printer.bed">베드</span> <b id="printerBed">—</b> °C</div>
+                        </div>
+                        <div class="printer-file-row"><span data-i18n="printer.file">파일</span>: <span id="printerFile">—</span></div>
+                        <div class="printer-progress-track">
+                            <div id="printerProgressBar" class="printer-progress-fill"></div>
+                        </div>
+                        <div class="printer-progress-txt"><span id="printerProgressTxt">0%</span></div>
+                    </div>
+                </div>
+                <!-- 모델 선택 -->
+                <div class="card status-card">
+                    <div class="card-header">
+                        <span class="card-title" data-i18n="printer.selectModel">모델 선택</span>
+                    </div>
+                    <div class="card-body" style="padding:16px;">
+                        <select id="printerModelSelect" class="printer-model-select"></select>
+                        <div class="printer-model-btns">
+                            <button class="btn manual-exec-btn" id="printerStartBtn" onclick="startPrint()" data-i18n="printer.startPrint">출력 시작</button>
+                            <button class="btn" onclick="loadPrinterFiles()" data-i18n="device.refreshBtn">새로고침</button>
+                        </div>
+                    </div>
+                </div>
+                <!-- 제어 -->
+                <div class="card status-card printer-ctrl-card">
+                    <div class="card-header">
+                        <span class="card-title" data-i18n="printer.control">프린터 제어</span>
+                    </div>
+                    <div class="card-body printer-ctrl-body">
+                        <button class="btn" id="printerPauseBtn" onclick="pausePrint()" data-i18n="printer.pause">일시정지</button>
+                        <button class="btn" id="printerResumeBtn" onclick="resumePrint()" data-i18n="printer.resume">재개</button>
+                        <button class="btn btn-stop" id="printerCancelBtn" onclick="cancelPrint()" data-i18n="printer.cancel">취소</button>
+                        <span class="printer-ctrl-spacer"></span>
+                        <a class="btn" id="mainsailLink" href="#" target="_blank" rel="noopener" data-i18n="printer.advanced">고급 관리(Mainsail)</a>
                     </div>
                 </div>
             </div>

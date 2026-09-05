@@ -1767,3 +1767,88 @@ input:checked + .slider:before {
 .led-switch {
     transform: scale(0.9);
 }
+
+/* ─── 프린터 탭 ─── */
+.printer-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.printer-ctrl-card {
+    grid-column: 1 / -1;
+}
+.printer-temps {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 12px;
+    font-size: 15px;
+}
+.printer-file-row {
+    margin-bottom: 8px;
+    color: var(--text-secondary, #888);
+    font-size: 13px;
+    word-break: break-all;
+}
+.printer-progress-track {
+    background: rgba(127, 127, 127, 0.18);
+    height: 14px;
+    border-radius: 7px;
+    overflow: hidden;
+}
+.printer-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--accent-green);
+    transition: width 0.3s ease;
+}
+.printer-progress-txt {
+    text-align: right;
+    font-size: 12px;
+    margin-top: 4px;
+    color: var(--text-secondary, #888);
+}
+.printer-model-select {
+    width: 100%;
+    padding: 6px;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+}
+.printer-model-btns {
+    display: flex;
+    gap: 8px;
+}
+.printer-model-btns .manual-exec-btn {
+    flex: 1;
+}
+.printer-ctrl-body {
+    padding: 16px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.printer-ctrl-spacer {
+    flex: 1;
+}
+.result-badge.printing {
+    background: rgba(255, 152, 0, 0.15);
+    color: #ff9800;
+}
+.result-badge.complete {
+    background: var(--pass-bg);
+    color: var(--accent-green);
+}
+.result-badge.paused,
+.result-badge.standby {
+    background: rgba(127, 127, 127, 0.15);
+    color: var(--text-secondary, #9e9e9e);
+}
+.result-badge.error {
+    background: var(--fail-bg);
+    color: var(--accent-red);
+}
+@media (max-width: 768px) {
+    .printer-grid {
+        grid-template-columns: 1fr;
+    }
+}

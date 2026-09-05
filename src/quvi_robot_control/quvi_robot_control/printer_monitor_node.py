@@ -76,7 +76,7 @@ class PrinterMonitorNode(Node):
         try:
             resp = requests.get(
                 f'{self._url}/printer/objects/query',
-                params={'print_stats': '', 'virtual_sdcard': ''},
+                params={'print_stats': '', 'virtual_sdcard': '', 'heater_bed': '', 'extruder': ''},
                 timeout=self._timeout)
             resp.raise_for_status()
             status = resp.json()['result']['status']
@@ -91,7 +91,7 @@ class PrinterMonitorNode(Node):
             # 연결이 끊긴 동안의 상태 변화는 알 수 없다. 재연결 직후를
             # 새 전이로 오인하지 않도록 이전 상태를 지운다.
             self._prev_state = None
-            self._publish_status(None, '', 0.0)
+            self._publish_status(None, '', 0.0, None, None)
             return
 
         if not self._connected:
@@ -104,8 +104,16 @@ class PrinterMonitorNode(Node):
         if filename:
             self._last_filename = filename
         progress = float(status.get('virtual_sdcard', {}).get('progress', 0.0) or 0.0)
+        # 베드 온도. 히터가 없거나 응답에 없으면 None — 소비자가 '모름'과 '차갑다'를
+        # 구분할 수 있어야 한다(모르면 파지를 시작하면 안 된다).
+        bed = status.get('heater_bed') or {}
+        bed_temp = bed.get('temperature')
+        bed_temp = float(bed_temp) if bed_temp is not None else None
+        extruder = status.get('extruder') or {}
+        nozzle_temp = extruder.get('temperature')
+        nozzle_temp = float(nozzle_temp) if nozzle_temp is not None else None
 
-        self._publish_status(state, filename, progress)
+        self._publish_status(state, filename, progress, bed_temp, nozzle_temp)
         self._check_done_edge(state, filename)
         self._prev_state = state
 
@@ -159,12 +167,14 @@ class PrinterMonitorNode(Node):
             self.get_logger().error(f'Moonraker {path} 실패: {e}')
             return False, f'Moonraker {path} 실패: {e}'
 
-    def _publish_status(self, state, filename: str, progress: float):
+    def _publish_status(self, state, filename: str, progress: float, bed_temp, nozzle_temp):
         self._status_pub.publish(String(data=json.dumps({
             'connected': self._connected,
             'state': state or 'unknown',
             'filename': filename,
             'progress': round(progress, 4),
+            'bed_temp': round(bed_temp, 1) if bed_temp is not None else None,
+            'nozzle_temp': round(nozzle_temp, 1) if nozzle_temp is not None else None,
         }, ensure_ascii=False)))
 
 

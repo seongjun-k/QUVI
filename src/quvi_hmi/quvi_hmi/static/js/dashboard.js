@@ -986,6 +986,8 @@ socket.on('status_update', (data) => {
     }
     // 수동 제어 패널 UI 실시간 갱신
     updateManualControlPanel(data.status);
+    // 프린터 상태(Moonraker 폴링 결과가 있을 때만)
+    if (data.printer) renderPrinter(data.printer);
 });
 
 // ─── 시계 ───
@@ -1088,3 +1090,102 @@ function toggleSidebar() {
 if (localStorage.getItem('sidebarCollapsed') === '1') {
     document.getElementById('sidebar').classList.add('collapsed');
 }
+
+// ─── 프린터(Klipper/Moonraker) ───
+// 상태는 status_update.printer(printer_monitor 폴링)로 수신, 명령은 /api/printer/* 프록시.
+function _setDisabled(id, v) {
+    const el = document.getElementById(id);
+    if (el) el.disabled = v;
+}
+
+function renderPrinter(p) {
+    const badge = document.getElementById('printerStateBadge');
+    if (!badge) return;  // 프린터 탭 미로드 방어
+    const connected = !!p.connected;
+    const state = connected ? String(p.state || 'standby').toLowerCase() : 'standby';
+    // Moonraker print_stats.state → 표시 텍스트 키(취소는 별도) + 배지 색 클래스(취소는 error색)
+    const textKey = ({ printing: 'printing', complete: 'complete', paused: 'paused',
+        cancelled: 'cancelled', error: 'error', standby: 'standby' })[state] || 'standby';
+    const colorCls = (textKey === 'cancelled') ? 'error' : textKey;
+    badge.className = 'result-badge ' + colorCls;
+    badge.textContent = I18N.t('printer.state.' + textKey);
+
+    const nozzle = document.getElementById('printerNozzle');
+    const bed = document.getElementById('printerBed');
+    nozzle.textContent = (connected && p.nozzle_temp != null) ? Number(p.nozzle_temp).toFixed(1) : '—';
+    bed.textContent = (connected && p.bed_temp != null) ? Number(p.bed_temp).toFixed(1) : '—';
+    document.getElementById('printerFile').textContent = p.filename || '—';
+
+    const pct = Math.max(0, Math.min(100, Math.round((p.progress || 0) * 100)));
+    document.getElementById('printerProgressBar').style.width = pct + '%';
+    document.getElementById('printerProgressTxt').textContent = pct + '%';
+
+    // 버튼 상태: 출력중이면 일시정지만, 일시정지면 재개만, 그 외엔 출력시작 허용
+    const printing = state === 'printing';
+    const paused = state === 'paused';
+    _setDisabled('printerStartBtn', !connected || printing || paused);
+    _setDisabled('printerPauseBtn', !printing);
+    _setDisabled('printerResumeBtn', !paused);
+    _setDisabled('printerCancelBtn', !(printing || paused));
+}
+
+async function loadPrinterFiles() {
+    const sel = document.getElementById('printerModelSelect');
+    if (!sel) return;
+    try {
+        const res = await fetch('/api/printer/files');
+        const files = await res.json();
+        if (!Array.isArray(files) || files.length === 0) {
+            sel.innerHTML = `<option value="">${I18N.t('printer.noModels')}</option>`;
+            return;
+        }
+        const prev = sel.value;
+        sel.innerHTML = files.map(f => `<option value="${f.path}">${f.path}</option>`).join('');
+        if (prev && files.some(f => f.path === prev)) sel.value = prev;  // 선택 유지
+    } catch (e) {
+        console.log('[QUVI] 프린터 파일 목록 로드 실패', e);
+    }
+}
+
+async function startPrint() {
+    const sel = document.getElementById('printerModelSelect');
+    const filename = sel && sel.value;
+    if (!filename) { alert(I18N.t('printer.noModels')); return; }
+    if (!confirm(I18N.t('printer.startPrint') + ': ' + filename + ' ?')) return;
+    try {
+        await fetch('/api/printer/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename }),
+        });
+    } catch (e) { console.log('[QUVI] 출력 시작 실패', e); }
+}
+
+async function pausePrint() {
+    try { await fetch('/api/printer/pause', { method: 'POST' }); } catch (e) { /* noop */ }
+}
+async function resumePrint() {
+    try { await fetch('/api/printer/resume', { method: 'POST' }); } catch (e) { /* noop */ }
+}
+async function cancelPrint() {
+    if (!confirm(I18N.t('printer.cancel') + ' ?')) return;
+    try { await fetch('/api/printer/cancel', { method: 'POST' }); } catch (e) { /* noop */ }
+}
+
+// Mainsail 링크는 프린터 호스트(moonraker_url)에서 조립 — 포트 없이 80(nginx)
+async function setupMainsailLink() {
+    const link = document.getElementById('mainsailLink');
+    if (!link) return;
+    try {
+        const res = await fetch('/api/devices');
+        const cfg = await res.json();
+        if (cfg && cfg.moonraker_url) {
+            const u = new URL(cfg.moonraker_url);
+            link.href = `http://${u.hostname}/`;
+        }
+    } catch (e) { /* 링크는 부가기능 — 실패해도 무시 */ }
+}
+
+loadPrinterFiles();
+setupMainsailLink();
+setInterval(loadPrinterFiles, 15000);

@@ -6,6 +6,7 @@ test_reliability_improvements 병합).
 - 신뢰성: InspectNode 기준 이미지 부재 NaN 폴백·순차 캡처, Orchestrator 턴테이블 대기 전이
 실행: cd <repo> && pytest tests/test_regressions.py (ROS 2 rclpy 필요; 미설치 호스트는 conftest 가 수집 제외)
 """
+import json
 import math
 import time
 import threading
@@ -299,5 +300,89 @@ def test_printer_monitor_done_edge(monkeypatch):
         node._poll()
         node._poll()
         assert fired == [True], '취소된 출력을 완료로 오판'
+    finally:
+        node.destroy_node()
+
+
+def test_auto_start_on_print_done():
+    """출력 완료 신호 자동 시작 — 진입 조건과 취소 경로를 고정한다.
+
+    사람 없이 레일이 프린터 베드로 출발하는 동작이라, 조건이 하나라도
+    느슨해지면 예기치 않은 시점에 로봇이 움직인다.
+    """
+    if not rclpy.ok():
+        rclpy.init()
+
+    def _node(auto_start):
+        return MainOrchestratorNode(parameter_overrides=[
+            rclpy.parameter.Parameter('use_act', rclpy.Parameter.Type.BOOL, False),
+            rclpy.parameter.Parameter(
+                'auto_start_on_print_done', rclpy.Parameter.Type.BOOL, auto_start),
+            rclpy.parameter.Parameter(
+                'print_done_delay_sec', rclpy.Parameter.Type.DOUBLE, 0.0),
+        ])
+
+    def _bed(node, temp):
+        node._printer_status_cb(String(data=json.dumps({'bed_temp': temp})))
+
+    node = _node(True)
+    try:
+        node._motor_homed = True          # 호밍 가드 통과
+        node._state = FsmState.IDLE
+
+        # 파라미터가 켜져 있고 IDLE 이면 예약된다
+        node._printer_done_cb(Bool(data=True))
+        assert node._auto_start_at is not None, '자동 시작이 예약되지 않았다'
+
+        # 베드 온도를 모르면 시작하지 않는다 (fail-closed)
+        node._fsm_loop()
+        assert node._state == FsmState.IDLE, '베드 온도를 모르는데 시작했다'
+
+        # 아직 뜨거우면 대기한다
+        _bed(node, 60.0)
+        node._fsm_loop()
+        assert node._state == FsmState.IDLE, '베드가 60℃인데 시작했다'
+
+        # 온도 정보가 오래됐으면 모르는 것으로 취급한다
+        _bed(node, 30.0)
+        node._bed_temp_at = time.time() - 999
+        node._fsm_loop()
+        assert node._state == FsmState.IDLE, '낡은 온도 정보로 시작했다'
+
+        # 기준 이하로 식으면 시작한다
+        _bed(node, 30.0)
+        node._fsm_loop()
+        assert node._state == FsmState.STARTUP_RAIL_HOME_TRIGGER, \
+            f'자동 시작이 START 경로를 타지 않았다: {node._state}'
+
+        # IDLE 이 아닐 때 들어온 신호는 무시된다
+        node._state = FsmState.GRASPING_WAIT
+        node._auto_start_at = None
+        node._printer_done_cb(Bool(data=True))
+        assert node._auto_start_at is None, 'IDLE 이 아닌데 자동 시작을 예약했다'
+
+        # 호밍 미완이면 자동 시작도 ERROR 로 차단된다 (HMI START 와 동일 가드)
+        node._state = FsmState.IDLE
+        node._motor_homed = False
+        node._printer_done_cb(Bool(data=True))
+        node._fsm_loop()
+        assert node._state == FsmState.ERROR, '호밍 미완인데 시퀀스가 시작됐다'
+    finally:
+        node.destroy_node()
+
+    # 파라미터가 꺼져 있으면 신호를 받아도 아무 일도 없어야 한다
+    node = _node(False)
+    try:
+        node._motor_homed = True
+        node._state = FsmState.IDLE
+        node._printer_done_cb(Bool(data=True))
+        node._fsm_loop()
+        assert node._auto_start_at is None and node._state == FsmState.IDLE, \
+            '자동 시작이 꺼져 있는데 움직였다'
+
+        # STOP 은 대기 중인 예약을 취소해야 한다 (정지 직후 자가 재시작 방지)
+        node._auto_start_at = 1.0
+        node._hmi_command_cb(String(data='STOP'))
+        assert node._auto_start_at is None, 'STOP 후에도 자동 시작 예약이 남아 있다'
     finally:
         node.destroy_node()

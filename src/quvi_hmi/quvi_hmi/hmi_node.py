@@ -24,6 +24,7 @@ from datetime import datetime
 
 import cv2
 import numpy as np
+import requests
 import rclpy
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
@@ -38,6 +39,7 @@ from flask_socketio import SocketIO
 
 
 # ─── ROS 토픽 이름 (SSoT: quvi_robot_control/topics.py) ───
+import quvi_robot_control.topics as topics
 from quvi_robot_control.utils import decode_compressed, decode_raw
 from quvi_robot_control.topics import (
     RAIL_STEPS_PER_MM,
@@ -88,6 +90,7 @@ DEVICE_DEFAULTS = {
     'dxl_port':         '/dev/ttyFollower',
     'leader_dxl_port':  '/dev/ttyLeader',
     'micro_ros_port':   '/dev/ttyESP32',
+    'moonraker_url':    'http://100.122.38.13:7125',
 }
 DEVICE_ROLES = [
     {'key': 'sidecam_device',   'label': '사이드캠 (camera1)',   'type': 'video'},
@@ -145,6 +148,7 @@ class HmiNode(Node):
             'camera2': None,
             'inspect_debug': None,
         }
+        self._printer_status = {}
 
         # ─── ACT 모델 선택 (대시보드) ───
         self._act_models = []       # [{'name','path','step'}]
@@ -171,6 +175,8 @@ class HmiNode(Node):
         # 갱신되어 UI에 고착되는 문제 — 로봇 상태 발행과 동기화한다.
         self.create_subscription(
             String, TOPIC_ROBOT_STATUS, self._robot_status_cb, 10)
+        self.create_subscription(
+            String, topics.TOPIC_PRINTER_STATUS, self._printer_status_cb, 10)
         # NOTE: /motor/rail 은 명령 토픽(HMI→ESP32)이므로 구독하지 않음.
         # 구독하면 자신이 발행한 명령을 즉시 수신하여 실제 위치처럼 표시되는
         # 루프백 문제가 발생한다. rail_position 은 send_rail_command() 에서
@@ -258,6 +264,15 @@ class HmiNode(Node):
         if msg.data.startswith('텔레옵 에러') or msg.data == '텔레오퍼레이션 종료':
             with self._lock:
                 self._system_status['teleop_active'] = False
+
+    def _printer_status_cb(self, msg: String):
+        try:
+            data = json.loads(msg.data)
+            if isinstance(data, dict):
+                with self._lock:
+                    self._printer_status = data
+        except Exception as e:
+            self.get_logger().warn(f'프린터 상태 파싱 실패: {e}')
 
     def _inspection_cb(self, msg: InspectionResult):
         record = {
@@ -905,6 +920,74 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
             _mjpeg_generator(cam_key),
             mimetype='multipart/x-mixed-replace; boundary=frame')
 
+    # ─── 프린터 제어 API (Moonraker) ───
+    @app.route('/api/printer/files')
+    def api_printer_files():
+        try:
+            url = str(hmi_node.load_device_config().get(
+                'moonraker_url', DEVICE_DEFAULTS['moonraker_url'])).rstrip('/')
+            resp = requests.get(f'{url}/server/files/list', params={'root': 'gcodes'}, timeout=3)
+            resp.raise_for_status()
+            data = resp.json()
+            items = data.get('result', []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+            files = [
+                {
+                    'path': item.get('path'),
+                    'modified': item.get('modified'),
+                    'size': item.get('size'),
+                }
+                for item in items if isinstance(item, dict)
+            ]
+            files.sort(key=lambda x: x.get('modified') or 0, reverse=True)
+            return jsonify(files)
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': str(e)}), 500
+
+    @app.route('/api/printer/start', methods=['POST'])
+    def api_printer_start():
+        try:
+            url = str(hmi_node.load_device_config().get(
+                'moonraker_url', DEVICE_DEFAULTS['moonraker_url'])).rstrip('/')
+            filename = request.json['filename']
+            resp = requests.post(f'{url}/printer/print/start', params={'filename': filename}, timeout=3)
+            resp.raise_for_status()
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': str(e)}), 500
+
+    @app.route('/api/printer/pause', methods=['POST'])
+    def api_printer_pause():
+        try:
+            url = str(hmi_node.load_device_config().get(
+                'moonraker_url', DEVICE_DEFAULTS['moonraker_url'])).rstrip('/')
+            resp = requests.post(f'{url}/printer/print/pause', timeout=3)
+            resp.raise_for_status()
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': str(e)}), 500
+
+    @app.route('/api/printer/resume', methods=['POST'])
+    def api_printer_resume():
+        try:
+            url = str(hmi_node.load_device_config().get(
+                'moonraker_url', DEVICE_DEFAULTS['moonraker_url'])).rstrip('/')
+            resp = requests.post(f'{url}/printer/print/resume', timeout=3)
+            resp.raise_for_status()
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': str(e)}), 500
+
+    @app.route('/api/printer/cancel', methods=['POST'])
+    def api_printer_cancel():
+        try:
+            url = str(hmi_node.load_device_config().get(
+                'moonraker_url', DEVICE_DEFAULTS['moonraker_url'])).rstrip('/')
+            resp = requests.post(f'{url}/printer/print/cancel', timeout=3)
+            resp.raise_for_status()
+            return jsonify({'ok': True})
+        except Exception as e:
+            return jsonify({'ok': False, 'msg': str(e)}), 500
+
     # ─── WebSocket: 실시간 상태 업데이트 ───
     def _ws_broadcast():
         """주기적으로 상태를 WebSocket으로 브로드캐스트."""
@@ -919,6 +1002,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                     'status': status,
                     'stats': stats,
                     'latest_inspection': history[-1] if history else None,
+                    'printer': hmi_node._printer_status,
                 })
             except Exception:
                 pass

@@ -106,12 +106,28 @@ def generate_launch_description():
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
     moonraker_url_arg = DeclareLaunchArgument(
-        'moonraker_url', default_value='http://localhost:7125',
+        'moonraker_url', default_value=_dev.get('moonraker_url', 'http://100.122.38.13:7125'),
         description='Moonraker API 기본 URL')
 
     poll_sec_arg = DeclareLaunchArgument(
         'poll_sec', default_value='2.0',
         description='Moonraker 상태 폴링 주기(초)')
+
+    auto_start_arg = DeclareLaunchArgument(
+        'auto_start_on_print_done', default_value='false',
+        description='출력 완료 신호로 검사 시퀀스를 자동 시작할지 (사람 없이 로봇이 출발한다)')
+
+    print_done_delay_arg = DeclareLaunchArgument(
+        'print_done_delay_sec', default_value='0.0',
+        description='출력 완료 후 자동 시작까지 대기(초) — 출력물 냉각 시간, 실측값을 넣을 것')
+
+    bed_temp_start_max_arg = DeclareLaunchArgument(
+        'bed_temp_start_max', default_value='35.0',
+        description='파지 시작을 허용하는 베드 온도 상한(℃)')
+
+    bed_temp_max_age_arg = DeclareLaunchArgument(
+        'bed_temp_max_age_sec', default_value='10.0',
+        description='베드 온도 수신이 이보다 오래되면 모름으로 취급(초)')
 
     # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
@@ -178,6 +194,14 @@ def generate_launch_description():
             'loop_rate_hz': 10.0,
             # micro_ros_port 와 동일한 장치 — 미전달 시 하드리셋이 기본값 포트를 써서 어긋난다
             'esp32_reset_port': LaunchConfiguration('micro_ros_port'),
+            'auto_start_on_print_done': ParameterValue(
+                LaunchConfiguration('auto_start_on_print_done'), value_type=bool),
+            'print_done_delay_sec': ParameterValue(
+                LaunchConfiguration('print_done_delay_sec'), value_type=float),
+            'bed_temp_start_max': ParameterValue(
+                LaunchConfiguration('bed_temp_start_max'), value_type=float),
+            'bed_temp_max_age_sec': ParameterValue(
+                LaunchConfiguration('bed_temp_max_age_sec'), value_type=float),
         }],
         output='screen',
     )
@@ -238,6 +262,10 @@ def generate_launch_description():
         anomaly_enabled_arg,
         moonraker_url_arg,
         poll_sec_arg,
+        auto_start_arg,
+        print_done_delay_arg,
+        bed_temp_start_max_arg,
+        bed_temp_max_age_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
