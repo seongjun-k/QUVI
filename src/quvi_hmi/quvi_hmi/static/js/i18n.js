@@ -42,6 +42,7 @@
             'stat.passRate': '합격률',
 
             'cam.sidecam': '사이드캠 (픽업 구역)',
+            'cam.topcam': '탑뷰캠 (상단)',
             'cam.sidecamOnly': '사이드캠',
             'cam.inspect': '검사캠 (검사 구역)',
             'cam.result': '검사 판정 결과',
@@ -281,6 +282,7 @@
             'stat.passRate': 'Pass Rate',
 
             'cam.sidecam': 'Side Cam (Pickup Zone)',
+            'cam.topcam': 'Top Cam (Overhead)',
             'cam.sidecamOnly': 'Side Cam',
             'cam.inspect': 'Inspect Cam (Inspection Zone)',
             'cam.result': 'Inspection Result',
@@ -520,6 +522,7 @@
             'stat.passRate': '合格率',
 
             'cam.sidecam': 'サイドカメラ（ピックアップ区域）',
+            'cam.topcam': 'トップカメラ（上部）',
             'cam.sidecamOnly': 'サイドカメラ',
             'cam.inspect': '検査カメラ（検査区域）',
             'cam.result': '検査判定結果',

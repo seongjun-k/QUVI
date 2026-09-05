@@ -57,6 +57,10 @@ def generate_launch_description():
         'fixed_cam_device', default_value=_dev.get('fixed_cam_device', '/dev/fixed_cam'),
         description='고정 카메라 장치 경로')
 
+    topcam_arg = DeclareLaunchArgument(
+        'topcam_device', default_value=_dev.get('topcam_device', '/dev/topcam'),
+        description='탑뷰 카메라 장치 경로')
+
     use_real_hardware_arg = DeclareLaunchArgument(
         'use_real_hardware', default_value='true',
         description='실제 Dynamixel 하드웨어 사용 여부 (false=시뮬레이션)')
@@ -156,6 +160,7 @@ def generate_launch_description():
             'debug': False,
             'sidecam_topic': '/camera1/image_raw/compressed',
             'camera2_topic': '/camera2/image_raw/compressed',
+            'topcam_topic': '/camera3/image_raw/compressed',
             'inspect_debug_topic': '/inspect/debug_image',
             'jpeg_quality': 70,
             'stream_fps': 15,
@@ -248,6 +253,7 @@ def generate_launch_description():
         hmi_port_arg,
         sidecam_arg,
         fixed_cam_arg,
+        topcam_arg,
         use_real_hardware_arg,
         use_act_arg,
         rerun_save_path_arg,

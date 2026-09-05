@@ -58,10 +58,11 @@
                 <span class="nav-item-label" data-i18n="nav.inspection">검사 상세 내역</span>
             </a>
             <a href="#" id="menu-printer" class="nav-item" onclick="switchTab('printer')" title="프린터" data-i18n-title="nav.printer">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polyline points="6 9 6 2 18 2 18 9"/>
-                    <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>
-                    <rect x="6" y="14" width="12" height="8"/>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="4" y="3" width="16" height="9" rx="1"/>
+                    <path d="M4 12v4h16v-4"/>
+                    <rect x="8" y="16" width="8" height="5" rx="0.5"/>
+                    <line x1="12" y1="6" x2="12" y2="9"/>
                 </svg>
                 <span class="nav-item-label" data-i18n="nav.printer">프린터</span>
             </a>
@@ -164,6 +165,11 @@
                     <div class="camera-feed">
                         <img src="/stream/inspect_debug" alt="검사 결과" loading="lazy">
                         <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><line x1="12" y1="2" x2="12" y2="5.5"/><line x1="12" y1="18.5" x2="12" y2="22"/><line x1="2" y1="12" x2="5.5" y2="12"/><line x1="18.5" y1="12" x2="22" y2="12"/></svg><span data-i18n="cam.result">검사 판정 결과</span></div>
+                    </div>
+                    <div class="camera-feed">
+                        <img src="/stream/topcam" alt="탑뷰캠" loading="lazy">
+                        <div class="camera-label"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg><span data-i18n="cam.topcam">탑뷰캠 (상단)</span></div>
+                        <div class="camera-status"></div>
                     </div>
                     <!-- ACT 추론 실시간 모니터링(rerun 웹 뷰어) — 발표용, robot_control_node의 rerun_enable=true일 때만 데이터 표시 -->
                     <div class="camera-feed" id="rerunPanelBody" style="grid-column:1 / -1;">
@@ -918,54 +924,9 @@
             </div>
         </div>
 
-        <!-- ═══ 프린터 탭 (Klipper/Moonraker 하이브리드: 운영 제어는 여기, 심화관리는 Mainsail) ═══ -->
+        <!-- ═══ 프린터 탭 (Mainsail 통짜 임베드) ═══ -->
         <div id="tab-printer" class="tab-pane">
-            <div class="printer-grid">
-                <!-- 상태 -->
-                <div class="card status-card">
-                    <div class="card-header">
-                        <span class="card-title" data-i18n="printer.title">프린터</span>
-                        <span id="printerStateBadge" class="result-badge" data-i18n="printer.state.standby">대기</span>
-                    </div>
-                    <div class="card-body" style="padding:16px;">
-                        <div class="printer-temps">
-                            <div><span data-i18n="printer.nozzle">노즐</span> <b id="printerNozzle">—</b> °C</div>
-                            <div><span data-i18n="printer.bed">베드</span> <b id="printerBed">—</b> °C</div>
-                        </div>
-                        <div class="printer-file-row"><span data-i18n="printer.file">파일</span>: <span id="printerFile">—</span></div>
-                        <div class="printer-progress-track">
-                            <div id="printerProgressBar" class="printer-progress-fill"></div>
-                        </div>
-                        <div class="printer-progress-txt"><span id="printerProgressTxt">0%</span></div>
-                    </div>
-                </div>
-                <!-- 모델 선택 -->
-                <div class="card status-card">
-                    <div class="card-header">
-                        <span class="card-title" data-i18n="printer.selectModel">모델 선택</span>
-                    </div>
-                    <div class="card-body" style="padding:16px;">
-                        <select id="printerModelSelect" class="printer-model-select"></select>
-                        <div class="printer-model-btns">
-                            <button class="btn manual-exec-btn" id="printerStartBtn" onclick="startPrint()" data-i18n="printer.startPrint">출력 시작</button>
-                            <button class="btn" onclick="loadPrinterFiles()" data-i18n="device.refreshBtn">새로고침</button>
-                        </div>
-                    </div>
-                </div>
-                <!-- 제어 -->
-                <div class="card status-card printer-ctrl-card">
-                    <div class="card-header">
-                        <span class="card-title" data-i18n="printer.control">프린터 제어</span>
-                    </div>
-                    <div class="card-body printer-ctrl-body">
-                        <button class="btn" id="printerPauseBtn" onclick="pausePrint()" data-i18n="printer.pause">일시정지</button>
-                        <button class="btn" id="printerResumeBtn" onclick="resumePrint()" data-i18n="printer.resume">재개</button>
-                        <button class="btn btn-stop" id="printerCancelBtn" onclick="cancelPrint()" data-i18n="printer.cancel">취소</button>
-                        <span class="printer-ctrl-spacer"></span>
-                        <a class="btn" id="mainsailLink" href="#" target="_blank" rel="noopener" data-i18n="printer.advanced">고급 관리(Mainsail)</a>
-                    </div>
-                </div>
-            </div>
+            <iframe id="mainsailFrame" src="about:blank" class="mainsail-frame" title="Mainsail"></iframe>
         </div>
 
     </main>

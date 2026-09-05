@@ -87,6 +87,7 @@ RESTART_SENTINEL   = '/workspace/data/.restart_requested'
 DEVICE_DEFAULTS = {
     'sidecam_device':   '/dev/sidecam',
     'fixed_cam_device': '/dev/fixed_cam',
+    'topcam_device':    '/dev/topcam',
     'dxl_port':         '/dev/ttyFollower',
     'leader_dxl_port':  '/dev/ttyLeader',
     'micro_ros_port':   '/dev/ttyESP32',
@@ -95,6 +96,7 @@ DEVICE_DEFAULTS = {
 DEVICE_ROLES = [
     {'key': 'sidecam_device',   'label': '사이드캠 (camera1)',   'type': 'video'},
     {'key': 'fixed_cam_device', 'label': '고정캠 (camera2)',     'type': 'video'},
+    {'key': 'topcam_device',    'label': '탑뷰캠 (camera3)',     'type': 'video'},
     {'key': 'dxl_port',         'label': '로봇 Follower',        'type': 'serial'},
     {'key': 'leader_dxl_port',  'label': '로봇 Leader',          'type': 'serial'},
     {'key': 'micro_ros_port',   'label': 'ESP (micro-ROS)',      'type': 'serial'},
@@ -113,6 +115,7 @@ class HmiNode(Node):
         self.declare_parameter('debug', False)
         self.declare_parameter('sidecam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('camera2_topic', '/camera2/image_raw/compressed')
+        self.declare_parameter('topcam_topic', '/camera3/image_raw/compressed')
         self.declare_parameter('inspect_debug_topic', '/inspect/debug_image')
         self.declare_parameter('jpeg_quality', 70)
         self.declare_parameter('stream_fps', 15)
@@ -146,6 +149,7 @@ class HmiNode(Node):
         self._jpeg_cache = {
             'sidecam': None,
             'camera2': None,
+            'topcam': None,
             'inspect_debug': None,
         }
         self._printer_status = {}
@@ -190,6 +194,7 @@ class HmiNode(Node):
         # 카메라 스트림
         sidecam_topic = self.get_parameter('sidecam_topic').value
         cam2_topic = self.get_parameter('camera2_topic').value
+        topcam_topic = self.get_parameter('topcam_topic').value
         inspect_topic = self.get_parameter('inspect_debug_topic').value
 
         self.create_subscription(
@@ -198,6 +203,9 @@ class HmiNode(Node):
         self.create_subscription(
             CompressedImage, cam2_topic,
             lambda msg: self._store_frame(decode_compressed(msg), 'camera2'), 5)
+        self.create_subscription(
+            CompressedImage, topcam_topic,
+            lambda msg: self._store_frame(decode_compressed(msg), 'topcam'), 5)
         self.create_subscription(
             Image, inspect_topic,
             lambda msg: self._store_frame(decode_raw(msg), 'inspect_debug'), 5)
@@ -913,7 +921,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
     @app.route('/stream/<cam_key>')
     def video_stream(cam_key):
-        valid_keys = ['sidecam', 'camera2', 'inspect_debug']
+        valid_keys = ['sidecam', 'camera2', 'topcam', 'inspect_debug']
         if cam_key not in valid_keys:
             return 'Invalid camera key', 404
         return Response(
