@@ -187,6 +187,7 @@ def generate_launch_description():
             # 150프레임 중 앞 50프레임만 실행하고 예산에 잘린다 — 파지 구간에 도달 못 함.
             'act_device': 'cuda',
             'sidecam_topic': '/camera1/image_raw/compressed',
+            'topcam_topic': '/camera3/image_raw/compressed',
             'rerun_save_path': LaunchConfiguration('rerun_save_path'),
         }],
         output='screen',

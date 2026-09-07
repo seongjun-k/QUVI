@@ -282,6 +282,8 @@ class RobotControlNode(Node):
 
         self._latest_sidecam: Optional[np.ndarray] = None
         self._sidecam_lock = threading.Lock()
+        self._latest_topcam: Optional[np.ndarray] = None
+        self._topcam_lock = threading.Lock()
 
         self._esp32_rail_done = False
 
@@ -357,13 +359,13 @@ class RobotControlNode(Node):
         # ACT
         self.declare_parameter('use_act', False)
         self.declare_parameter('act_model_path',
-            '/workspace/data/models/GUVI0625100FF/checkpoints/100000/pretrained_model')
+            '/workspace/data/models/smolvla_120ep/checkpoints/006000/pretrained_model')
         self.declare_parameter('act_device', 'cuda')  # 'cuda' or 'cpu' — CPU 는 추론 3.1s 라 궤적이 잘린다
         # VLA/프롬프트 (VLA 계열 정책 모델 도입 시 전달할 기본 언어 태스크)
         # VLA 계열은 이 문자열로 조건화되므로 학습 데이터셋 meta/tasks.jsonl 의
         # task 값과 반드시 일치해야 한다 (불일치 시 분포 밖 입력이 된다).
         # ACT 는 자기 input_features 만 순회해 이 값을 무시한다.
-        self.declare_parameter('act_task_prompt', 'pick')
+        self.declare_parameter('act_task_prompt', 'Pick up the printed part from the bed.')
         # ACT 모델 탐색 루트 (대시보드 선택용). 학습 출력 train 폴더.
         # ':' 로 여러 루트 지정 가능.
         self.declare_parameter('act_models_root',
@@ -380,8 +382,10 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_mm_inspect', 12.5)
         self.declare_parameter('rail_mm_pass',    25.0)
         self.declare_parameter('rail_mm_fail',    125.0)
-        # 카메라
+        # 카메라 — VLA 2캠 정책은 사이드+탑뷰를 rgb.camera1/rgb.camera3 로 학습했다.
+        # 키 매핑: 'camera1' 포함 입력키→사이드, 'camera3' 포함→탑뷰(_build_policy_obs).
         self.declare_parameter('sidecam_topic', '/camera1/image_raw/compressed')
+        self.declare_parameter('topcam_topic', '/camera3/image_raw/compressed')
         # 동작 타임아웃 (초)
         self.declare_parameter('rail_move_timeout_sec', 30.0)
         self.declare_parameter('grasp_timeout_sec', 20.0)
@@ -414,6 +418,7 @@ class RobotControlNode(Node):
             RailPosition.FAIL:    self.get_parameter('rail_mm_fail').value,
         }
         self._sidecam_topic  = self.get_parameter('sidecam_topic').value
+        self._topcam_topic   = self.get_parameter('topcam_topic').value
         self._rail_timeout   = self.get_parameter('rail_move_timeout_sec').value
         self._grasp_timeout  = self.get_parameter('grasp_timeout_sec').value
         self._home_timeout   = self.get_parameter('home_timeout_sec').value
@@ -510,13 +515,14 @@ class RobotControlNode(Node):
             if not resolved_path.exists():
                 raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
             config = PreTrainedConfig.from_pretrained(str(resolved_path))
-            # 실기 카메라는 사이드캠 1대뿐이다. 이미지 입력이 2개 이상인 정책은
-            # 남는 슬롯에 같은 사이드캠 프레임이 들어가 조용히 틀린 액션을 내므로 거부한다.
+            # 지원: 1캠(사이드) 또는 2캠(사이드 rgb.camera1 + 탑뷰 rgb.camera3).
+            # _build_policy_obs 가 키별로 실제 카메라에 매핑한다(매핑 불가 키는 fail-fast).
+            # 3개 이상이나 매핑 불가 조합은 조용히 틀린 액션을 내므로 거부한다.
             n_img = sum(1 for k in config.input_features if 'image' in k)
-            if n_img != 1:
+            if n_img not in (1, 2):
                 raise ValueError(
-                    f'이미지 입력 {n_img}개 정책은 지원하지 않습니다(사이드캠 1대). '
-                    '탑뷰 추가 시 _build_policy_obs 의 카메라 매핑부터 확장할 것.')
+                    f'이미지 입력 {n_img}개 정책은 지원하지 않습니다(사이드캠+탑뷰 최대 2대). '
+                    '_build_policy_obs 의 카메라 매핑을 먼저 확장할 것.')
             policy_cls = get_policy_class(config.type)
             policy = policy_cls.from_pretrained(str(resolved_path), config=config)
             policy.eval()
@@ -555,19 +561,30 @@ class RobotControlNode(Node):
             self.get_logger().error(f'정책 모델 로드 실패: {e}')
             return False
 
-    def _build_policy_obs(self, img_tensor: 'torch.Tensor', state_tensor: 'torch.Tensor') -> dict:
-        """현재 로드된 정책의 input_features 스펙에 맞춰 관측 딕셔너리를 구성한다."""
+    def _build_policy_obs(self, cam_tensors: dict, state_tensor: 'torch.Tensor') -> dict:
+        """정책 input_features 스펙에 맞춰 관측 딕셔너리를 구성한다.
+
+        cam_tensors: {'camera1': 사이드 텐서, 'camera3': 탑뷰 텐서} — 필요한 것만 있으면 됨.
+        이미지 키는 문자열(camera1/camera3)로 실제 카메라에 매핑한다. SmolVLA 는
+        config.image_features 순서대로 쌓되 배치에서 키로 조회하므로 순서 무관, 키만 맞으면 됨.
+        매핑할 프레임이 없는 이미지 키는 조용히 틀린 액션 대신 즉시 오류(fail-fast).
+        """
         obs = {}
         features = getattr(getattr(self._act_policy, 'config', None), 'input_features', None)
         for k in (features or {}):
             if 'state' in k:
                 obs[k] = state_tensor
             elif 'image' in k:
-                # 로드 시 이미지 입력 1개만 통과시키므로 여기서 매핑은 항상 1:1이다.
-                obs[k] = img_tensor
+                matched = next((t for cam, t in cam_tensors.items()
+                                if cam in k and t is not None), None)
+                if matched is None:
+                    raise KeyError(
+                        f'정책 이미지 입력 {k} 에 매핑할 카메라 프레임이 없습니다 '
+                        f'(가용: {[c for c, t in cam_tensors.items() if t is not None]}).')
+                obs[k] = matched
         if not obs:
             obs = {
-                'observation.images.camera1': img_tensor,
+                'observation.images.camera1': cam_tensors.get('camera1'),
                 'observation.state': state_tensor,
             }
         # task 는 input_features 에 없지만 VLA 계열이 batch['task'] 로 직접 읽는다.
@@ -733,6 +750,10 @@ class RobotControlNode(Node):
         self._sidecam_sub = self.create_subscription(
             CompressedImage, self._sidecam_topic,
             self._sidecam_callback, 10)
+        # 탑뷰 — 2캠 VLA 정책 관측용. 1캠 정책이면 미사용(구독만 유지).
+        self._topcam_sub = self.create_subscription(
+            CompressedImage, self._topcam_topic,
+            self._topcam_callback, 10)
 
         self._grasp_cmd_sub = self.create_subscription(
             GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
@@ -849,6 +870,12 @@ class RobotControlNode(Node):
         if frame is not None:
             with self._sidecam_lock:
                 self._latest_sidecam = frame
+
+    def _topcam_callback(self, msg: CompressedImage):
+        frame = decode_compressed(msg)
+        if frame is not None:
+            with self._topcam_lock:
+                self._latest_topcam = frame
 
     def _esp32_rail_done_callback(self, msg: Bool):
         # 레일 이동 중일 때만 done 을 수락한다. 오케스트레이터가 STARTUP 에서
@@ -1206,7 +1233,14 @@ class RobotControlNode(Node):
                     self._set_state_if_current(RobotState.IDLE, gen)
                     return False
 
-                img_tensor = self._act_image_tensor(frame)
+                with self._topcam_lock:
+                    top_frame = self._latest_topcam
+
+                # 2캠 정책이면 탑뷰까지 매핑, 1캠이면 사이드만. 탑뷰가 필요한데
+                # 없으면 _build_policy_obs 가 fail-fast 로 막는다(엉뚱한 프레임 주입 방지).
+                cam_tensors = {'camera1': self._act_image_tensor(frame)}
+                if top_frame is not None:
+                    cam_tensors['camera3'] = self._act_image_tensor(top_frame)
 
                 acquired = self._dxl_io_lock.acquire(blocking=True, timeout=0.03)
                 if not acquired:
@@ -1231,7 +1265,7 @@ class RobotControlNode(Node):
                     joint_vals, dtype=torch.float32).unsqueeze(0)
                 state_tensor = state_tensor.to(self._act_device_obj)
 
-                obs = self._build_policy_obs(img_tensor, state_tensor)
+                obs = self._build_policy_obs(cam_tensors, state_tensor)
 
                 infer_start = time.time()
                 with torch.no_grad():
