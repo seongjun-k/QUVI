@@ -14,6 +14,32 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker/docker-compose.yml"
 
 source "${SCRIPT_DIR}/docker/find_or_start_container.sh"
 
+# ─── qrun 사전 정리 ───
+# QUVI(quvi-dev)와 cyclo 스택(open_manipulator/zenoh)은 같은 /dev/video·DYNAMIXEL 포트를
+# 두고 경합한다. cyclo 컨테이너가 남아 usb_cam이 카메라를 선점하면 QUVI 카메라가 안 뜨므로
+# 실행 전에 내린다. 이미지/볼륨은 건드리지 않는다(정지만 — 재빌드 방지).
+_quvi_free_container() {
+    local c="$1"
+    [ -z "$(docker ps -q -f name="^${c}$")" ] && return 0
+    echo "[QUVI] 충돌 컨테이너 종료: ${c}"
+    docker stop -t 5 "${c}" >/dev/null 2>&1
+    # snap dockerd + AppArmor 환경에선 stop 시그널이 막힐 수 있다(기록된 함정).
+    # 그래도 살아있으면 내부 usb_cam/respawn 래퍼만 죽여 장치라도 반납시킨다.
+    if [ -n "$(docker ps -q -f name="^${c}$")" ]; then
+        docker exec "${c}" bash -c "pkill -9 -f usb_cam; pkill -9 -f 'while true'" >/dev/null 2>&1
+        echo "[QUVI]   (stop 미적용 → ${c} 내부 usb_cam 강제 종료로 카메라 반납)"
+    fi
+}
+for _c in open_manipulator zenoh_daemon cyclo_manager cyclo_manager_ui lerobot_server; do
+    _quvi_free_container "${_c}"
+done
+
+# 페이지 캐시 비우기(메모리 확보) — sudo 무암호 가능할 때만, 실패해도 무시.
+if sudo -n true 2>/dev/null; then
+    sync
+    echo 3 | sudo -n tee /proc/sys/vm/drop_caches >/dev/null 2>&1 && echo "[QUVI] 페이지 캐시 정리 완료"
+fi
+
 echo "[QUVI] 컨테이너(${TARGET_CONTAINER}) 내부에서 메인 프로그램 실행 중..."
 if [ -t 0 ]; then
     docker exec -it "${TARGET_CONTAINER}" bash -c "
