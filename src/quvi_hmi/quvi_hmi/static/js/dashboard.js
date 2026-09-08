@@ -900,6 +900,24 @@ async function refreshInspectionProducts() {
             }
         }
 
+        // 데이터셋 촬영 패널의 수집 품종 드롭다운 — 항상 현재 선택을 반영(선택 즉시 적용).
+        const dsSel = document.getElementById('dsCaptureProduct');
+        if (dsSel) {
+            dsSel.innerHTML = '';
+            if (products.length === 0) {
+                dsSel.innerHTML = `<option value="">${I18N.t('product.noProducts')}</option>`;
+            } else {
+                for (const p of products) {
+                    const opt = document.createElement('option');
+                    opt.value = p.id;
+                    const tag = p.ready ? I18N.t('product.ready') : I18N.t('product.incomplete');
+                    opt.textContent = `${p.id} (${tag})`;
+                    if (p.id === current) opt.selected = true;
+                    dsSel.appendChild(opt);
+                }
+            }
+        }
+
         const curEl = document.getElementById('productCurrent');
         if (curEl) {
             curEl.textContent = current || I18N.t('product.none');
@@ -911,10 +929,8 @@ async function refreshInspectionProducts() {
     }
 }
 
-async function selectProduct() {
-    const sel = document.getElementById('productSelect');
-    const msgEl = document.getElementById('productMsg');
-    const id = sel ? sel.value : '';
+// 품종 선택 카드와 데이터셋 촬영 패널의 드롭다운이 같은 서버측 현재 품종을 공유한다.
+async function _applyProductSelect(id, msgEl) {
     if (!id) {
         if (msgEl) { msgEl.textContent = I18N.t('product.noneSelected'); msgEl.style.color = 'var(--accent-red)'; }
         return;
@@ -938,6 +954,17 @@ async function selectProduct() {
     } catch (e) {
         if (msgEl) { msgEl.textContent = I18N.t('common.networkError'); msgEl.style.color = 'var(--accent-red)'; }
     }
+}
+
+function selectProduct() {
+    const sel = document.getElementById('productSelect');
+    _applyProductSelect(sel ? sel.value : '', document.getElementById('productMsg'));
+}
+
+// 데이터셋 촬영 패널 드롭다운 — 수집 대상 품종을 바로 선택(현재 품종으로 반영).
+function selectDatasetProduct() {
+    const sel = document.getElementById('dsCaptureProduct');
+    _applyProductSelect(sel ? sel.value : '', document.getElementById('dsCaptureStatus'));
 }
 
 async function createProduct() {

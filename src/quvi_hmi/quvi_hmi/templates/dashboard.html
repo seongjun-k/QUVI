@@ -768,6 +768,10 @@
                                 </div>
                                 <div class="manual-ctrl-hint" data-i18n="manual.dsCapHint">정상품을 턴테이블에 올린 후 시작하세요 (ML 학습용 원본 저장)</div>
                                 <div class="manual-ctrl-row" style="align-items:center;gap:8px;flex-wrap:wrap;">
+                                    <label style="font-size:11px;color:var(--text-muted);" data-i18n="manual.dsCapProduct">수집 품종</label>
+                                    <select id="dsCaptureProduct" style="min-width:120px;padding:5px;" onchange="selectDatasetProduct()">
+                                        <option value="" data-i18n="product.loadingOption">로딩 중...</option>
+                                    </select>
                                     <label style="font-size:11px;color:var(--text-muted);" data-i18n="manual.settleSec">안정화(초)</label>
                                     <input type="number" id="dsCaptureSettle" class="manual-input"
                                         min="0.5" max="10" step="0.5" value="2.0"

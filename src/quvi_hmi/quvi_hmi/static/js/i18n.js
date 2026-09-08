@@ -202,6 +202,7 @@
 
             'manual.dsCapTitle': '데이터셋 촬영',
             'manual.dsCapHint': '정상품을 턴테이블에 올린 후 시작하세요 (ML 학습용 원본 저장)',
+            'manual.dsCapProduct': '수집 품종',
             'manual.settleSec': '안정화(초)',
             'manual.rounds': '반복(바퀴)',
             'manual.dsCapStart': '촬영 시작',
@@ -463,6 +464,7 @@
 
             'manual.dsCapTitle': 'Dataset Capture',
             'manual.dsCapHint': 'Place a good object on the turntable before starting (raw images for ML training)',
+            'manual.dsCapProduct': 'Collect for',
             'manual.settleSec': 'Settle (s)',
             'manual.rounds': 'Rounds',
             'manual.dsCapStart': 'Start Capture',
@@ -724,6 +726,7 @@
 
             'manual.dsCapTitle': 'データセット撮影',
             'manual.dsCapHint': '良品をターンテーブルに載せてから開始してください（ML学習用の原本を保存）',
+            'manual.dsCapProduct': '収集品種',
             'manual.settleSec': '安定化(秒)',
             'manual.rounds': '繰り返し(周)',
             'manual.dsCapStart': '撮影開始',
