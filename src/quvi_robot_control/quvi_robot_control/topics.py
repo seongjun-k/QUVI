@@ -37,6 +37,12 @@ TOPIC_INSPECTION_TRIGGER = '/inspection/trigger'
 TOPIC_INSPECTION_CAPTURE_NOW = '/inspection/capture_now'
 TOPIC_INSPECTION_RESULT = '/inspection/result'
 
+# ─── 다품종 검사 자산 (inspect_node <-> HMI) ───
+TOPIC_INSPECTION_PRODUCTS = '/inspection/products'               # inspect_node→HMI, latched JSON 목록
+TOPIC_INSPECTION_PRODUCT_CURRENT = '/inspection/product_current'  # inspect_node→HMI, latched
+TOPIC_INSPECTION_PRODUCT_SELECT = '/inspection/product_select'    # HMI→inspect_node
+TOPIC_INSPECTION_PRODUCT_CREATE = '/inspection/product_create'    # HMI→inspect_node
+
 # Global Status
 TOPIC_ESTOP = '/system/estop'
 

@@ -219,17 +219,34 @@ def _score_fail_logs(
 # ─── CLI ───
 def main() -> None:
     parser = argparse.ArgumentParser(description='QUVI 이상탐지 메모리뱅크 학습 (Phase 1)')
-    parser.add_argument('--dataset-dir', default='/workspace/data/anomaly_dataset/raw')
-    parser.add_argument('--models-dir', default='/workspace/data/models')
+    parser.add_argument('--dataset-dir', default=None,
+                         help='정상 데이터셋 루트. --product 미지정 시 기본 /workspace/data/anomaly_dataset/raw')
+    parser.add_argument('--models-dir', default=None,
+                         help='뱅크/thresholds.json 저장 위치. --product 미지정 시 기본 /workspace/data/models')
     parser.add_argument('--logs-dir', default='/workspace/data/inspection_logs')
     parser.add_argument('--coreset-ratio', type=float, default=0.1)
     parser.add_argument('--threshold-margin', type=float, default=1.15)
     parser.add_argument('--seed', type=int, default=42)
     parser.add_argument('--device', default='cuda')
+    # ─── 다품종 검사 자산 (선택) ───
+    parser.add_argument('--product', default=None,
+                         help='지정 시 dataset-dir/models-dir 를 <products-root>/<product>/ 하위로 유도. '
+                              '명시적 --dataset-dir/--models-dir 가 있으면 그쪽이 우선.')
+    parser.add_argument('--products-root', default='/workspace/data/inspection_products')
     args = parser.parse_args()
 
+    if args.product:
+        if args.dataset_dir is None:
+            args.dataset_dir = os.path.join(args.products_root, args.product, 'anomaly_dataset', 'raw')
+        if args.models_dir is None:
+            args.models_dir = os.path.join(args.products_root, args.product, 'models')
+    args.dataset_dir = args.dataset_dir or '/workspace/data/anomaly_dataset/raw'
+    args.models_dir = args.models_dir or '/workspace/data/models'
+
     os.makedirs(args.models_dir, exist_ok=True)
-    backbone_weights_path = os.path.join(args.models_dir, BACKBONE_WEIGHTS_FILENAME)
+    # 백본은 품종 무관 공용 자산 — models-dir 가 품종별 경로로 유도돼도
+    # 백본은 항상 전역 /workspace/data/models 에서 로드한다(자산 레이아웃 SSoT).
+    backbone_weights_path = os.path.join('/workspace/data/models', BACKBONE_WEIGHTS_FILENAME)
 
     results = {}
     for angle in ANGLES:

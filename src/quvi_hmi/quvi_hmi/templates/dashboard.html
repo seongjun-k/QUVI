@@ -605,6 +605,44 @@
                     </div>
                 </div>
 
+                <!-- 검사 품종 선택 카드 (다품종 검사 자산) -->
+                <div class="card status-card" style="flex:1 1 360px; margin-top:0;" id="product-panel">
+                    <div class="card-header">
+                        <span class="card-title"><svg class="ci" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg><span data-i18n="status.productTitle">검사 품종 선택</span></span>
+                        <span style="font-size:11px;color:var(--text-muted);" data-i18n="product.applyNote">검사 진행 중에는 전환 불가</span>
+                    </div>
+                    <div class="card-body">
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:12px; align-items:end;">
+                            <!-- 1칸: 품종 선택 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;" data-i18n="product.selectLabel">품종</div>
+                                <select id="productSelect" style="width:100%;padding:6px;box-sizing:border-box;">
+                                    <option value="" data-i18n="product.loadingOption">로딩 중...</option>
+                                </select>
+                            </div>
+                            <!-- 2칸: 선택 적용 버튼 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;" data-i18n="act.applyLabel">적용</div>
+                                <button id="productSelectBtn" class="btn manual-exec-btn" style="width:100%;" onclick="selectProduct()" data-i18n="product.selectBtn">선택</button>
+                            </div>
+                            <!-- 3칸: 현재 품종 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;" data-i18n="product.currentLabel">현재 품종</div>
+                                <div id="productCurrent" style="font-size:13px;font-weight:600;">-</div>
+                            </div>
+                            <!-- 4칸: 신규 품종 등록 -->
+                            <div>
+                                <div style="font-size:11px;color:var(--text-muted);margin-bottom:4px;" data-i18n="product.createLabel">품종 등록</div>
+                                <div style="display:flex;gap:4px;">
+                                    <input type="text" id="productCreateInput" class="manual-input" style="flex:1;min-width:0;" data-i18n-placeholder="product.createPlaceholder" placeholder="품종 id">
+                                    <button id="productCreateBtn" class="btn manual-exec-btn" onclick="createProduct()" data-i18n="product.createBtn">등록</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="productMsg" style="margin-top:8px;font-size:11px;color:#7bd;"></div>
+                    </div>
+                </div>
+
                 </div><!-- /장치+ACT 행 -->
 
                 <!-- 수동 제어 패널 카드 -->

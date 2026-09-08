@@ -13,6 +13,7 @@ QUVI INSPECT_NODE
 """
 
 import os
+import re
 import time
 import math
 import json
@@ -25,32 +26,45 @@ import cv2
 import numpy as np
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import CompressedImage, Image
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
 from quvi_robot_control.utils import decode_compressed, BinaryCache, encode_bgr
 from quvi_robot_control import topics
 from quvi_inspect.ml_preprocess import preprocess_for_ml
 
+# 품종 id는 디렉토리명으로 직접 쓰인다 — 경로 이탈 방지(트리거 문자열이 신뢰 경계).
+PRODUCT_ID_RE = re.compile(r'^[A-Za-z0-9_-]{1,64}$')
+
 
 class InspectNode(Node):
     """양불 판정 노드 — 표면 특징 분석 (CAD 비교는 제거됨)."""
 
-    def __init__(self):
-        super().__init__('inspect_node')
+    def __init__(self, **kwargs):
+        # RobotControlNode 와 동일 패턴 — parameter_overrides 등을 그대로 전달해
+        # 노드/런치 없이도 오프라인 테스트에서 파라미터를 주입할 수 있게 한다.
+        super().__init__('inspect_node', **kwargs)
 
         # ─── 파라미터 선언 + 로드 (1단계) ───
         self._load_params()
+        # 품종별 params.json 오버라이드가 없을 때 되돌아갈 전역 기본값 (SSoT: yaml/기본 파라미터).
+        self._global_f_area_min = self._f_area_min
+        self._global_f_area_max = self._f_area_max
 
-        # ─── 기준 이미지 로드 ───
+        # ─── 다품종 검사 자산 ───
+        # 자산은 각도로만 키잉하던 기존 구조를 품종(product_id) 하위로 감싼다.
+        # 기동 시에는 UNSELECTED — 마지막 품종을 자동 로드하지 않는다(오판정 방지, 필수3).
+        self._current_product: Optional[str] = None
+        self._products_cache: List[dict] = []
         self._reference_images: Dict[int, np.ndarray] = {}
-        self._load_reference_images()
-
-        # ─── ML 이상탐지 (섀도우 모드, Phase 2/3) ───
         self._anomaly_detectors: Dict[int, object] = {}
         self._anomaly_thresholds: Dict[int, float] = {}
-        self._init_anomaly()
+        # ACT _act_reload_lock(robot_control_node.py) 과 동일한 논블로킹 락 패턴 —
+        # 원자적 스왑 도중 중복 전환 요청을 거부한다.
+        self._product_reload_lock = threading.Lock()
+        self._product_loading = False
 
         # ─── ROS 통신 ───
         self._img_sub = self.create_subscription(
@@ -87,12 +101,29 @@ class InspectNode(Node):
         self._led_exposure_sub = self.create_subscription(
             Bool, topics.TOPIC_MOTOR_LED, self._led_exposure_cb, 10)
 
+        # 품종 선택/생성 (HMI→inspect_node)
+        self._product_select_sub = self.create_subscription(
+            String, topics.TOPIC_INSPECTION_PRODUCT_SELECT,
+            self._on_product_select, 10)
+        self._product_create_sub = self.create_subscription(
+            String, topics.TOPIC_INSPECTION_PRODUCT_CREATE,
+            self._on_product_create, 10)
+
         self._result_pub = self.create_publisher(
             InspectionResult, topics.TOPIC_INSPECTION_RESULT, 10)
 
         if self._pub_debug:
             self._debug_pub = self.create_publisher(
                 Image, self._debug_topic, 5)
+
+        # 품종 목록/현재상태 (latched — 늦게 붙는 HMI 구독자도 즉시 최신 상태를 받는다.
+        # ACT 모델 목록·현재상태(robot_control_node.py)와 동일 패턴).
+        _latched = QoSProfile(depth=1, history=HistoryPolicy.KEEP_LAST,
+                              durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self._products_pub = self.create_publisher(
+            String, topics.TOPIC_INSPECTION_PRODUCTS, _latched)
+        self._product_current_pub = self.create_publisher(
+            String, topics.TOPIC_INSPECTION_PRODUCT_CURRENT, _latched)
 
         self._latest_frame: Optional[np.ndarray] = None
         self._frame_lock = threading.Lock()
@@ -128,9 +159,14 @@ class InspectNode(Node):
         self._inspection_start = 0.0
         self._inspection_watchdog = self.create_timer(1.0, self._watchdog_cb)
 
+        # ─── 품종 목록 스캔 + 최초 발행 (UNSELECTED로 시작, 필수3) ───
+        self._publish_products()
+        self._publish_current_product()
+
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
-            f'촬영 각도: {self._angles} | 판정 타임아웃: {self._finalize_sec}s')
+            f'촬영 각도: {self._angles} | 판정 타임아웃: {self._finalize_sec}s | '
+            f'품종 디렉토리: {self._products_dir} (미선택으로 시작)')
 
     # ─── 파라미터 (선언 + 로드 통합) ───
     def _load_params(self):
@@ -138,6 +174,10 @@ class InspectNode(Node):
         params = [
             ('camera_topic',            '/camera2/image_raw/compressed',    '_camera_topic'),
             ('reference_image_dir',     '/workspace/data/reference_images',  '_ref_dir'),
+            # 다품종 검사 자산 루트 — 품종별 하위 디렉토리(reference_images/models/anomaly_dataset/params.json)를 관리.
+            # 위 reference_image_dir(_ref_dir)은 레거시 전역 경로로 남겨두되(자동 마이그레이션 금지),
+            # 다품종 도입 후에는 사용하지 않는다.
+            ('inspection_products_dir', '/workspace/data/inspection_products', '_products_dir'),
             # ─── 표면 특징 분석 임계값 ───
             ('solidity_min',            0.85,                               '_sol_min'),
             ('solidity_max',            1.00,                               '_sol_max'),
@@ -185,82 +225,182 @@ class InspectNode(Node):
             self.declare_parameter(name, default)
             setattr(self, attr_name, self.get_parameter(name).value)
 
-    # ─── 기준 이미지 로드 ───
-    def _load_reference_images(self):
-        """기준 이미지(HMI에서 정상품을 챔버에 올려두고 캡처한 결과)를 로드한다.
-        파일 네이밍: ref_0.png, ref_90.png, ref_180.png, ref_270.png
+    # ─── 다품종 자산 경로 헬퍼 ───
+    def _product_dir(self, pid: str) -> str:
+        return os.path.join(self._products_dir, pid)
+
+    def _product_ref_dir(self, pid: str) -> str:
+        return os.path.join(self._product_dir(pid), 'reference_images')
+
+    def _product_model_dir(self, pid: str) -> str:
+        return os.path.join(self._product_dir(pid), 'models')
+
+    def _product_ds_dir(self, pid: str) -> str:
+        return os.path.join(self._product_dir(pid), 'anomaly_dataset', 'raw')
+
+    def _product_params_path(self, pid: str) -> str:
+        return os.path.join(self._product_dir(pid), 'params.json')
+
+    # ─── 품종 스캔/발행 ───
+    def _product_status(self, pid: str) -> dict:
+        """품종 하나의 자산 무결성을 점검한다.
+
+        ready = 4각도 기준이미지 전부 존재 AND (anomaly_enabled면 4뱅크+thresholds 전부).
+        부분 자산으로 로드하고 해당 축만 스킵하는 관용은 다품종에서 없앤다(필수1).
         """
-        if not os.path.isdir(self._ref_dir):
-            self.get_logger().warn(
-                f'기준 이미지 디렉토리 없음: {self._ref_dir} — '
-                f'HMI 기준 이미지 캡처로 먼저 생성하세요.')
-            return
-
+        missing: List[str] = []
+        ref_dir = self._product_ref_dir(pid)
         for angle in self._angles:
-            path = os.path.join(self._ref_dir, f'ref_{angle}.png')
-            if os.path.isfile(path):
-                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                if img is not None:
-                    self._reference_images[angle] = img
-                    self.get_logger().info(f'기준 이미지 로드: {path}')
-                else:
-                    self.get_logger().warn(f'기준 이미지 읽기 실패: {path}')
-            else:
-                self.get_logger().warn(f'기준 이미지 없음: {path}')
-
-        loaded = len(self._reference_images)
-        expected = len(self._angles)
-        self.get_logger().info(f'기준 이미지 {loaded}/{expected}개 로드됨')
-
-        # 완전성 검증: 일부만 로드된 경우 에러 로그
-        if 0 < loaded < expected:
-            missing = [a for a in self._angles if a not in self._reference_images]
-            self.get_logger().error(
-                f'기준 이미지가 불완전합니다! '
-                f'누락된 각도: {missing}. '
-                f'검사 결과의 신뢰도가 떨어집니다.')
-
-    # ─── ML 이상탐지 초기화 (섀도우 모드, Phase 2) ───
-    def _init_anomaly(self):
-        """각도별 PatchCore 뱅크를 로드한다. 실패해도 노드는 계속 동작한다(자동 비활성)."""
-        if not self._anomaly_enabled:
-            self.get_logger().info('ML 이상탐지 비활성화(anomaly_enabled=False) — 룰 판정만 사용')
-            return
-
-        try:
-            # torch 는 이 모듈 내부에서만 import 되므로 비활성 시 로드 비용이 없다.
-            from quvi_inspect.anomaly_detector import PatchCoreDetector
-
-            thresholds_path = os.path.join(self._anomaly_model_dir, 'thresholds.json')
-            with open(thresholds_path, encoding='utf-8') as f:
-                thresholds = json.load(f)
-
-            backbone_path = os.path.join(self._anomaly_model_dir, 'wide_resnet50.pth')
-            shared_backbone = None  # 첫 로드에서 채워 이후 각도는 백본을 재사용(GPU 메모리 절약)
-
+            if not os.path.isfile(os.path.join(ref_dir, f'ref_{angle}.png')):
+                missing.append(f'ref_{angle}')
+        if self._anomaly_enabled:
+            model_dir = self._product_model_dir(pid)
+            if not os.path.isfile(os.path.join(model_dir, 'thresholds.json')):
+                missing.append('thresholds.json')
             for angle in self._angles:
-                bank_path = os.path.join(self._anomaly_model_dir, f'bank_{angle}.pt')
-                if not os.path.isfile(bank_path):
-                    continue
-                detector = PatchCoreDetector.load(
-                    bank_path,
-                    device=self._anomaly_device,
-                    backbone_weights_path=backbone_path,
-                    backbone=shared_backbone)
-                if shared_backbone is None:
-                    shared_backbone = detector.backbone
-                self._anomaly_detectors[angle] = detector
-                self._anomaly_thresholds[angle] = float(thresholds[str(angle)]['threshold'])
+                if not os.path.isfile(os.path.join(model_dir, f'bank_{angle}.pt')):
+                    missing.append(f'bank_{angle}')
+        return {'id': pid, 'ready': len(missing) == 0, 'missing': missing}
 
-            if self._anomaly_detectors:
-                self.get_logger().info(
-                    f'ML 이상탐지 로드 완료 | 각도: {sorted(self._anomaly_detectors.keys())} | '
-                    f'디바이스: {self._anomaly_device} | 임계값: {self._anomaly_thresholds}')
-            else:
-                self.get_logger().warn('ML 이상탐지: 뱅크 파일 없음 — 비활성 상태로 진행')
-        except Exception as exc:  # noqa: BLE001 — 로드 실패는 절대 노드를 죽이지 않는다
-            self.get_logger().warn(f'ML 이상탐지 로드 실패({exc}) — 자동 비활성, 룰 판정만 사용')
-            self._anomaly_detectors = {}
+    def _scan_products(self) -> List[dict]:
+        """products_dir 하위 품종 디렉토리를 스캔해 무결성 상태 목록을 만든다."""
+        os.makedirs(self._products_dir, exist_ok=True)
+        products = []
+        for entry in sorted(os.listdir(self._products_dir)):
+            if os.path.isdir(os.path.join(self._products_dir, entry)):
+                products.append(self._product_status(entry))
+        return products
+
+    def _publish_products(self):
+        """품종 목록을 재스캔해 latched 토픽으로 발행 (ACT 모델 목록과 동일 패턴)."""
+        try:
+            products = self._scan_products()
+        except OSError as exc:
+            self.get_logger().error(f'품종 스캔 실패: {exc}')
+            products = []
+        self._products_cache = products
+        self._products_pub.publish(String(data=json.dumps(products, ensure_ascii=False)))
+
+    def _publish_current_product(self):
+        """현재 선택된 품종 id를 latched 토픽으로 발행 (미선택이면 빈 문자열)."""
+        self._product_current_pub.publish(String(data=self._current_product or ''))
+
+    # ─── 품종 생성 ───
+    def _on_product_create(self, msg: String):
+        """products_dir/<pid>/ 하위 디렉토리 골격을 생성한다. 생성 직후는 ready=false 가 정상."""
+        pid = msg.data.strip()
+        if not PRODUCT_ID_RE.match(pid):
+            self.get_logger().warn(f'품종 생성 거부 — 유효하지 않은 id: {pid!r}')
+            return
+        try:
+            os.makedirs(self._product_ref_dir(pid), exist_ok=True)
+            os.makedirs(self._product_model_dir(pid), exist_ok=True)
+            for angle in self._angles:
+                os.makedirs(os.path.join(self._product_ds_dir(pid), str(angle)), exist_ok=True)
+        except OSError as exc:
+            self.get_logger().error(f'품종 생성 실패({pid}): {exc}')
+            return
+        self.get_logger().info(f'품종 생성: {pid}')
+        self._publish_products()
+
+    # ─── 품종 선택 (원자적 스왑, 필수1·필수2) ───
+    def _on_product_select(self, msg: String):
+        pid = msg.data.strip()
+        if not pid:
+            return
+        if self._inspection_active:
+            self.get_logger().warn(f'검사 진행 중 — 품종 전환 거부: {pid} (현재 품종 유지)')
+            return
+        threading.Thread(target=self._reload_product, args=(pid,), daemon=True).start()
+
+    def _reload_product(self, pid: str):
+        """대상 품종 자산을 임시 dict에 전부 로드 후 원자적으로 스왑한다.
+
+        ACT `_load_act_policy`(robot_control_node.py) 의 논블로킹 락 + 백그라운드
+        재로드 패턴을 그대로 따른다. 로딩 도중 검사가 시작되면 스왑을 취소해
+        구/신 자산 혼합을 막는다.
+        """
+        if not self._product_reload_lock.acquire(blocking=False):
+            self.get_logger().warn('품종 전환 이미 진행 중 — 요청 무시')
+            return
+        try:
+            self._product_loading = True
+            info = self._product_status(pid)
+            if not os.path.isdir(self._product_dir(pid)):
+                self.get_logger().error(f'품종 전환 거부 — 존재하지 않는 품종: {pid}')
+                return
+            if not info['ready']:
+                self.get_logger().warn(
+                    f'품종 전환 거부 — 자산 불완전: {pid} (누락: {info["missing"]}), 현재 품종 유지')
+                self._publish_products()
+                return
+
+            # ── 임시 dict에 신품종 자산 전부 로드 (실패 시 기존 자산 유지, 부분 스왑 금지) ──
+            new_refs: Dict[int, np.ndarray] = {}
+            ref_dir = self._product_ref_dir(pid)
+            for angle in self._angles:
+                path = os.path.join(ref_dir, f'ref_{angle}.png')
+                img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+                if img is None:
+                    self.get_logger().error(f'품종 전환 실패 — 기준이미지 읽기 실패: {path}')
+                    return
+                new_refs[angle] = img
+
+            new_f_area_min, new_f_area_max = self._global_f_area_min, self._global_f_area_max
+            params_path = self._product_params_path(pid)
+            if os.path.isfile(params_path):
+                try:
+                    with open(params_path, encoding='utf-8') as f:
+                        p = json.load(f)
+                    new_f_area_min = float(p.get('feature_area_ratio_min', new_f_area_min))
+                    new_f_area_max = float(p.get('feature_area_ratio_max', new_f_area_max))
+                except (OSError, ValueError, TypeError, KeyError) as exc:
+                    self.get_logger().warn(f'{pid} params.json 파싱 실패({exc}) — 전역 임계값 사용')
+
+            new_detectors: Dict[int, object] = {}
+            new_thresholds: Dict[int, float] = {}
+            if self._anomaly_enabled:
+                try:
+                    # torch는 이 모듈 내부에서만 import되므로 비활성 시 로드 비용이 없다.
+                    from quvi_inspect.anomaly_detector import PatchCoreDetector
+
+                    model_dir = self._product_model_dir(pid)
+                    thresholds_path = os.path.join(model_dir, 'thresholds.json')
+                    with open(thresholds_path, encoding='utf-8') as f:
+                        thresholds = json.load(f)
+                    # 백본은 품종 무관 — 기존 전역 anomaly_model_dir 에서 로드(공용 유지).
+                    backbone_path = os.path.join(self._anomaly_model_dir, 'wide_resnet50.pth')
+                    shared_backbone = None
+                    for angle in self._angles:
+                        bank_path = os.path.join(model_dir, f'bank_{angle}.pt')
+                        detector = PatchCoreDetector.load(
+                            bank_path, device=self._anomaly_device,
+                            backbone_weights_path=backbone_path, backbone=shared_backbone)
+                        if shared_backbone is None:
+                            shared_backbone = detector.backbone
+                        new_detectors[angle] = detector
+                        new_thresholds[angle] = float(thresholds[str(angle)]['threshold'])
+                except Exception as exc:  # noqa: BLE001 — ML 로드 실패는 스왑 전체를 취소
+                    self.get_logger().error(f'품종 전환 실패 — ML 자산 로드 실패({pid}): {exc}')
+                    return
+
+            # ── 원자적 스왑 — 로딩 도중 검사가 시작됐으면 취소(구/신 자산 혼합 금지) ──
+            if self._inspection_active:
+                self.get_logger().warn(f'품종 전환 취소 — 로딩 중 검사가 시작됨: {pid}')
+                return
+            self._reference_images = new_refs
+            self._anomaly_detectors = new_detectors
+            self._anomaly_thresholds = new_thresholds
+            self._f_area_min = new_f_area_min
+            self._f_area_max = new_f_area_max
+            self._current_product = pid
+            self._publish_current_product()
+            self.get_logger().info(
+                f'품종 전환 완료: {pid} | 면적비 임계=[{new_f_area_min}, {new_f_area_max}] | '
+                f'ML={"ON" if new_detectors else "OFF"}')
+        finally:
+            self._product_loading = False
+            self._product_reload_lock.release()
 
     # ─── 콜백 ───
     def _image_callback(self, msg: CompressedImage):
@@ -402,22 +542,33 @@ class InspectNode(Node):
             self._inspection_active = False
 
     def _ref_capture_trigger_callback(self, msg: Bool):
-        """기준 이미지 캡처 트리거 수신 (정상품을 챔버에 올려둔 상태에서 발행)."""
+        """기준 이미지 캡처 트리거 수신 (정상품을 챔버에 올려둔 상태에서 발행).
+
+        현재 품종이 선택돼 있어야 한다 — 자산이 어디 저장될지 모호한 상태로
+        촬영을 시작하지 않는다.
+        """
         if msg.data:
             if self._inspection_active:
                 self.get_logger().warn('검사 진행 중 — 기준 캡처 무시')
                 return
+            if self._current_product is None:
+                self.get_logger().warn('품종 미선택 — 기준 캡처 거부')
+                return
             self._ref_capture_active = True
             self._captured_images.clear()
             self.get_logger().info(
-                f'기준 이미지 캡처 모드 활성화 | '
-                f'저장 경로: {self._ref_dir} | '
+                f'기준 이미지 캡처 모드 활성화 | 품종: {self._current_product} | '
+                f'저장 경로: {self._product_ref_dir(self._current_product)} | '
                 f'턴테이블 {self._angles}° 순서로 회전시키세요')
         else:
             self._ref_capture_active = False
 
     def _capture_reference_angle(self, angle: int):
-        """현재 프레임을 기준 이미지로 캡처 후 파일 저장."""
+        """현재 프레임을 기준 이미지로 캡처 후 현재 품종 하위에 파일 저장."""
+        if self._current_product is None:
+            self.get_logger().warn('품종 미선택 — 기준 캡처 중단')
+            self._ref_capture_active = False
+            return
         with self._frame_lock:
             frame = self._latest_frame.copy() if self._latest_frame is not None else None
         if frame is None:
@@ -427,8 +578,9 @@ class InspectNode(Node):
         gray = self._preprocess(frame)
         self._captured_images[angle] = gray
 
-        os.makedirs(self._ref_dir, exist_ok=True)
-        path = os.path.join(self._ref_dir, f'ref_{angle}.png')
+        ref_dir = self._product_ref_dir(self._current_product)
+        os.makedirs(ref_dir, exist_ok=True)
+        path = os.path.join(ref_dir, f'ref_{angle}.png')
         cv2.imwrite(path, gray)
         self.get_logger().info(f'기준 이미지 저장: {path}')
 
@@ -438,18 +590,27 @@ class InspectNode(Node):
             self._ref_capture_active = False
             self.get_logger().info(
                 f'기준 이미지 {len(self._angles)}장 캡처 완료 — 즉시 적용됨')
+            # ready 상태가 바뀌었을 수 있으니 목록 재발행 (HMI 반영).
+            self._publish_products()
 
     def _dataset_capture_trigger_callback(self, msg: Bool):
-        """데이터셋 촬영 트리거 수신 (ML 정상품 데이터셋 수집용 별도 병렬 모드)."""
+        """데이터셋 촬영 트리거 수신 (ML 정상품 데이터셋 수집용 별도 병렬 모드).
+
+        현재 품종이 선택돼 있어야 한다 — 자산이 어디 저장될지 모호한 상태로
+        촬영을 시작하지 않는다.
+        """
         if msg.data:
             if self._inspection_active or self._ref_capture_active:
                 self.get_logger().warn('검사/기준 캡처 진행 중 — 데이터셋 캡처 무시')
                 return
+            if self._current_product is None:
+                self.get_logger().warn('품종 미선택 — 데이터셋 캡처 거부')
+                return
             self._dataset_capture_active = True
             self._captured_images.clear()
             self.get_logger().info(
-                f'데이터셋 촬영 모드 활성화 | '
-                f'저장 경로: {self._ds_dir} | '
+                f'데이터셋 촬영 모드 활성화 | 품종: {self._current_product} | '
+                f'저장 경로: {self._product_ds_dir(self._current_product)} | '
                 f'턴테이블 {self._angles}° 순서로 회전시키세요')
         else:
             self._dataset_capture_active = False
@@ -466,11 +627,15 @@ class InspectNode(Node):
                 break
 
     def _capture_dataset_angle(self, angle: int):
-        """현재 프레임을 컬러 원본 그대로 데이터셋 디렉토리에 저장.
+        """현재 프레임을 컬러 원본 그대로 현재 품종 데이터셋 디렉토리에 저장.
 
         기준 이미지(_reference_images)와 무관한 별도 경로로,
         grayscale 전처리 없이 원본을 저장한다.
         """
+        if self._current_product is None:
+            self.get_logger().warn('품종 미선택 — 데이터셋 캡처 중단')
+            self._dataset_capture_active = False
+            return
         with self._frame_lock:
             frame = self._latest_frame.copy() if self._latest_frame is not None else None
         if frame is None:
@@ -480,7 +645,8 @@ class InspectNode(Node):
         frame = self._latest_frame.copy()
         self._captured_images[angle] = frame
 
-        angle_dir = os.path.join(self._ds_dir, str(angle))
+        ds_dir = self._product_ds_dir(self._current_product)
+        angle_dir = os.path.join(ds_dir, str(angle))
         os.makedirs(angle_dir, exist_ok=True)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         path = os.path.join(angle_dir, f'{timestamp}.png')
@@ -491,7 +657,7 @@ class InspectNode(Node):
             self._dataset_capture_active = False
             self._captured_images.clear()
             self.get_logger().info(
-                f'데이터셋 {len(self._angles)}장 저장 완료 — 경로: {self._ds_dir}')
+                f'데이터셋 {len(self._angles)}장 저장 완료 — 경로: {ds_dir}')
 
     # ─── 메인 검사 로직 ───
     def _run_inspection(self):
@@ -509,10 +675,37 @@ class InspectNode(Node):
                 self._inspection_active = False
                 self._captured_images.clear()
 
+    def _publish_unselected_result(self, start_time: float):
+        """품종 미선택 상태에서 검사가 트리거되면 판정을 실행하지 않고 즉시 FAIL 발행한다."""
+        fail_reason = '품종 미선택 — 검사 불가'
+        result = InspectionResult()
+        result.header.stamp        = self.get_clock().now().to_msg()
+        result.header.frame_id     = 'inspection_chamber'
+        result.passed               = False
+        result.fail_reason          = fail_reason
+        result.solidity             = 0.0
+        result.area_ratio           = 0.0
+        result.hole_count           = 0
+        result.hole_area_ratio      = 0.0
+        result.texture_variance     = 0.0
+        result.anomaly_score_worst  = -1.0
+        result.ml_passed            = -1
+        result.object_index         = self._current_object_index
+        result.inspection_time_sec  = time.time() - start_time
+        self._result_pub.publish(result)
+        self.get_logger().error(f'판정 불가: {fail_reason}')
+        self.get_logger().info('=' * 50)
+
     def _run_inspection_inner(self):
         start_time = time.time()
         self.get_logger().info('=' * 50)
         self.get_logger().info('양불 판정 시작 (표면 특징 분석)')
+
+        # ── 필수3: 품종 미선택(또는 기준이미지 미로드) 상태에서는 정상 판정을 실행하지 않는다.
+        # 룰 단독 폴백(기준 없으면 면적비만 스킵)으로 이 상태에서 PASS 가 나가는 경로를 차단한다.
+        if self._current_product is None or not self._reference_images:
+            self._publish_unselected_result(start_time)
+            return
 
         surface_results = self._surface_analysis()
         rule_pass = surface_results['passed']
@@ -557,7 +750,7 @@ class InspectNode(Node):
         self._result_pub.publish(result)
 
         status = 'PASS ✓' if final_pass else f'FAIL ✗ ({fail_reason})'
-        self.get_logger().info(f'판정: {status} | 소요: {elapsed:.2f}s')
+        self.get_logger().info(f'판정: {status} | 품종: {self._current_product} | 소요: {elapsed:.2f}s')
         self.get_logger().info(
             f'  Solidity: {surface_results["solidity"]:.3f} | '
             f'구멍: {surface_results["hole_count"]}개 | '
@@ -796,6 +989,7 @@ class InspectNode(Node):
 
         with open(os.path.join(log_subdir, 'result.txt'), 'w', encoding='utf-8') as f:
             f.write(f'판정: {result_str}\n')
+            f.write(f'품종: {self._current_product}\n')
             f.write(f'Solidity: {surface["solidity"]:.4f}\n')
             f.write(f'면적비(표면): {"N/A" if math.isnan(surface["area_ratio"]) else f"{surface["area_ratio"]:.4f}"}\n')
             f.write(f'구멍수: {surface["hole_count"]}\n')
@@ -817,6 +1011,7 @@ class InspectNode(Node):
 
         result_json = {
             'passed':              bool(passed),
+            'product_id':          self._current_product,
             'solidity':            _n(surface['solidity']),
             'area_ratio':          _n(surface['area_ratio']),
             'hole_count':          surface['hole_count'],

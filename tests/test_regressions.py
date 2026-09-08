@@ -170,13 +170,8 @@ def test_reliability_improvements():
 
     # 1. Test inspect_node NaN area_ratio fallback and load validation
     inspect_node = InspectNode()
-    # 기준 이미지 미존재 상황 재현: _load_reference_images 는 self._ref_dir 속성을
-    # 읽고 기존 dict 를 clear 하지 않으므로, 속성 직접 변경 + 초기화가 필요하다.
-    inspect_node._ref_dir = '/tmp/non_existent_ref_dir'
-    inspect_node._reference_images.clear()
-    inspect_node._load_reference_images()
-    
-    # Assert reference images are empty
+    # 다품종 전환(2026-09) 후 기동은 항상 UNSELECTED로 시작하므로
+    # 기준 이미지가 비어있는 상태가 기본값이다 — 별도 재현 없이 바로 검증한다.
     assert len(inspect_node._reference_images) == 0
     
     # Run mock surface analysis with a dummy captured image

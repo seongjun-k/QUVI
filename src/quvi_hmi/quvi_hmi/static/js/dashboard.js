@@ -861,6 +861,112 @@ async function loadActModel() {
     }
 }
 
+// ─── 검사 품종 선택/등록 (다품종 검사 자산) ───
+let _productUserTouched = false;
+
+function _setCaptureButtonsEnabled(enabled) {
+    // 품종 미선택이면 촬영/검사 버튼을 비활성화 — 촬영은 저장 경로가 모호해지고,
+    // 검사는 서버(inspect_node)가 이미 FAIL로 차단하지만 UI에서도 시도 자체를 막는다.
+    ['refCaptureStartBtn', 'dsCaptureStartBtn', 'btn_inspect_test'].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !enabled;
+    });
+}
+
+async function refreshInspectionProducts() {
+    try {
+        const res = await fetch('/api/inspection/products');
+        const data = await res.json();
+        const sel = document.getElementById('productSelect');
+        const products = data.products || [];
+        const current = data.current || '';
+
+        if (sel) {
+            if (!_productUserTouched || sel.options.length <= 1) {
+                const prev = sel.value;
+                sel.innerHTML = '';
+                if (products.length === 0) {
+                    sel.innerHTML = `<option value="">${I18N.t('product.noProducts')}</option>`;
+                } else {
+                    for (const p of products) {
+                        const opt = document.createElement('option');
+                        opt.value = p.id;
+                        const tag = p.ready ? I18N.t('product.ready') : I18N.t('product.incomplete');
+                        opt.textContent = `${p.id} (${tag})`;
+                        if (p.id === (prev || current)) opt.selected = true;
+                        sel.appendChild(opt);
+                    }
+                }
+            }
+        }
+
+        const curEl = document.getElementById('productCurrent');
+        if (curEl) {
+            curEl.textContent = current || I18N.t('product.none');
+            curEl.style.color = current ? 'var(--accent-green)' : 'var(--text-muted)';
+        }
+        _setCaptureButtonsEnabled(!!current);
+    } catch (e) {
+        // 서버 대기 중일 수 있음 — 조용히 무시
+    }
+}
+
+async function selectProduct() {
+    const sel = document.getElementById('productSelect');
+    const msgEl = document.getElementById('productMsg');
+    const id = sel ? sel.value : '';
+    if (!id) {
+        if (msgEl) { msgEl.textContent = I18N.t('product.noneSelected'); msgEl.style.color = 'var(--accent-red)'; }
+        return;
+    }
+    _productUserTouched = false;
+    if (msgEl) { msgEl.textContent = I18N.t('act.requesting'); msgEl.style.color = 'var(--text-muted)'; }
+    try {
+        const res = await fetch('/api/inspection/products/select', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (msgEl) { msgEl.textContent = I18N.t('act.requested'); msgEl.style.color = 'var(--accent-green)'; }
+            let n = 0;
+            const t = setInterval(() => { refreshInspectionProducts(); if (++n > 15) clearInterval(t); }, 1000);
+        } else {
+            if (msgEl) { msgEl.textContent = I18N.t('common.errorPrefix') + (data.error || I18N.t('common.unknown')); msgEl.style.color = 'var(--accent-red)'; }
+        }
+    } catch (e) {
+        if (msgEl) { msgEl.textContent = I18N.t('common.networkError'); msgEl.style.color = 'var(--accent-red)'; }
+    }
+}
+
+async function createProduct() {
+    const input = document.getElementById('productCreateInput');
+    const msgEl = document.getElementById('productMsg');
+    const id = input ? input.value.trim() : '';
+    if (!id) {
+        if (msgEl) { msgEl.textContent = I18N.t('product.idRequired'); msgEl.style.color = 'var(--accent-red)'; }
+        return;
+    }
+    try {
+        const res = await fetch('/api/inspection/products/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+            if (msgEl) { msgEl.textContent = I18N.t('product.created'); msgEl.style.color = 'var(--accent-green)'; }
+            if (input) input.value = '';
+            refreshInspectionProducts();
+        } else {
+            if (msgEl) { msgEl.textContent = I18N.t('common.errorPrefix') + (data.error || I18N.t('common.unknown')); msgEl.style.color = 'var(--accent-red)'; }
+        }
+    } catch (e) {
+        if (msgEl) { msgEl.textContent = I18N.t('common.networkError'); msgEl.style.color = 'var(--accent-red)'; }
+    }
+}
+
 // ─── 장치 설정 (카메라/로봇/ESP USB) ───
 function _shortDev(path) {
     // by-id 경로는 길어서 마지막 요소만 짧게 표시
@@ -918,7 +1024,7 @@ async function refreshDevices() {
 async function applyDeviceConfig() {
     const msgEl = document.getElementById('deviceMsg');
     const btn = document.getElementById('deviceApplyBtn');
-    const roleKeys = ['sidecam_device', 'fixed_cam_device', 'dxl_port', 'leader_dxl_port', 'micro_ros_port'];
+    const roleKeys = ['sidecam_device', 'fixed_cam_device', 'topcam_device', 'dxl_port', 'leader_dxl_port', 'micro_ros_port'];
     const config = {};
     for (const k of roleKeys) {
         const sel = document.getElementById('dev_' + k);
@@ -1055,10 +1161,14 @@ if (_initialTab && document.getElementById(`tab-${_initialTab}`)) switchTab(_ini
 
 document.addEventListener('change', (e) => {
     if (e.target && e.target.id === 'actModelSelect') _actModelUserTouched = true;
+    if (e.target && e.target.id === 'productSelect') _productUserTouched = true;
 });
 
 refreshActModels();
 setInterval(refreshActModels, 5000);
+
+refreshInspectionProducts();
+setInterval(refreshInspectionProducts, 5000);
 
 refreshDevices();
 

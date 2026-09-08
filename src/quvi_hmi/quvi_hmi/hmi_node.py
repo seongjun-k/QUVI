@@ -46,6 +46,8 @@ from quvi_robot_control.topics import (
     TOPIC_HMI_STATUS, TOPIC_HMI_COMMAND,
     TOPIC_ACT_MODELS, TOPIC_ACT_CURRENT, TOPIC_ACT_MODEL_SELECT,
     TOPIC_INSPECTION_TRIGGER, TOPIC_INSPECTION_CAPTURE_NOW,
+    TOPIC_INSPECTION_PRODUCTS, TOPIC_INSPECTION_PRODUCT_CURRENT,
+    TOPIC_INSPECTION_PRODUCT_SELECT, TOPIC_INSPECTION_PRODUCT_CREATE,
     TOPIC_ROBOT_JOINT_STATES, TOPIC_ROBOT_TELEOP_CMD, TOPIC_ESTOP,
     TOPIC_ROBOT_STATUS,
     TOPIC_MOTOR_RAIL_CMD as TOPIC_MOTOR_RAIL,
@@ -162,6 +164,14 @@ class HmiNode(Node):
         self._act_model_select_pub = self.create_publisher(
             String, TOPIC_ACT_MODEL_SELECT, 10)
 
+        # ─── 검사 품종 선택/등록 (다품종 검사 자산) ───
+        self._inspection_products = []   # [{'id','ready','missing'}]
+        self._inspection_product_current = ''   # '' = 미선택
+        self._product_select_pub = self.create_publisher(
+            String, TOPIC_INSPECTION_PRODUCT_SELECT, 10)
+        self._product_create_pub = self.create_publisher(
+            String, TOPIC_INSPECTION_PRODUCT_CREATE, 10)
+
         # ─── ROS 2 구독 ───
         self.create_subscription(
             SystemStatus, TOPIC_HMI_STATUS, self._status_cb, 10)
@@ -173,6 +183,11 @@ class HmiNode(Node):
             String, TOPIC_ACT_MODELS, self._act_models_cb, _latched)
         self.create_subscription(
             String, TOPIC_ACT_CURRENT, self._act_current_cb, _latched)
+        # 검사 품종 목록/현재상태 (inspect_node 가 latched 로 발행)
+        self.create_subscription(
+            String, TOPIC_INSPECTION_PRODUCTS, self._inspection_products_cb, _latched)
+        self.create_subscription(
+            String, TOPIC_INSPECTION_PRODUCT_CURRENT, self._inspection_product_current_cb, _latched)
         self.create_subscription(
             InspectionResult, TOPIC_INSPECTION_RESULT, self._inspection_cb, 10)
         self.create_subscription(
@@ -383,6 +398,28 @@ class HmiNode(Node):
         self._act_model_select_pub.publish(String(data=str(path)))
         self.get_logger().info(f'ACT 모델 선택 발행: {path}')
 
+    # ─── 검사 품종 선택/등록 ───
+    def _inspection_products_cb(self, msg: String):
+        try:
+            with self._lock:
+                self._inspection_products = json.loads(msg.data)
+        except Exception as e:
+            self.get_logger().warn(f'검사 품종 목록 파싱 실패: {e}')
+
+    def _inspection_product_current_cb(self, msg: String):
+        with self._lock:
+            self._inspection_product_current = msg.data
+
+    def send_product_select(self, product_id: str):
+        """선택한 품종 id를 inspect_node 로 발행."""
+        self._product_select_pub.publish(String(data=str(product_id)))
+        self.get_logger().info(f'검사 품종 선택 발행: {product_id}')
+
+    def send_product_create(self, product_id: str):
+        """신규 품종 등록 요청을 inspect_node 로 발행."""
+        self._product_create_pub.publish(String(data=str(product_id)))
+        self.get_logger().info(f'검사 품종 생성 발행: {product_id}')
+
     # ─── 장치 매핑 (카메라/로봇/ESP USB) ───
     def scan_devices(self) -> dict:
         """연결 가능한 장치 후보를 스캔한다 (안정적 by-id 우선)."""
@@ -391,16 +428,28 @@ class HmiNode(Node):
         def _uniq(seq):
             return list(dict.fromkeys(seq))  # 순서 보존 중복 제거
 
+        def _is_video_capture(dev_path: str) -> bool:
+            # UVC index=1 메타데이터 노드는 영상 캡처 불가이므로 제외 (index=0만 캡처 가능)
+            try:
+                real = os.path.realpath(dev_path)
+                base = os.path.basename(real)
+                index_path = f'/sys/class/video4linux/{base}/index'
+                if os.path.exists(index_path):
+                    with open(index_path, 'r', encoding='utf-8') as f:
+                        return f.read().strip() == '0'
+            except Exception:
+                pass
+            return True
+
         serial = _uniq(
             sorted(glob.glob('/dev/serial/by-id/*'))
             + sorted(glob.glob('/dev/ttyUSB*'))
             + sorted(glob.glob('/dev/ttyACM*'))
             + [p for p in ('/dev/ttyFollower', '/dev/ttyLeader', '/dev/ttyESP32')
                if os.path.exists(p)])
-        video = _uniq(
-            sorted(glob.glob('/dev/v4l/by-id/*'))
-            + sorted(glob.glob('/dev/video*'))
-            + [p for p in ('/dev/sidecam', '/dev/fixed_cam') if os.path.exists(p)])
+        symlinks = [p for p in ('/dev/sidecam', '/dev/fixed_cam', '/dev/topcam') if os.path.exists(p)]
+        raw_video = sorted(glob.glob('/dev/v4l/by-id/*')) + sorted(glob.glob('/dev/video*'))
+        video = _uniq(symlinks + [p for p in raw_video if _is_video_capture(p)])
         return {'serial': serial, 'video': video}
 
     def load_device_config(self) -> dict:
@@ -646,6 +695,40 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         hmi_node.send_act_model_select(path)
         return jsonify({'ok': True, 'path': path})
 
+    # ─── 검사 품종 선택/등록 API ───
+    @app.route('/api/inspection/products')
+    def api_inspection_products():
+        """등록된 검사 품종 목록 + 현재 선택된 품종."""
+        with hmi_node._lock:
+            products = list(hmi_node._inspection_products)
+            current = hmi_node._inspection_product_current
+        return jsonify({'products': products, 'current': current})
+
+    @app.route('/api/inspection/products/select', methods=['POST'])
+    def api_inspection_products_select():
+        """검사 품종 선택 → inspect_node 로 전환 요청 발행."""
+        data = request.get_json(silent=True) or {}
+        pid = (data.get('id') or '').strip()
+        if not pid:
+            return jsonify({'error': 'id 필요'}), 400
+        # 알려진 품종 id인지 검증 (임의 문자열 발행 방지)
+        with hmi_node._lock:
+            valid = any(p.get('id') == pid for p in hmi_node._inspection_products)
+        if not valid:
+            return jsonify({'error': '알 수 없는 품종 id'}), 400
+        hmi_node.send_product_select(pid)
+        return jsonify({'ok': True, 'id': pid})
+
+    @app.route('/api/inspection/products/create', methods=['POST'])
+    def api_inspection_products_create():
+        """검사 품종 신규 등록 → inspect_node 로 생성 요청 발행."""
+        data = request.get_json(silent=True) or {}
+        pid = (data.get('id') or '').strip()
+        if not pid:
+            return jsonify({'error': 'id 필요'}), 400
+        hmi_node.send_product_create(pid)
+        return jsonify({'ok': True, 'id': pid})
+
     # ─── 장치 매핑 API ───
     @app.route('/api/devices')
     def api_devices():
@@ -769,6 +852,10 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         """
         if blocked := _manual_guard('기준 이미지 캡쳐를'):
             return blocked
+        with hmi_node._lock:
+            product_selected = bool(hmi_node._inspection_product_current)
+        if not product_selected:
+            return jsonify({'ok': False, 'error': '검사 품종 미선택 — 자산 저장 경로가 모호합니다'}), 409
         if not hmi_node._acquire_hmi_busy('기준 캡처'):
             return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
 
@@ -840,6 +927,10 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
         """
         if blocked := _manual_guard('데이터셋 촬영을'):
             return blocked
+        with hmi_node._lock:
+            product_selected = bool(hmi_node._inspection_product_current)
+        if not product_selected:
+            return jsonify({'ok': False, 'error': '검사 품종 미선택 — 자산 저장 경로가 모호합니다'}), 409
         if not hmi_node._acquire_hmi_busy('데이터셋 촬영'):
             return jsonify({'ok': False, 'error': f'{hmi_node._hmi_busy_name} 진행 중'}), 409
 
@@ -854,6 +945,11 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
 
         def _run_dataset_sequence():
             try:
+                # 검사 LED ON — inspect_node가 _led_exposure_cb로 검사캠을 저노출(led_on_exposure)로
+                # 전환한다. 실검사도 LED ON 저노출로 촬영하므로 데이터셋도 동일 조명·노출로 찍어야
+                # train/infer skew가 없다. 5s는 노출 안정화(검사 단독 테스트·오케스트레이터와 동일).
+                hmi_node.send_led_command(True)
+                time.sleep(5.0)
                 for i in range(rounds):
                     if hmi_node._dataset_capture_abort:
                         break
@@ -867,6 +963,7 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                     hmi_node.get_logger().info(f'데이터셋 촬영 {i + 1}/{rounds}바퀴 완료')
                 hmi_node.get_logger().info(f'데이터셋 촬영 순환 완료: {angles}')
             finally:
+                hmi_node.send_led_command(False)  # 촬영 종료 — LED OFF(노출은 콜백이 일반값 원복)
                 hmi_node._release_hmi_busy()
 
         t = threading.Thread(target=_run_dataset_sequence, daemon=True)

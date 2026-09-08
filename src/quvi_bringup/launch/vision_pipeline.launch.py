@@ -62,6 +62,13 @@ def generate_launch_description():
         default_value=[LaunchConfiguration('data_dir'), '/inspection_logs'],
         description='검사 로그 저장 디렉토리')
 
+    # 다품종 검사 자산 루트 (reference_image_dir/anomaly_model_dir 는 레거시로 유지 —
+    # inspect_node 는 기동 시 UNSELECTED 로 시작해 이 디렉토리 하위 품종을 선택받는다)
+    inspection_products_dir_arg = DeclareLaunchArgument(
+        'inspection_products_dir',
+        default_value=[LaunchConfiguration('data_dir'), '/inspection_products'],
+        description='다품종 검사 자산 루트 (품종별 reference_images/models/anomaly_dataset/params.json)')
+
     inspect_topic_arg = DeclareLaunchArgument(
         'inspect_topic', default_value='/camera2/image_raw/compressed',
         description='검사 노드가 구독할 검사챔버 압축 이미지 토픽')
@@ -171,6 +178,7 @@ def generate_launch_description():
                 'camera_topic': LaunchConfiguration('inspect_topic'),
                 'reference_image_dir': LaunchConfiguration('reference_image_dir'),
                 'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
+                'inspection_products_dir': LaunchConfiguration('inspection_products_dir'),
                 'anomaly_enabled': ParameterValue(LaunchConfiguration('anomaly_enabled'), value_type=bool),
                 'anomaly_model_dir': [LaunchConfiguration('data_dir'), '/models'],
                 'anomaly_device': 'cuda',
@@ -187,6 +195,7 @@ def generate_launch_description():
         data_dir_arg,
         reference_dir_arg,
         inspection_log_dir_arg,
+        inspection_products_dir_arg,
         inspect_topic_arg,
         inspect_config_arg,
         sidecam_autoexposure_arg,
