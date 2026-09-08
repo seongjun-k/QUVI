@@ -6,7 +6,8 @@
 
 (a) UNSELECTED 상태에서 검사 실행 시 PASS 가 나오지 않고
     fail_reason 에 "품종 미선택" 이 포함된다.
-(b) 무결성 게이트가 불완전 품종(기준이미지 일부만 존재)의 선택을 거부한다.
+(b) 불완전 품종(기준이미지 일부)은 캡처 대상으로 선택은 되지만(자산을 쌓아
+    완성하려면 선택돼야 하므로), 그 상태로 검사하면 자산 미비 FAIL 이 나간다.
 (c) `_inspection_active=True` 일 때 품종 스왑 요청이 거부된다.
 
 실행: cd <repo> && pytest tests/test_multiproduct_gate.py
@@ -88,9 +89,11 @@ def test_unselected_inspection_blocks_pass(products_dir):
         node.destroy_node()
 
 
-def test_integrity_gate_rejects_incomplete_product(products_dir):
-    """(b) 기준이미지가 3장만 있는 불완전 품종은 선택이 거부되고
-    현재 품종이 UNSELECTED(None)로 유지돼야 한다."""
+def test_incomplete_product_selectable_but_inspection_blocked(products_dir):
+    """(b) 기준이미지가 3장만 있는 불완전 품종은 캡처 대상으로 '선택은' 되지만,
+    그 상태로 검사가 트리거되면 정상 판정을 실행하지 않고 자산 미비 FAIL 이 나가야 한다.
+    (선택을 막으면 기준이미지 캡처 자체가 불가능해지는 교착을 피하기 위함 —
+     안전은 '선택 거부'가 아니라 '판정 실행 게이트'로 지킨다.)"""
     node = _make_node(products_dir)
     try:
         _make_incomplete_product(products_dir, 'partial_product')
@@ -102,8 +105,17 @@ def test_integrity_gate_rejects_incomplete_product(products_dir):
         # 선택 요청 → 백그라운드 스레드 대신 로직을 동기 호출로 검증
         node._reload_product('partial_product')
 
-        assert node._current_product is None
-        assert node._reference_images == {}
+        # 선택은 성공(캡처 대상 지정), 있는 기준이미지 3장만 로드됨
+        assert node._current_product == 'partial_product'
+        assert len(node._reference_images) == 3
+
+        # 그러나 불완전(4각도 미만)이라 검사는 자산 미비 FAIL
+        published = {}
+        node._result_pub.publish = lambda msg: published.update(
+            passed=msg.passed, fail_reason=msg.fail_reason)
+        node._run_inspection_inner()
+        assert published['passed'] is False
+        assert '자산 미비' in published['fail_reason']
     finally:
         node.destroy_node()
 

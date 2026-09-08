@@ -329,22 +329,23 @@ class InspectNode(Node):
             if not os.path.isdir(self._product_dir(pid)):
                 self.get_logger().error(f'품종 전환 거부 — 존재하지 않는 품종: {pid}')
                 return
+            # 불완전 품종도 '캡처 대상'으로 선택 허용한다 — 자산을 쌓아 완성하려면 먼저 선택돼야
+            # 하기 때문(선택 거부하면 교착). 판정 실행은 _run_inspection_inner 의 메모리 완전성
+            # 게이트가 별도로 막으므로, 불완전 상태로 PASS 가 나갈 일은 없다.
             if not info['ready']:
-                self.get_logger().warn(
-                    f'품종 전환 거부 — 자산 불완전: {pid} (누락: {info["missing"]}), 현재 품종 유지')
-                self._publish_products()
-                return
+                self.get_logger().info(
+                    f'품종 선택(자산 미비): {pid} (누락: {info["missing"]}) — 캡처 대상 지정, 검사는 불가')
 
-            # ── 임시 dict에 신품종 자산 전부 로드 (실패 시 기존 자산 유지, 부분 스왑 금지) ──
+            # ── 임시 dict에 자산 로드 (있는 것만) — 부분 로드는 판정 게이트가 걸러낸다 ──
             new_refs: Dict[int, np.ndarray] = {}
             ref_dir = self._product_ref_dir(pid)
             for angle in self._angles:
                 path = os.path.join(ref_dir, f'ref_{angle}.png')
+                if not os.path.isfile(path):
+                    continue
                 img = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
-                if img is None:
-                    self.get_logger().error(f'품종 전환 실패 — 기준이미지 읽기 실패: {path}')
-                    return
-                new_refs[angle] = img
+                if img is not None:
+                    new_refs[angle] = img
 
             new_f_area_min, new_f_area_max = self._global_f_area_min, self._global_f_area_max
             params_path = self._product_params_path(pid)
@@ -359,13 +360,17 @@ class InspectNode(Node):
 
             new_detectors: Dict[int, object] = {}
             new_thresholds: Dict[int, float] = {}
-            if self._anomaly_enabled:
+            model_dir = self._product_model_dir(pid)
+            thresholds_path = os.path.join(model_dir, 'thresholds.json')
+            # 뱅크·임계값이 4각도 전부 있을 때만 ML 로드. 부분이면 이 품종은 ML off 로 선택되고,
+            # 판정 게이트가 anomaly_enabled 인데 detectors 미완이면 검사를 막는다(ML 우회 방지).
+            banks_present = (self._anomaly_enabled and os.path.isfile(thresholds_path) and all(
+                os.path.isfile(os.path.join(model_dir, f'bank_{a}.pt')) for a in self._angles))
+            if banks_present:
                 try:
                     # torch는 이 모듈 내부에서만 import되므로 비활성 시 로드 비용이 없다.
                     from quvi_inspect.anomaly_detector import PatchCoreDetector
 
-                    model_dir = self._product_model_dir(pid)
-                    thresholds_path = os.path.join(model_dir, 'thresholds.json')
                     with open(thresholds_path, encoding='utf-8') as f:
                         thresholds = json.load(f)
                     # 백본은 품종 무관 — 기존 전역 anomaly_model_dir 에서 로드(공용 유지).
@@ -380,9 +385,10 @@ class InspectNode(Node):
                             shared_backbone = detector.backbone
                         new_detectors[angle] = detector
                         new_thresholds[angle] = float(thresholds[str(angle)]['threshold'])
-                except Exception as exc:  # noqa: BLE001 — ML 로드 실패는 스왑 전체를 취소
-                    self.get_logger().error(f'품종 전환 실패 — ML 자산 로드 실패({pid}): {exc}')
-                    return
+                except Exception as exc:  # noqa: BLE001 — ML 로드 실패는 ML만 끄고 선택은 진행
+                    self.get_logger().error(f'{pid} ML 자산 로드 실패({exc}) — 이 품종 ML off 로 선택')
+                    new_detectors = {}
+                    new_thresholds = {}
 
             # ── 원자적 스왑 — 로딩 도중 검사가 시작됐으면 취소(구/신 자산 혼합 금지) ──
             if self._inspection_active:
@@ -675,9 +681,9 @@ class InspectNode(Node):
                 self._inspection_active = False
                 self._captured_images.clear()
 
-    def _publish_unselected_result(self, start_time: float):
-        """품종 미선택 상태에서 검사가 트리거되면 판정을 실행하지 않고 즉시 FAIL 발행한다."""
-        fail_reason = '품종 미선택 — 검사 불가'
+    def _publish_unselected_result(self, start_time: float, reason: str = '품종 미선택'):
+        """품종 미선택·자산 미비 상태에서 검사가 트리거되면 판정을 실행하지 않고 즉시 FAIL 발행한다."""
+        fail_reason = f'{reason} — 검사 불가'
         result = InspectionResult()
         result.header.stamp        = self.get_clock().now().to_msg()
         result.header.frame_id     = 'inspection_chamber'
@@ -701,10 +707,15 @@ class InspectNode(Node):
         self.get_logger().info('=' * 50)
         self.get_logger().info('양불 판정 시작 (표면 특징 분석)')
 
-        # ── 필수3: 품종 미선택(또는 기준이미지 미로드) 상태에서는 정상 판정을 실행하지 않는다.
-        # 룰 단독 폴백(기준 없으면 면적비만 스킵)으로 이 상태에서 PASS 가 나가는 경로를 차단한다.
-        if self._current_product is None or not self._reference_images:
-            self._publish_unselected_result(start_time)
+        # ── 필수3: 실제 '메모리에 로드된' 자산의 완전성으로 판정 실행을 게이트한다(디스크 stat 아님).
+        # 뱅크는 오프라인 스크립트가 디스크에 직접 쓰므로, stat 기준이면 '뱅크 완성됐지만 아직
+        # 재선택 안 함 → detectors 비어있음' 상태에서 ml_passed=None 으로 룰단독 PASS(ML 우회)가
+        # 나갈 수 있다. 판정에 실제로 쓰이는 메모리 자산으로 게이트해야 그 구멍이 닫힌다.
+        refs_full = len(self._reference_images) == len(self._angles)
+        ml_ready = (not self._anomaly_enabled) or (len(self._anomaly_detectors) == len(self._angles))
+        if self._current_product is None or not refs_full or not ml_ready:
+            reason = '품종 미선택' if self._current_product is None else '자산 미비(기준이미지/뱅크 부족)'
+            self._publish_unselected_result(start_time, reason)
             return
 
         surface_results = self._surface_analysis()
