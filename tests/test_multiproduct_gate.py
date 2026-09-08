@@ -29,13 +29,15 @@ from quvi_inspect.inspect_node import InspectNode  # noqa: E402
 pytestmark = pytest.mark.usefixtures('_rclpy_session')
 
 
-def _make_node(products_dir: str) -> InspectNode:
+def _make_node(products_dir: str, area_ratio_enabled: bool = False) -> InspectNode:
     return InspectNode(
         parameter_overrides=[
             rclpy.parameter.Parameter(
                 'inspection_products_dir', rclpy.Parameter.Type.STRING, products_dir),
             rclpy.parameter.Parameter(
                 'anomaly_enabled', rclpy.Parameter.Type.BOOL, False),
+            rclpy.parameter.Parameter(
+                'area_ratio_enabled', rclpy.Parameter.Type.BOOL, area_ratio_enabled),
         ]
     )
 
@@ -89,12 +91,12 @@ def test_unselected_inspection_blocks_pass(products_dir):
         node.destroy_node()
 
 
-def test_incomplete_product_selectable_but_inspection_blocked(products_dir):
-    """(b) 기준이미지가 3장만 있는 불완전 품종은 캡처 대상으로 '선택은' 되지만,
-    그 상태로 검사가 트리거되면 정상 판정을 실행하지 않고 자산 미비 FAIL 이 나가야 한다.
-    (선택을 막으면 기준이미지 캡처 자체가 불가능해지는 교착을 피하기 위함 —
-     안전은 '선택 거부'가 아니라 '판정 실행 게이트'로 지킨다.)"""
-    node = _make_node(products_dir)
+def test_incomplete_refs_blocked_when_area_ratio_on(products_dir):
+    """(b) area_ratio_enabled=True 에서, 기준이미지가 3장만 있는 불완전 품종은
+    캡처 대상으로 '선택은' 되지만, 그 상태로 검사가 트리거되면 정상 판정을 실행하지
+    않고 자산 미비 FAIL 이 나가야 한다. (선택을 막으면 기준이미지 캡처 자체가
+    불가능해지는 교착을 피하기 위함 — 안전은 '선택 거부'가 아니라 '판정 게이트'로.)"""
+    node = _make_node(products_dir, area_ratio_enabled=True)
     try:
         _make_incomplete_product(products_dir, 'partial_product')
 
@@ -116,6 +118,32 @@ def test_incomplete_product_selectable_but_inspection_blocked(products_dir):
         node._run_inspection_inner()
         assert published['passed'] is False
         assert '자산 미비' in published['fail_reason']
+    finally:
+        node.destroy_node()
+
+
+def test_no_refs_ok_when_area_ratio_off(products_dir):
+    """(b') area_ratio_enabled=False(기본) + anomaly_enabled=False 에서는 기준이미지가
+    판정에 안 쓰이므로, 기준이미지가 하나도 없는 품종도 ready 로 인정되고 선택되며,
+    검사 실행 게이트가 '기준이미지 부족'으로 막지 않아야 한다(cube 교착 해소)."""
+    node = _make_node(products_dir, area_ratio_enabled=False)
+    try:
+        # 기준이미지 없이 디렉토리만 있는 품종(뱅크도 없음 — anomaly off라 무관)
+        os.makedirs(os.path.join(products_dir, 'noref', 'reference_images'), exist_ok=True)
+
+        status = node._product_status('noref')
+        assert status['ready'] is True          # 면적비 off라 기준이미지 불요
+        assert status['missing'] == []
+
+        node._reload_product('noref')
+        assert node._current_product == 'noref'
+
+        # 검사 트리거 시 refs 부족으로 막히지 않는다(자산 미비 아님)
+        published = {}
+        node._result_pub.publish = lambda msg: published.update(
+            passed=msg.passed, fail_reason=msg.fail_reason)
+        node._run_inspection_inner()
+        assert '자산 미비' not in published['fail_reason']
     finally:
         node.destroy_node()
 

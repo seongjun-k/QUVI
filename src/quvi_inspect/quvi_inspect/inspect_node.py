@@ -183,6 +183,12 @@ class InspectNode(Node):
             ('solidity_max',            1.00,                               '_sol_max'),
             ('feature_area_ratio_min',  0.80,                               '_f_area_min'),
             ('feature_area_ratio_max',  1.50,                               '_f_area_max'),
+            # 면적비 축은 기준이미지(4각도 촬영)를 요구하고 카메라 화각 가림에 취약하다.
+            # False면 판정에서 면적비를 빼고(기준이미지 불필요) 표면 축+ML로만 판정한다.
+            ('area_ratio_enabled',      False,                              '_area_ratio_enabled'),
+            # 면적비 대체 최소크기 가드(기준이미지 불필요, 실측 1회 기입). >0일 때만 동작 —
+            # 각도별 면적/폭²(cap_norm)이 이 값 미만이면 미출력/대형 결손으로 FAIL.
+            ('min_norm_area',           0.0,                                '_min_norm_area'),
             ('hole_count_max',          0,                                  '_hole_max'),
             ('hole_area_ratio_max',     0.05,                               '_hole_area_max'),
             ('texture_variance_max',    500.0,                              '_tex_var_max'),
@@ -245,14 +251,16 @@ class InspectNode(Node):
     def _product_status(self, pid: str) -> dict:
         """품종 하나의 자산 무결성을 점검한다.
 
-        ready = 4각도 기준이미지 전부 존재 AND (anomaly_enabled면 4뱅크+thresholds 전부).
+        ready = (area_ratio_enabled면 4각도 기준이미지 전부) AND (anomaly_enabled면 4뱅크+thresholds 전부).
         부분 자산으로 로드하고 해당 축만 스킵하는 관용은 다품종에서 없앤다(필수1).
+        면적비 비활성 시 기준이미지는 판정에 안 쓰이므로 ready 조건에서 제외한다.
         """
         missing: List[str] = []
-        ref_dir = self._product_ref_dir(pid)
-        for angle in self._angles:
-            if not os.path.isfile(os.path.join(ref_dir, f'ref_{angle}.png')):
-                missing.append(f'ref_{angle}')
+        if self._area_ratio_enabled:
+            ref_dir = self._product_ref_dir(pid)
+            for angle in self._angles:
+                if not os.path.isfile(os.path.join(ref_dir, f'ref_{angle}.png')):
+                    missing.append(f'ref_{angle}')
         if self._anomaly_enabled:
             model_dir = self._product_model_dir(pid)
             if not os.path.isfile(os.path.join(model_dir, 'thresholds.json')):
@@ -711,7 +719,10 @@ class InspectNode(Node):
         # 뱅크는 오프라인 스크립트가 디스크에 직접 쓰므로, stat 기준이면 '뱅크 완성됐지만 아직
         # 재선택 안 함 → detectors 비어있음' 상태에서 ml_passed=None 으로 룰단독 PASS(ML 우회)가
         # 나갈 수 있다. 판정에 실제로 쓰이는 메모리 자산으로 게이트해야 그 구멍이 닫힌다.
-        refs_full = len(self._reference_images) == len(self._angles)
+        # 면적비 비활성 시 기준이미지는 판정에 안 쓰이므로 refs 조건을 area_ratio_enabled 에
+        # 종속시킨다. ml_ready 는 refs 와 독립 유지 — anomaly_enabled 인데 detectors 미완이면
+        # 여전히 막아 ML 우회를 방지한다(deep-reasoner 조건①).
+        refs_full = (not self._area_ratio_enabled) or (len(self._reference_images) == len(self._angles))
         ml_ready = (not self._anomaly_enabled) or (len(self._anomaly_detectors) == len(self._angles))
         if self._current_product is None or not refs_full or not ml_ready:
             reason = '품종 미선택' if self._current_product is None else '자산 미비(기준이미지/뱅크 부족)'
@@ -822,22 +833,23 @@ class InspectNode(Node):
             cap_w    = cache.largest_external_width()
             cap_norm = cap_area / (cap_w * cap_w) if cap_w > 0 else 0.0
             a_ratio  = float('nan')
-            for ref in self._reference_images.values():
-                if ref is None:
-                    continue
-                ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
-                ref_cache = BinaryCache(ref_resized, self._bin_thresh)
-                ref_area  = ref_cache.largest_external_area()
-                ref_w     = ref_cache.largest_external_width()
-                ref_norm  = ref_area / (ref_w * ref_w) if ref_w > 0 else 0.0
-                r = cap_norm / ref_norm if ref_norm > 0 else 0.0
-                if math.isnan(a_ratio) or abs(r - 1.0) < abs(a_ratio - 1.0):
-                    a_ratio = r
-            if math.isnan(a_ratio):
-                # 기준 이미지 전무 시 면적비 검출 축이 통째로 빠진 채 검사가 진행됨을 알린다
-                self.get_logger().warning(
-                    '기준 이미지 없음 — 면적비 검사 스킵됨 (기준 캡처 필요)',
-                    throttle_duration_sec=30.0)
+            if self._area_ratio_enabled:
+                for ref in self._reference_images.values():
+                    if ref is None:
+                        continue
+                    ref_resized = cv2.resize(ref, (cache.gray.shape[1], cache.gray.shape[0]))
+                    ref_cache = BinaryCache(ref_resized, self._bin_thresh)
+                    ref_area  = ref_cache.largest_external_area()
+                    ref_w     = ref_cache.largest_external_width()
+                    ref_norm  = ref_area / (ref_w * ref_w) if ref_w > 0 else 0.0
+                    r = cap_norm / ref_norm if ref_norm > 0 else 0.0
+                    if math.isnan(a_ratio) or abs(r - 1.0) < abs(a_ratio - 1.0):
+                        a_ratio = r
+                if math.isnan(a_ratio):
+                    # 면적비 켜졌는데 기준이미지가 없으면 면적비 축이 빠진 채 검사됨을 알린다
+                    self.get_logger().warning(
+                        '기준 이미지 없음 — 면적비 검사 스킵됨 (기준 캡처 필요)',
+                        throttle_duration_sec=30.0)
 
             # ── 소프트웨어 정렬 (정렬된 이미지로 표면 분석) ──
             if self._align_enabled:
@@ -868,6 +880,7 @@ class InspectNode(Node):
             angle_features[angle] = {
                 'solidity':        solidity,
                 'area_ratio':      a_ratio,
+                'cap_norm':        cap_norm,
                 'hole_count':      h_count,
                 'hole_area_ratio': h_area_ratio,
                 'texture_variance': tex_var,
@@ -880,6 +893,7 @@ class InspectNode(Node):
         for angle, feats in angle_features.items():
             sol   = feats['solidity']
             area  = feats['area_ratio']
+            cnorm = feats['cap_norm']
             holes = feats['hole_count']
             h_ar  = feats['hole_area_ratio']
             tex   = feats['texture_variance']
@@ -887,10 +901,14 @@ class InspectNode(Node):
             if not (self._sol_min <= sol <= self._sol_max):
                 all_pass = False
                 fail_details.append(f'{angle}°워핑:Solidity={sol:.3f}')
-            if not math.isnan(area):
+            if self._area_ratio_enabled and not math.isnan(area):
                 if not (self._f_area_min <= area <= self._f_area_max):
                     all_pass = False
                     fail_details.append(f'{angle}°미출력:면적비={area:.3f}')
+            # 면적비 대체 최소크기 가드 — 기준이미지 없이 절대 스케일 하한만 본다(>0일 때만).
+            if self._min_norm_area > 0.0 and cnorm < self._min_norm_area:
+                all_pass = False
+                fail_details.append(f'{angle}°미출력/결손:크기={cnorm:.3f}<{self._min_norm_area:.3f}')
             if holes > self._hole_max:
                 all_pass = False
                 fail_details.append(f'{angle}°레이어분리:구멍={holes}개')

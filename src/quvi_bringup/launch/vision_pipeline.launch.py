@@ -99,6 +99,10 @@ def generate_launch_description():
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
+    area_ratio_enabled_arg = DeclareLaunchArgument(
+        'area_ratio_enabled', default_value='false',
+        description='면적비 축(기준이미지 필요, 화각 가림에 취약) 판정 사용 여부. false면 표면 축+ML로만 판정')
+
     # ─── 카메라 1: 사이드캠 (Zone 1 - 픽업 영역) ───
     camera1_node = Node(
         package='usb_cam',
@@ -180,6 +184,7 @@ def generate_launch_description():
                 'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
                 'inspection_products_dir': LaunchConfiguration('inspection_products_dir'),
                 'anomaly_enabled': ParameterValue(LaunchConfiguration('anomaly_enabled'), value_type=bool),
+                'area_ratio_enabled': ParameterValue(LaunchConfiguration('area_ratio_enabled'), value_type=bool),
                 'anomaly_model_dir': [LaunchConfiguration('data_dir'), '/models'],
                 'anomaly_device': 'cuda',
             }
@@ -203,6 +208,7 @@ def generate_launch_description():
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
         anomaly_enabled_arg,
+        area_ratio_enabled_arg,
 
         # 로그
         LogInfo(msg='====== QUVI Vision Pipeline 시작 ======'),
