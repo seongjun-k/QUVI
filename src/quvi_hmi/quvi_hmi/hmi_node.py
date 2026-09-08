@@ -17,6 +17,7 @@ Flask + WebSocket 기반 Web HMI 대시보드.
 """
 
 import json
+import math
 import os
 import threading
 import time
@@ -103,6 +104,14 @@ DEVICE_ROLES = [
     {'key': 'leader_dxl_port',  'label': '로봇 Leader',          'type': 'serial'},
     {'key': 'micro_ros_port',   'label': 'ESP (micro-ROS)',      'type': 'serial'},
 ]
+
+
+def _jf(x) -> float:
+    """JSON 안전 float — NaN/Inf 를 None 으로 바꾼다.
+    area_ratio 는 면적비 비활성 시 NaN 인데, 그대로 jsonify 되면 'NaN'(유효하지 않은
+    JSON)이 나가 프론트 res.json() 파싱이 깨져 결과 패널이 통째로 안 뜬다."""
+    f = float(x)
+    return f if math.isfinite(f) else None
 
 
 class HmiNode(Node):
@@ -305,15 +314,15 @@ class HmiNode(Node):
             'timestamp': datetime.now().isoformat(),
             'passed': msg.passed,
             'fail_reason': msg.fail_reason,
-            'solidity': float(msg.solidity),
-            'area_ratio': float(msg.area_ratio),
+            'solidity': _jf(msg.solidity),
+            'area_ratio': _jf(msg.area_ratio),
             'hole_count': int(msg.hole_count),
-            'hole_area_ratio': float(msg.hole_area_ratio),
-            'texture_variance': float(msg.texture_variance),
-            'anomaly_score_worst': float(msg.anomaly_score_worst),
+            'hole_area_ratio': _jf(msg.hole_area_ratio),
+            'texture_variance': _jf(msg.texture_variance),
+            'anomaly_score_worst': _jf(msg.anomaly_score_worst),
             'ml_passed': int(msg.ml_passed),
             'object_index': int(msg.object_index),
-            'inspection_time_sec': float(msg.inspection_time_sec),
+            'inspection_time_sec': _jf(msg.inspection_time_sec),
         }
         with self._lock:
             self._inspection_history.append(record)

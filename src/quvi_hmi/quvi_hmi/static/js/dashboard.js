@@ -376,6 +376,14 @@ function _fillTableRow(valId, evalId, val, min, max, isInt = false, isInverse = 
     const valEl = document.getElementById(valId);
     const evalEl = document.getElementById(evalId);
 
+    // 미사용 축(면적비 off 등) — 값이 null/비유한이면 '-'·중립 표시(거짓 FAIL 방지)
+    if (!isInt && !isFinite(parseFloat(val))) {
+        valEl.textContent = '-';
+        valEl.style.color = 'var(--text-muted)';
+        evalEl.innerHTML = '<span style="color: var(--text-muted);">미사용</span>';
+        return;
+    }
+
     let formattedVal = isInt ? val : parseFloat(val).toFixed(3);
     if (valId === 'detTexture') formattedVal = parseFloat(val).toFixed(1);
     valEl.textContent = formattedVal;
@@ -408,6 +416,7 @@ function _fillDetailTable(result) {
 function setMetric(id, value, min, max) {
     const el = document.getElementById(id);
     const v = parseFloat(value);
+    if (!isFinite(v)) { el.textContent = '-'; el.className = 'metric-value'; return; }  // 미사용 축(면적비 off 등)
     el.textContent = v.toFixed(3);
     if (v >= min && v <= max) el.className = 'metric-value ok';
     else if (Math.abs(v - min) < 0.05 || Math.abs(v - max) < 0.05) el.className = 'metric-value warn';
