@@ -308,7 +308,7 @@ class RobotControlNode(Node):
             self._init_follower()
 
         # ─── ACT 모델 로드 ───
-        self._act_policy = None
+        self._sidecar = None  # SidecarClient (VLA 추론 프로세스 핸들)
         self._act_ready = False
         self._act_loading = False
         self._act_reload_lock = threading.Lock()
@@ -373,6 +373,15 @@ class RobotControlNode(Node):
         # 안전: send_action(ACT·텔레옵) 1스텝 최대 상대이동량(정규화 단위).
         # 값을 낮출수록 폭주 방지 강도가 높다. 검증 후 단계적으로 상향한다.
         self.declare_parameter('act_max_relative_target', 8.0)
+        # VLA 추론 사이드카(격리 venv, lerobot 0.6.1). quvi-dev 메인 파이썬은
+        # lerobot 0.3.4/numpy<2 라 0.6.1 SmolVLA 를 직접 못 올린다 — 별도 프로세스로
+        # 분리해 Unix 소켓으로 관측→액션 청크를 주고받는다(정규화는 사이드카가
+        # cyclo 검증 코드로 수행). 서버·클라이언트 구현은 scripts/vla_sidecar/.
+        self.declare_parameter('act_sidecar_socket', '/dev/shm/quvi_vla.sock')
+        self.declare_parameter('act_sidecar_venv',
+            '/workspace/data/vla_sidecar/venv/bin/python')
+        self.declare_parameter('act_sidecar_script',
+            '/workspace/scripts/vla_sidecar/server.py')
         # 발표용 시각화: ACT 추론 실시간 rerun 웹 뷰어 (실패 시 자동 강등)
         self.declare_parameter('rerun_enable', True)
         # 데모 녹화용: 설정 시 웹 뷰어 대신 rrd 파일로 저장 (rerun 0.22는 싱크가 단일이라 동시 불가)
@@ -383,7 +392,7 @@ class RobotControlNode(Node):
         self.declare_parameter('rail_mm_pass',    25.0)
         self.declare_parameter('rail_mm_fail',    125.0)
         # 카메라 — VLA 2캠 정책은 사이드+탑뷰를 rgb.camera1/rgb.camera3 로 학습했다.
-        # 키 매핑: 'camera1' 포함 입력키→사이드, 'camera3' 포함→탑뷰(_build_policy_obs).
+        # 키 매핑: 'camera1' 포함 입력키→사이드, 'camera3' 포함→탑뷰(사이드카가 rgb.camera1/rgb.camera3 로 매핑).
         self.declare_parameter('sidecam_topic', '/camera1/image_raw/compressed')
         self.declare_parameter('topcam_topic', '/camera3/image_raw/compressed')
         # 동작 타임아웃 (초)
@@ -406,6 +415,9 @@ class RobotControlNode(Node):
         self._act_models_root   = self.get_parameter('act_models_root').value
         # ensure_safe_goal_position 은 float/dict 만 허용하므로 반드시 float 로 전달.
         self._act_max_rel_target = float(self.get_parameter('act_max_relative_target').value)
+        self._act_sidecar_socket = self.get_parameter('act_sidecar_socket').value
+        self._act_sidecar_venv   = self.get_parameter('act_sidecar_venv').value
+        self._act_sidecar_script = self.get_parameter('act_sidecar_script').value
         # ACT 진단 트레이스 (None = 비활성). 파지 시작 시 리스트로 열고 종료 시 CSV 로 덤프.
         self._act_trace = None
         self._act_trace_pos = (0, 0)
@@ -488,20 +500,21 @@ class RobotControlNode(Node):
 
     # ─── ACT/정책 모델 로드 ───
     def _load_act_policy(self, model_path: str = None) -> bool:
-        """LeRobot 정책 로드. model_path 미지정 시 현재 self._act_model_path 사용.
+        """VLA 정책을 사이드카(격리 venv)에 (재)로드한다.
 
-        성공 시 self._act_policy 교체 + self._act_model_path 갱신 + True 반환.
-        실패 시 기존 정책을 유지하고 False 반환.
+        quvi-dev 메인 파이썬은 lerobot 0.3.4/numpy<2 라 0.6.1 SmolVLA 를 직접
+        올릴 수 없다. 사이드카 프로세스(scripts/vla_sidecar/server.py)가 정규화
+        3단을 cyclo 검증 코드로 수행하고, 여기서는 소켓 클라이언트로 (재)로드만
+        지시한다. 성공 시 self._act_ready=True + self._act_model_path 갱신 + True.
+        실패 시 기존 상태 유지하고 False.
         """
         try:
-            for _lerobot_src in ['/workspace/lerobot/src']:
-                if _lerobot_src not in sys.path:
-                    sys.path.insert(0, _lerobot_src)
-            import torch
-            from lerobot.configs.policies import PreTrainedConfig
-            from lerobot.policies.factory import get_policy_class
+            import sys as _sys
+            if '/workspace/scripts/vla_sidecar' not in _sys.path:
+                _sys.path.insert(0, '/workspace/scripts/vla_sidecar')
+            from client import SidecarClient
         except ImportError as e:
-            self.get_logger().error(f'LeRobot/torch 미설치: {e}')
+            self.get_logger().error(f'사이드카 클라이언트 import 실패: {e}')
             return False
 
         target = model_path if model_path else self._act_model_path
@@ -510,87 +523,34 @@ class RobotControlNode(Node):
             resolved_path = Path('/workspace') / resolved_path
         resolved_path = resolved_path.resolve()
 
-        self.get_logger().info(f'정책 모델 로드 중: {resolved_path}')
+        self.get_logger().info(f'VLA 정책 로드 중(사이드카): {resolved_path}')
         try:
-            if not resolved_path.exists():
-                raise FileNotFoundError(f'로컬 모델 디렉토리가 존재하지 않습니다: {resolved_path}')
-            config = PreTrainedConfig.from_pretrained(str(resolved_path))
-            # 지원: 1캠(사이드) 또는 2캠(사이드 rgb.camera1 + 탑뷰 rgb.camera3).
-            # _build_policy_obs 가 키별로 실제 카메라에 매핑한다(매핑 불가 키는 fail-fast).
-            # 3개 이상이나 매핑 불가 조합은 조용히 틀린 액션을 내므로 거부한다.
-            n_img = sum(1 for k in config.input_features if 'image' in k)
-            if n_img not in (1, 2):
-                raise ValueError(
-                    f'이미지 입력 {n_img}개 정책은 지원하지 않습니다(사이드캠+탑뷰 최대 2대). '
-                    '_build_policy_obs 의 카메라 매핑을 먼저 확장할 것.')
-            policy_cls = get_policy_class(config.type)
-            policy = policy_cls.from_pretrained(str(resolved_path), config=config)
-            policy.eval()
-            device = self._act_device
-            policy = policy.to(device)
+            if self._sidecar is None:
+                self._sidecar = SidecarClient(
+                    venv_python=self._act_sidecar_venv,
+                    server_script=self._act_sidecar_script,
+                    model_path=str(resolved_path),
+                    socket_path=self._act_sidecar_socket,
+                    task_default=self._act_task_prompt,
+                    device=self._act_device,
+                    logger=self.get_logger())
+                if not self._sidecar.start():
+                    self.get_logger().error('사이드카 서버 기동/ready 실패')
+                    self._sidecar = None
+                    return False
+                # start() 는 생성 시 model_path 를 이미 로드하므로 추가 load 불필요.
+            else:
+                if not self._sidecar.load(str(resolved_path)):
+                    return False
 
-            # ─── CUDA 워밍업 (첫 추론 지연에 의한 제어 루프 끊김 방지) ───
-            if torch.device(device).type == 'cuda':
-                try:
-                    dummy_obs = {
-                        k: torch.zeros((1, *ft.shape), dtype=torch.float32, device=device)
-                        for k, ft in policy.config.input_features.items()
-                    }
-                    dummy_obs['task'] = [self._act_task_prompt]
-                    with torch.no_grad():
-                        policy.select_action(dummy_obs)
-                        if torch.cuda.is_available():
-                            torch.cuda.synchronize()
-                    self.get_logger().info(f'CUDA 워밍업 완료 ({config.type})')
-                except Exception as e:
-                    self.get_logger().warn(f'CUDA 워밍업 실패(무시): {e}')
-                finally:
-                    # 더미 추론으로 큐에 채워진 잔여 액션을 비워 실동작 오염 방지
-                    policy.reset()
-
-            # 성공 후 원자적으로 교체
-            self._act_policy = policy
-            self._act_device_obj = device
             self._act_model_path = str(resolved_path)
             self._act_ready = True
             self._save_last_act_model(str(resolved_path))
-            self.get_logger().info(
-                f'정책 모델 로드 완료: {resolved_path} (type={config.type}, device={device})')
+            self.get_logger().info(f'VLA 정책 로드 완료(사이드카): {resolved_path}')
             return True
         except Exception as e:
-            self.get_logger().error(f'정책 모델 로드 실패: {e}')
+            self.get_logger().error(f'VLA 정책 로드 실패: {e}')
             return False
-
-    def _build_policy_obs(self, cam_tensors: dict, state_tensor: 'torch.Tensor') -> dict:
-        """정책 input_features 스펙에 맞춰 관측 딕셔너리를 구성한다.
-
-        cam_tensors: {'camera1': 사이드 텐서, 'camera3': 탑뷰 텐서} — 필요한 것만 있으면 됨.
-        이미지 키는 문자열(camera1/camera3)로 실제 카메라에 매핑한다. SmolVLA 는
-        config.image_features 순서대로 쌓되 배치에서 키로 조회하므로 순서 무관, 키만 맞으면 됨.
-        매핑할 프레임이 없는 이미지 키는 조용히 틀린 액션 대신 즉시 오류(fail-fast).
-        """
-        obs = {}
-        features = getattr(getattr(self._act_policy, 'config', None), 'input_features', None)
-        for k in (features or {}):
-            if 'state' in k:
-                obs[k] = state_tensor
-            elif 'image' in k:
-                matched = next((t for cam, t in cam_tensors.items()
-                                if cam in k and t is not None), None)
-                if matched is None:
-                    raise KeyError(
-                        f'정책 이미지 입력 {k} 에 매핑할 카메라 프레임이 없습니다 '
-                        f'(가용: {[c for c, t in cam_tensors.items() if t is not None]}).')
-                obs[k] = matched
-        if not obs:
-            obs = {
-                'observation.images.camera1': cam_tensors.get('camera1'),
-                'observation.state': state_tensor,
-            }
-        # task 는 input_features 에 없지만 VLA 계열이 batch['task'] 로 직접 읽는다.
-        # ACT 는 자기 features 만 순회하므로 여분 키를 무시한다.
-        obs['task'] = [self._act_task_prompt]
-        return obs
 
     def _restore_last_act_model(self) -> bool:
         """직전 세션에서 선택한 모델 경로 복원. 성공 시 True, 파일 없거나 경로 소실 시 False."""
@@ -1150,21 +1110,9 @@ class RobotControlNode(Node):
             self._publish_status(f'ERROR: {e}')
             return False
 
-    def _act_image_tensor(self, frame):
-        """사이드캠 BGR 프레임 → 정책 입력용 정규화 이미지 텐서."""
-        import torch
-        h, w = 480, 640
-        if self._act_policy and hasattr(self._act_policy, 'config') and hasattr(self._act_policy.config, 'input_features'):
-            for k, ft in self._act_policy.config.input_features.items():
-                if 'image' in k and hasattr(ft, 'shape') and len(ft.shape) == 3:
-                    h, w = int(ft.shape[1]), int(ft.shape[2])
-                    break
-        frame_rgb = cv2.cvtColor(
-            cv2.resize(frame, (w, h)), cv2.COLOR_BGR2RGB)
-        img_tensor = torch.from_numpy(
-            frame_rgb.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
-        img_tensor = img_tensor.to(self._act_device_obj)
-        return img_tensor
+    def _act_rgb(self, frame):
+        """BGR 프레임 → 정책 입력용 RGB HWC uint8. resize·정규화는 사이드카가 수행."""
+        return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
     def _act_send_action_step(self, action) -> None:
         """ACT 정책 출력 1스텝을 실HW/SIM 으로 전송 (raw 변환·상대이동 캡·클램프 포함)."""
@@ -1209,10 +1157,6 @@ class RobotControlNode(Node):
             return self._execute_rule_based_grasp()
 
         try:
-            import torch
-            # 이전 파지 에피소드의 낡은 액션 큐를 비운다. reset() 없이는 두 번째
-            # 파지부터 직전 관측 기반의 남은 액션이 먼저 실행돼 예기치 않게 움직인다.
-            self._act_policy.reset()
             # ACT용 프로파일을 명시적으로 설정해 직전 동작(시퀀스=2000ms 등)의
             # 프로파일 누수를 제거한다. 학습 녹화 시 configure() 기본값(50ms)이 적용됐으므로
             # 동일하게 맞춰 학습 동역학과 일치시킨다.
@@ -1238,11 +1182,10 @@ class RobotControlNode(Node):
                 with self._topcam_lock:
                     top_frame = self._latest_topcam
 
-                # 2캠 정책이면 탑뷰까지 매핑, 1캠이면 사이드만. 탑뷰가 필요한데
-                # 없으면 _build_policy_obs 가 fail-fast 로 막는다(엉뚱한 프레임 주입 방지).
-                cam_tensors = {'camera1': self._act_image_tensor(frame)}
+                # 2캠 정책이면 탑뷰까지, 1캠이면 사이드만 넘긴다.
+                cam_images = {'camera1': self._act_rgb(frame)}
                 if top_frame is not None:
-                    cam_tensors['camera3'] = self._act_image_tensor(top_frame)
+                    cam_images['camera3'] = self._act_rgb(top_frame)
 
                 acquired = self._dxl_io_lock.acquire(blocking=True, timeout=0.03)
                 if not acquired:
@@ -1263,21 +1206,16 @@ class RobotControlNode(Node):
                 # rad = (raw-2048)·2π/4096 으로 변환해 학습 분포와 일치시킨다.
                 joint_vals = [raw_to_rad(raw_positions[name])
                               for name in JOINT_NAMES]
-                state_tensor = torch.tensor(
-                    joint_vals, dtype=torch.float32).unsqueeze(0)
-                state_tensor = state_tensor.to(self._act_device_obj)
-
-                obs = self._build_policy_obs(cam_tensors, state_tensor)
 
                 infer_start = time.time()
-                with torch.no_grad():
-                    action_chunk = self._act_policy.select_action(obs)
-                    if torch.is_tensor(action_chunk):
-                        if action_chunk.ndim == 3:
-                            action_chunk = action_chunk.squeeze(0)
-                        action_chunk = action_chunk.cpu().numpy()
-                    if isinstance(action_chunk, np.ndarray) and action_chunk.ndim == 1:
-                        action_chunk = np.expand_dims(action_chunk, axis=0)
+                try:
+                    action_chunk = self._sidecar.infer(
+                        cam_images, joint_vals, self._act_task_prompt)
+                except Exception as e:
+                    self.get_logger().error(f'사이드카 추론 실패 — 파지 중단: {e}')
+                    self._set_state_if_current(RobotState.ERROR, gen)
+                    self._publish_status('ERROR: 사이드카 추론 실패')
+                    return False
                 chunk_count += 1
                 self.get_logger().info(
                     f'ACT 청크#{chunk_count} 추론 완료 | 크기={len(action_chunk)} | '
@@ -1805,6 +1743,12 @@ class RobotControlNode(Node):
             finally:
                 self._dxl_ready = False
                 self._follower = None
+        if self._sidecar is not None:
+            try:
+                self._sidecar.stop()
+            except Exception as e:
+                self.get_logger().warn(f'사이드카 종료 중 오류: {e}')
+            self._sidecar = None
         super().destroy_node()
 
     # ─── 텔레오퍼레이션 제어 ───

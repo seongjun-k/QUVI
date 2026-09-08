@@ -35,7 +35,8 @@ logger = logging.getLogger("vla_sidecar")
 
 DEFAULT_ENGINE_DIR = os.environ.get(
     "VLA_ENGINE_DIR",
-    "/home/ksj/cyclo_intelligence/cyclo_brain/policy/lerobot/lerobot_engine",
+    # QUVI 저장소에 vendoring 한 cyclo lerobot_engine 서브셋(컨테이너 /workspace 마운트).
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "lerobot_engine"),
 )
 DEFAULT_SOCKET = "/dev/shm/quvi_vla.sock"
 DEFAULT_TASK = "Pick up the printed part from the bed."
@@ -80,13 +81,27 @@ class VlaSidecar(prediction.PredictionMixin):
     def __init__(self, model_path: str, device: str, task_default: str = DEFAULT_TASK):
         self._device = torch.device(device)
         self._task_default = task_default
-        logger.info("정책 로드 중: %s (device=%s)", model_path, self._device)
-        self._policy, self._preprocessor, self._postprocessor = (
-            loading.LoadingMixin._load_policy_assets(model_path, self._device)
+        self.model_path = None
+        self._policy = self._preprocessor = self._postprocessor = None
+        self._image_resize: dict = {}
+        self.load(model_path)
+
+    def load(self, model_path: str) -> None:
+        """정책 + 전처리기를 (재)로드. HMI 모델 전환 시 클라이언트가 load 명령으로 호출.
+
+        실패 시 예외를 올려 호출자가 처리한다(기존 정책은 교체 직전까지 유지).
+        """
+        resolved = loading.LoadingMixin._resolve_model_dir(model_path)
+        logger.info("정책 로드 중: %s (device=%s)", resolved, self._device)
+        policy, preprocessor, postprocessor = (
+            loading.LoadingMixin._load_policy_assets(resolved, self._device)
         )
+        self._policy, self._preprocessor, self._postprocessor = (
+            policy, preprocessor, postprocessor)
         features = getattr(self._policy.config, "input_features", {}) or {}
         self._image_resize = infer_image_resize_targets(features)
-        logger.info("이미지 리사이즈 타겟: %s", self._image_resize)
+        self.model_path = resolved
+        logger.info("로드 완료: %s | 리사이즈 타겟 %s", resolved, self._image_resize)
 
     def _build_batch(self, cam_images: dict, state, task: str) -> dict:
         """preprocessing.py:44-118의 RobotClient-free 부분과 동일하게 재현."""
@@ -146,29 +161,40 @@ def _serve(sidecar: VlaSidecar, sock_path: str) -> None:
 def _handle_connection(sidecar: VlaSidecar, conn: socket.socket) -> None:
     while True:
         request = recv_msg(conn)
+        cmd = request.get("cmd", "infer")
         try:
-            seed = request.get("seed")
-            if seed is not None:
-                # SmolVLA는 디노이징 초기 노이즈를 전역 RNG에서 샘플링해 호출마다
-                # 확률적이다. 정상 운용에서는 시드를 주지 않지만(자연스러운
-                # 샘플링), 오프라인 수치검증에서 재현성이 필요할 때만 클라이언트가
-                # seed를 넘겨 결정적으로 만든다.
-                torch.manual_seed(int(seed))
-            chunk = sidecar.infer(
-                {"camera1": request.get("camera1"), "camera3": request.get("camera3")},
-                request.get("state"),
-                request.get("task", ""),
-            )
-            t, d = chunk.shape
-            response = {
-                "success": True,
-                "action_chunk": chunk,
-                "chunk_size": int(t),
-                "action_dim": int(d),
-                "message": "",
-            }
+            if cmd == "ping":
+                # 클라이언트 연결·ready 확인용. 모델 로드 상태와 경로를 돌려준다.
+                response = {"success": True, "ready": sidecar._policy is not None,
+                            "model_path": sidecar.model_path, "message": ""}
+            elif cmd == "load":
+                # HMI 모델 전환 — 사이드카가 정책을 재로드한다.
+                sidecar.load(request["model_path"])
+                response = {"success": True, "ready": True,
+                            "model_path": sidecar.model_path, "message": "loaded"}
+            else:  # "infer"
+                seed = request.get("seed")
+                if seed is not None:
+                    # SmolVLA는 디노이징 초기 노이즈를 전역 RNG에서 샘플링해 호출마다
+                    # 확률적이다. 정상 운용에서는 시드를 주지 않지만(자연스러운
+                    # 샘플링), 오프라인 수치검증에서 재현성이 필요할 때만 클라이언트가
+                    # seed를 넘겨 결정적으로 만든다.
+                    torch.manual_seed(int(seed))
+                chunk = sidecar.infer(
+                    {"camera1": request.get("camera1"), "camera3": request.get("camera3")},
+                    request.get("state"),
+                    request.get("task", ""),
+                )
+                t, d = chunk.shape
+                response = {
+                    "success": True,
+                    "action_chunk": chunk,
+                    "chunk_size": int(t),
+                    "action_dim": int(d),
+                    "message": "",
+                }
         except Exception as exc:  # noqa: BLE001 - 클라이언트에 실패 사유 전달
-            logger.error("추론 실패: %s", exc, exc_info=True)
+            logger.error("요청 처리 실패(cmd=%s): %s", cmd, exc, exc_info=True)
             response = {"success": False, "action_chunk": None, "chunk_size": 0,
                         "action_dim": 0, "message": str(exc)}
         send_msg(conn, response)
