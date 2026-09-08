@@ -576,6 +576,10 @@ def create_flask_app(hmi_node: HmiNode) -> tuple:
                 template_folder=template_dir,
                 static_folder=static_dir)
 
+    # werkzeug 개발 서버의 요청별 접근 로그(예: 폴링성 GET /api/act/models 200) 억제 — 에러만 남긴다.
+    import logging
+    logging.getLogger('werkzeug').setLevel(logging.WARNING)
+
     # SECRET_KEY: 환경변수 우선, 없으면 랜덤 생성(운영 시 QUVI_HMI_SECRET_KEY 지정 권장).
     secret_key = os.environ.get('QUVI_HMI_SECRET_KEY')
     if not secret_key:

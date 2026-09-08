@@ -662,7 +662,9 @@ class RobotControlNode(Node):
                     cfg = json.load(open(pm / 'config.json'))
                     inp = cfg.get('input_features', {})
                     act = cfg.get('output_features', {}).get('action', {}).get('shape')
-                    has_image = sum(1 for k in inp if 'image' in k) == 1
+                    # 이미지 1~2캠 허용 — _load_act_policy 로더 가드(n_img in (1,2))와 일치시킨다.
+                    # (1캠 ACT/단일뷰 + 2캠 SmolVLA[사이드+탑뷰] 모두 목록에 노출)
+                    has_image = sum(1 for k in inp if 'image' in k) in (1, 2)
                     has_state = ('observation.state' in inp)
                     is_action_6d = (act == [6] or (isinstance(act, list) and len(act) > 0 and act[-1] == 6))
                     compatible = (has_image and has_state and is_action_6d)
