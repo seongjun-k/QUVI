@@ -9,10 +9,10 @@ quvi-dev 컨테이너의 lerobot(0.3.4)은 lerobot 0.6.1로 학습·export된 Sm
 
 전처리·정규화 로직은 cyclo_intelligence에서 실기 검증(2026-09-07, jitter 없음
 ·박스 파지 성공)을 통과한 lerobot_engine 모듈(loading/prediction/
-image_preprocessing/constants)을 그대로 import해 재사용한다 — 손으로
-재구현하면 학습 시 정규화 통계와 de-sync될 위험이 있다. RobotClient에 묶인
-io_mapping.py/engine.py는 제외한다(엔진 __init__.py가 이를 임포트하므로
-패키지 스텁을 sys.modules에 먼저 넣어 우회한다).
+image_preprocessing/constants)을 QUVI에 vendoring 한 사본(같은 디렉토리
+lerobot_engine/)에서 그대로 import해 재사용한다 — 손으로 재구현하면 학습 시
+정규화 통계와 de-sync될 위험이 있다. RobotClient에 묶인 io_mapping.py/engine.py
+는 vendoring 대상에서 제외했다.
 """
 
 from __future__ import annotations
@@ -23,7 +23,6 @@ import os
 import pathlib
 import socket
 import sys
-import types
 
 import numpy as np
 import torch
@@ -33,11 +32,6 @@ from protocol import recv_msg, send_msg  # noqa: E402
 
 logger = logging.getLogger("vla_sidecar")
 
-DEFAULT_ENGINE_DIR = os.environ.get(
-    "VLA_ENGINE_DIR",
-    # QUVI 저장소에 vendoring 한 cyclo lerobot_engine 서브셋(컨테이너 /workspace 마운트).
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "lerobot_engine"),
-)
 DEFAULT_SOCKET = "/dev/shm/quvi_vla.sock"
 DEFAULT_TASK = "Pick up the printed part from the bed."
 
@@ -49,25 +43,8 @@ CAMERA_POLICY_KEYS = {
 }
 
 
-def _stub_lerobot_engine_package(engine_dir: str) -> None:
-    """RobotClient/engine.py 의존성 없이 loading/prediction 서브모듈만 로드.
-
-    lerobot_engine/__init__.py 는 RobotClient SDK와 /policy_runtime 의
-    engine 모듈을 요구하는 engine.py 를 임포트한다. 사이드카는 둘 다 없으므로
-    빈 패키지 스텁을 sys.modules 에 먼저 넣어 __init__.py 실행을 건너뛴다.
-    """
-    engine_path = pathlib.Path(engine_dir)
-    parent = str(engine_path.parent)
-    if parent not in sys.path:
-        sys.path.insert(0, parent)
-    if "lerobot_engine" not in sys.modules:
-        pkg = types.ModuleType("lerobot_engine")
-        pkg.__path__ = [str(engine_path)]
-        sys.modules["lerobot_engine"] = pkg
-
-
-_stub_lerobot_engine_package(DEFAULT_ENGINE_DIR)
-
+# vendoring 한 lerobot_engine/ 는 이 파일과 같은 디렉토리에 있고 __init__.py 가
+# import-clean 이라, 위 sys.path(=이 파일의 부모) 삽입만으로 바로 임포트된다.
 from lerobot_engine import loading, prediction, constants  # noqa: E402
 from lerobot_engine.image_preprocessing import (  # noqa: E402
     prepare_policy_image,

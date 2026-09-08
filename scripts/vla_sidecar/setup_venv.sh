@@ -18,7 +18,7 @@ source "$VENV_DIR/bin/activate"
 pip install --upgrade pip
 
 pip install torch==2.11.0+cu128 --index-url https://download.pytorch.org/whl/cu128
-pip install numpy==2.2.6 transformers==5.5.4 lerobot==0.6.1 msgpack
+pip install numpy==2.2.6 transformers==5.5.4 lerobot==0.6.1
 # num2words: transformers 5.5.4의 SmolVLM 프로세서가 하드 의존성으로 요구하지만
 # lerobot/transformers 어느 쪽도 pip 의존성에 선언하지 않아 별도 설치가
 # 필요하다(2026-09-08 실측 - "Package num2words is required" ImportError).

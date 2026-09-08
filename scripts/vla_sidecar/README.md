@@ -41,9 +41,10 @@ lerobot 0.6.1 / numpy 2.2.6 / transformers 5.5.4 / torch 2.11.0+cu128인지
 
 ## IPC 프로토콜
 
-`protocol.py` 참조. 4바이트 빅엔디언 길이 프리픽스 + payload(msgpack 있으면
-msgpack, 없으면 pickle). 소켓: `/dev/shm/quvi_vla.sock` (quvi-dev와
-lerobot_server 컨테이너가 host network + `/dev/shm` 공유).
+`protocol.py` 참조. 4바이트 빅엔디언 길이 프리픽스 + payload(pickle). ndarray 는
+dtype+shape+bytes 로 변환해 실어 numpy 2.x↔1.26 pickle 불일치를 피한다. 소켓:
+`/dev/shm/quvi_vla.sock` (quvi-dev와 lerobot_server 컨테이너가 host network +
+`/dev/shm` 공유).
 
 요청: `{camera1: <HWC uint8 ndarray>, camera3: <HWC uint8 ndarray>, state: [6 floats], task: str, seed?: int}`
 (`seed`는 검증 전용 - 지정 시 SmolVLA의 확률적 디노이징 노이즈를 고정한다.
