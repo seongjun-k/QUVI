@@ -12,6 +12,9 @@ VENV_DIR="${1:-/home/ksj/QUVI/data/vla_sidecar/venv}"
 
 echo "[setup_venv] venv 생성: $VENV_DIR"
 python3.12 -m venv "$VENV_DIR"
+# venv 는 워크스페이스(data/) 안이라 colcon 이 site-packages 의 numpy/cmake 테스트용
+# setup.py·CMakeLists 를 ROS 패키지로 오인한다 — 상위 디렉토리째 colcon 스캔에서 제외.
+touch "$(dirname "$VENV_DIR")/COLCON_IGNORE"
 # shellcheck disable=SC1091
 source "$VENV_DIR/bin/activate"
 
