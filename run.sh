@@ -18,11 +18,13 @@ source "${SCRIPT_DIR}/docker/find_or_start_container.sh"
 # QUVI(quvi-dev)와 cyclo 스택(open_manipulator/zenoh)은 같은 /dev/video·DYNAMIXEL 포트를
 # 두고 경합한다. cyclo 컨테이너가 남아 usb_cam이 카메라를 선점하면 QUVI 카메라가 안 뜨므로
 # 실행 전에 내린다. 이미지/볼륨은 건드리지 않는다(정지만 — 재빌드 방지).
+# 컨테이너를 하나씩 stop 하면 각 -t 타임아웃이 누적돼(최악 5개×타임아웃) 느리다.
+# 전부 백그라운드로 동시에 내리고 마지막에 wait — 총 소요 ≈ 한 컨테이너 타임아웃.
 _quvi_free_container() {
     local c="$1"
     [ -z "$(docker ps -q -f name="^${c}$")" ] && return 0
     echo "[QUVI] 충돌 컨테이너 종료: ${c}"
-    docker stop -t 5 "${c}" >/dev/null 2>&1
+    docker stop -t 2 "${c}" >/dev/null 2>&1
     # snap dockerd + AppArmor 환경에선 stop 시그널이 막힐 수 있다(기록된 함정).
     # 그래도 살아있으면 내부 usb_cam/respawn 래퍼만 죽여 장치라도 반납시킨다.
     if [ -n "$(docker ps -q -f name="^${c}$")" ]; then
@@ -30,9 +32,12 @@ _quvi_free_container() {
         echo "[QUVI]   (stop 미적용 → ${c} 내부 usb_cam 강제 종료로 카메라 반납)"
     fi
 }
+_quvi_stop_pids=""
 for _c in open_manipulator zenoh_daemon cyclo_manager cyclo_manager_ui lerobot_server; do
-    _quvi_free_container "${_c}"
+    _quvi_free_container "${_c}" &
+    _quvi_stop_pids="${_quvi_stop_pids} $!"
 done
+[ -n "${_quvi_stop_pids}" ] && wait ${_quvi_stop_pids}
 
 # 페이지 캐시 비우기(메모리 확보) — sudo 무암호 가능할 때만, 실패해도 무시.
 if sudo -n true 2>/dev/null; then

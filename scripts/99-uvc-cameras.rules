@@ -2,8 +2,8 @@
 # USB 물리 포트 위치(KERNELS)를 기반으로 구분하여 심볼릭 링크를 생성합니다.
 # 또한 장치 인식 시점에 v4l2-ctl을 구동하여 전원 플리커 차단(60Hz) 설정을 강제합니다.
 
-# Fixed Camera (고정/검사캠) - USB 허브 포트 1 연결 (/dev/fixed_cam)
-SUBSYSTEM=="video4linux", KERNELS=="*.1:1.0", ATTR{index}=="0", SYMLINK+="fixed_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
+# Fixed Camera (고정/검사캠) - USB 허브 포트 2 연결 (/dev/fixed_cam)
+SUBSYSTEM=="video4linux", KERNELS=="*.2:1.0", ATTR{index}=="0", SYMLINK+="fixed_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
 
 # Top-view Camera (탑뷰캠) - USB 허브 포트 3 연결 (/dev/topcam)
 SUBSYSTEM=="video4linux", KERNELS=="*.3:1.0", ATTR{index}=="0", SYMLINK+="topcam top_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
