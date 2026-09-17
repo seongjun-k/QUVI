@@ -197,6 +197,13 @@ GRASP_CHECK_SETTLE_SEC   = 0.4   # 판정 전 정착 대기
 GRASP_CHECK_READ_RETRY   = 3     # 위치 읽기 재시도(락 경합 대비)
 
 # ACT 실행 주기 (Hz)
+# 주의: 학습 데이터셋 fps(SmolVLA=15)와 일치하지 않는다. 명목상 2배속 재생이지만
+# 15 로 낮추면 오히려 떨림이 심해져(반전 진폭 중앙 1.0→2.0 raw) 30 을 유지한다.
+# 2026-09-17 실측: 떨림의 원인은 재생 주기가 아니라 정책 출력 자체의 진동이다
+# (정책 출력 반전율 41~45% vs 학습 데이터 액션 14.8%, 120ep·218ep 모두 동일).
+# dt(33ms) < PROFILE_VELOCITY_ACT(50ms) 라 다음 목표가 이전 이동을 덮어쓰면서
+# 그 진동을 기계적으로 눌러주는 것으로 보인다(미확정). 근본 해결은 액션 출력
+# 스무딩(temporal ensembling / 저역통과)이며 미적용. 근거는 data/act_traces 트레이스.
 ACT_CONTROL_HZ = 30
 
 # ACT 파지 1스텝마다 명령값·실제위치를 남기는 진단 트레이스 저장 위치.
@@ -359,7 +366,7 @@ class RobotControlNode(Node):
         # ACT
         self.declare_parameter('use_act', False)
         self.declare_parameter('act_model_path',
-            '/workspace/data/models/smolvla_120ep/checkpoints/006000/pretrained_model')
+            '/workspace/data/models/smolvla_218ep/checkpoints/010000/pretrained_model')
         self.declare_parameter('act_device', 'cuda')  # 'cuda' or 'cpu' — CPU 는 추론 3.1s 라 궤적이 잘린다
         # VLA/프롬프트 (VLA 계열 정책 모델 도입 시 전달할 기본 언어 태스크)
         # VLA 계열은 이 문자열로 조건화되므로 학습 데이터셋 meta/tasks.jsonl 의
