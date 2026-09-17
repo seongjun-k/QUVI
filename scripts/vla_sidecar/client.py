@@ -75,13 +75,15 @@ class SidecarClient:
                     self._warn(f"사이드카 실행 불가 — 경로 없음: {path}")
                     return False
             self._info(f"사이드카 서버 기동: model={self._model_path} log={self._log_path}")
-            log_f = open(self._log_path, "ab", buffering=0)
-            self._proc = subprocess.Popen(
-                [self._venv_python, "-u", self._server_script,
-                 "--model-path", self._model_path, "--socket", self._socket_path,
-                 "--task-default", self._task_default, "--device", self._device],
-                stdout=log_f, stderr=subprocess.STDOUT,
-            )
+            # with 로 닫아도 자식은 이미 복제된 fd 를 쥐고 있어 로그는 계속 쌓인다.
+            # 재기동을 반복해도 부모 쪽 fd 가 누적되지 않게 여기서 닫는다.
+            with open(self._log_path, "ab", buffering=0) as log_f:
+                self._proc = subprocess.Popen(
+                    [self._venv_python, "-u", self._server_script,
+                     "--model-path", self._model_path, "--socket", self._socket_path,
+                     "--task-default", self._task_default, "--device", self._device],
+                    stdout=log_f, stderr=subprocess.STDOUT,
+                )
             # ready 대기: ping 이 성공하고 모델이 로드될 때까지.
             deadline = time.monotonic() + ready_timeout
             while time.monotonic() < deadline:
@@ -100,6 +102,20 @@ class SidecarClient:
                 time.sleep(1.0)
             self._warn(f"사이드카 ready 타임아웃({ready_timeout}s)")
             return False
+
+    def is_alive(self) -> bool:
+        """서버 프로세스 생존 여부. 기동 전/종료 후는 False."""
+        return self._proc is not None and self._proc.poll() is None
+
+    def restart(self, ready_timeout: float = 120.0) -> bool:
+        """죽은(또는 죽어가는) 서버를 정리하고 새로 기동한다.
+
+        stop() 이 _proc 을 None 으로 만들기 때문에 start() 가 그대로 새 프로세스를
+        띄운다. stop()/start() 모두 내부 락을 잡으므로, 진행 중인 infer 요청이
+        끝난 뒤에야 종료가 시작된다(요청 중간에 프로세스를 끊지 않는다).
+        """
+        self.stop()
+        return self.start(ready_timeout)
 
     def stop(self) -> None:
         with self._lock:

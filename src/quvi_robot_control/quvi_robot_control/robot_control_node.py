@@ -206,6 +206,11 @@ GRASP_CHECK_READ_RETRY   = 3     # 위치 읽기 재시도(락 경합 대비)
 # 스무딩(temporal ensembling / 저역통과)이며 미적용. 근거는 data/act_traces 트레이스.
 ACT_CONTROL_HZ = 30
 
+# 사이드카 자동 재기동 연속 실패 허용 횟수. 넘으면 포기하고 사람이 볼 때까지
+# 재시도를 멈춘다 — 모델 경로가 틀렸거나 GPU 메모리가 없는 상황에서 1분마다
+# 900MB 로드를 무한 재시도하는 것을 막는다.
+ACT_SIDECAR_RESTART_MAX = 3
+
 # ACT 파지 1스텝마다 명령값·실제위치를 남기는 진단 트레이스 저장 위치.
 # 궤적 떨림 진단용 — 동작에는 관여하지 않고 CSV 로만 기록한다.
 ACT_TRACE_DIR = '/workspace/data/act_traces'
@@ -319,6 +324,10 @@ class RobotControlNode(Node):
         self._act_ready = False
         self._act_loading = False
         self._act_reload_lock = threading.Lock()
+        # 사이드카 죽음 감시용. 재기동은 모델 로드에 ~60s 걸리므로 워치독
+        # 콜백(1Hz)을 막지 않도록 별도 스레드에서 돌리고, 이 락으로 중복 기동을 막는다.
+        self._act_restart_lock = threading.Lock()
+        self._act_restart_fails = 0
         self._act_models_cache = []
         # 저장된 마지막 선택이 있으면 use_act=false 로 기동해도 복원 로드한다 —
         # 복원 성공 시 자동 ON (대시보드 선택 시 자동 ON 과 동일 정책)
@@ -1189,7 +1198,9 @@ class RobotControlNode(Node):
                 with self._topcam_lock:
                     top_frame = self._latest_topcam
 
-                # 2캠 정책이면 탑뷰까지, 1캠이면 사이드만 넘긴다.
+                # 주의: 사이드카는 camera1/camera3 를 모두 필수로 요구한다
+                # (server.py CAMERA_POLICY_KEYS). 여기서 탑뷰가 None 이면
+                # 1캠으로 추론되는 게 아니라 추론이 예외로 떨어져 ERROR 로 간다.
                 cam_images = {'camera1': self._act_rgb(frame)}
                 if top_frame is not None:
                     cam_images['camera3'] = self._act_rgb(top_frame)
@@ -1647,8 +1658,61 @@ class RobotControlNode(Node):
     def _publish_status(self, msg: str):
         self._status_pub.publish(String(data=f'[ROBOT] {msg}'))
 
+    # ─── 사이드카 생존 감시 ───
+    def _check_sidecar_alive(self):
+        """죽은 VLA 사이드카를 IDLE 일 때만 백그라운드로 되살린다(1Hz 워치독).
+
+        왜 파지 루프가 아니라 여기인가: SidecarClient.start() 는 모델 로드가
+        끝날 때까지 내부 락을 쥔 채 최대 ready_timeout(기본 120s) 를 기다린다.
+        추론 실패 지점에서 동기로 재기동하면 그 스레드가 그만큼 묶여 팔이
+        마지막 자세로 멈춘다. IDLE 에서 미리 복구해 두면 다음 파지는 평소
+        경로로 들어간다 — 동작 중 재기동은 하지 않는다.
+
+        _act_ready 는 건드리지 않는다. 내리면 _execute_act_grasp 앞머리가
+        룰베이스(티칭 고정궤적) 파지로 조용히 갈아타는데, 그건 물체 위치를
+        안 보는 다른 동작이라 복구 중이라는 이유로 몰래 바뀌면 안 된다.
+        복구 전에 파지가 들어오면 지금과 같이 추론 실패 → ERROR 가 맞다.
+        """
+        if self._sidecar is None or self._sidecar.is_alive():
+            return
+        if self._act_loading:
+            return                      # HMI 모델 전환 중 — 그쪽이 사이드카를 쥐고 있다
+        if self._act_restart_fails >= ACT_SIDECAR_RESTART_MAX:
+            return                      # 계속 죽는다 — 사람이 봐야 한다
+        if self._get_state() != RobotState.IDLE:
+            return                      # 동작 중에는 절대 손대지 않는다
+        if not self._act_restart_lock.acquire(blocking=False):
+            return                      # 이미 재기동 중
+        self.get_logger().error('VLA 사이드카가 죽어 있음 — 백그라운드 재기동 시도')
+        self._publish_status('VLA 사이드카 재기동 중')
+        threading.Thread(target=self._restart_sidecar, daemon=True).start()
+
+    def _restart_sidecar(self):
+        """워치독이 띄운 스레드 본체. 실패해도 노드는 계속 산다."""
+        try:
+            try:
+                ok = self._sidecar.restart()
+            except Exception as e:                   # noqa: BLE001
+                self.get_logger().error(f'사이드카 재기동 중 예외: {e}')
+                ok = False
+            if ok:
+                self._act_restart_fails = 0
+                self.get_logger().info('사이드카 재기동 성공 — ACT 사용 가능')
+                self._publish_status('VLA 사이드카 복구됨')
+            else:
+                self._act_restart_fails += 1
+                self.get_logger().error(
+                    f'사이드카 재기동 실패 ({self._act_restart_fails}/{ACT_SIDECAR_RESTART_MAX})')
+                self._publish_status('ERROR: VLA 사이드카 복구 실패')
+            self._publish_act_current()
+        finally:
+            # finally 밖에서 풀면 발행 단계가 예외로 죽을 때 락이 영구히 잠겨
+            # 워치독이 두 번 다시 재기동을 못 한다.
+            self._act_restart_lock.release()
+
     def _broadcast_status_periodically(self):
         """1Hz 주기로 HMI 상태 채널에 현재 상태를 브로드캐스트하여 오케스트레이터 등의 기동 타이밍 이슈를 방지한다."""
+        self._check_sidecar_alive()
         if self._use_act and self._act_ready:
             if self._get_state() == RobotState.IDLE:
                 self._publish_status('ACT_READY')

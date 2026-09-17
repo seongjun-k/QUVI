@@ -127,6 +127,13 @@ def _serve(sidecar: VlaSidecar, sock_path: str) -> None:
                 _handle_connection(sidecar, conn)
             except ConnectionError:
                 logger.info("클라이언트 연결 종료")
+            except Exception:  # noqa: BLE001
+                # 프레이밍/역직렬화가 깨지면(길이 헤더 손상 등) recv_msg 가
+                # ConnectionError 가 아닌 예외를 던진다. 여기서 안 잡으면
+                # accept 루프째 빠져나가 서버 프로세스가 죽고, 클라이언트는
+                # 죽은 사이드카를 되살리지 않아 노드 재시작 전까지 ACT 가
+                # 영구 불능이 된다. 세션 하나만 버리고 계속 서빙한다.
+                logger.exception("세션 처리 중 예외 — 연결만 끊고 계속 서빙")
             finally:
                 conn.close()
     finally:

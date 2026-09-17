@@ -12,8 +12,7 @@ from typing import Any, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 
-
-IMAGE_KEY_PREFIX = "observation.images."
+from .constants import IMAGE_KEY_PREFIX
 
 
 def infer_image_resize_targets(
