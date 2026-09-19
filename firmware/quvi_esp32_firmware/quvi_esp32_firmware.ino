@@ -125,8 +125,11 @@ void setup() {
     turnMotor.begin();
 
     // Initialize LED Relay Pin
+    // Active LOW 릴레이: pinMode 보다 먼저 래치를 OFF 로 올려둬야 부팅 순간
+    // 출력이 0 으로 떨어지며 조명이 한 번 번쩍이는 것을 막는다.
+    digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF);
     pinMode(TURN_LED_RELAY_PIN, OUTPUT);
-    digitalWrite(TURN_LED_RELAY_PIN, LOW); // Default to OFF
+    digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF); // Default to OFF
 
     // Max Speed & Acceleration Profiles
     railMotor.setMaxSpeed(RAIL_MAX_SPEED);
@@ -195,7 +198,7 @@ void vMotorTask(void *pvParameters) {
         if (isEmergencyStopped) {
             railMotor.disable();
             turnMotor.disable();
-            digitalWrite(TURN_LED_RELAY_PIN, LOW); // E-STOP safety action
+            digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF); // E-STOP safety action
             if (lastAppliedColor != COLOR_RED) {
                 setLedColor(COLOR_RED);
                 lastAppliedColor = COLOR_RED;
@@ -392,7 +395,7 @@ void turn_subscription_callback(const void * msin) {
 void turn_led_subscription_callback(const void * msin) {
     const std_msgs__msg__Bool * msg = (const std_msgs__msg__Bool *)msin;
     if (isEmergencyStopped) return;
-    digitalWrite(TURN_LED_RELAY_PIN, msg->data ? HIGH : LOW);
+    digitalWrite(TURN_LED_RELAY_PIN, msg->data ? LED_RELAY_ON : LED_RELAY_OFF);
 }
 
 void estop_subscription_callback(const void * msin) {
@@ -653,10 +656,10 @@ void vCommTask(void *pvParameters) {
                         else if (cmd == 'L') {
                             int state = inputBuffer.substring(2).toInt();
                             if (state == 1) {
-                                digitalWrite(TURN_LED_RELAY_PIN, HIGH);
+                                digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_ON);
                                 Serial0.println("[LED] Turntable LED Relay ON");
                             } else {
-                                digitalWrite(TURN_LED_RELAY_PIN, LOW);
+                                digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF);
                                 Serial0.println("[LED] Turntable LED Relay OFF");
                             }
                         }
@@ -682,7 +685,7 @@ void IRAM_ATTR handleEmergencyStop() {
     // Hard-disable the motor signals inside the ISR instantly
     if (RAIL_ENA_PIN >= 0) digitalWrite(RAIL_ENA_PIN, HIGH); // Disable TB6600
     if (TURN_ENA_PIN >= 0) digitalWrite(TURN_ENA_PIN, HIGH); // Disable TB6600
-    digitalWrite(TURN_LED_RELAY_PIN, LOW); // Turn off LED relay for safety
+    digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF); // Turn off LED relay for safety
 }
 
 // Set WS2812B Color

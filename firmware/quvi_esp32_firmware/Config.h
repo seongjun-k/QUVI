@@ -42,7 +42,11 @@
 #define TURN_LIMIT_PIN        -1  // 턴테이블 리밋 스위치 미사용 (상대 위치 제어 방식)
 
 // 부속 장치
-#define TURN_LED_RELAY_PIN    17  // 턴테이블 LED 링 릴레이 제어 핀 (Active HIGH)
+#define TURN_LED_RELAY_PIN    17  // 턴테이블 LED 링 릴레이 제어 핀
+// 릴레이 모듈이 Active LOW 배선이다(코일 ON = 핀 LOW). 핀을 직접 HIGH/LOW 로
+// 쓰면 5군데에 극성이 흩어져 한 곳만 놓쳐도 조명이 반대로 돈다 — 여기서만 정의한다.
+#define LED_RELAY_ON          LOW
+#define LED_RELAY_OFF         HIGH
 
 
 // =============================================================================
