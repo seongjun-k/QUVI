@@ -114,6 +114,7 @@ docs/QUVI_W7_발표대본.*
 # 대용량 데이터·가상환경 (재생성 가능)
 data/inspection_products/
 data/vla_sidecar/
+data/demo_reference/
 
 # 영상·음성 파일 (배포본은 gh-pages 또는 유튜브)
 *.mp4
