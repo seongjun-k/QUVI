@@ -50,7 +50,7 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir --def
 # 2단계: 나머지 파이썬 의존성 패키지 설치
 RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
-    opencv-python-headless>=4.9.0 \
+    "opencv-python-headless>=4.9.0,<4.11" \
     pyserial>=3.5 \
     Pillow>=10.0.0 \
     "scipy>=1.12.0,<1.15" \
@@ -65,7 +65,13 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
 #        numpy<2 강제: pip numpy 2.x가 apt ros-jazzy-cv-bridge(numpy1 ABI)를 깨뜨려
 #        import cv_bridge 실패 → 비전 노드 전체가 새 컨테이너에서 기동 불가
 #        (scipy 상한도 같은 이유 — 1.15+ 는 numpy>=2 를 요구해 np.long 에서 깨진다)
-RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
+#        --ignore-installed 는 앞 단계의 numpy 2.x 파일을 지우지 않고 덮어써 numpy/_core 가
+#        섞인다(cv2 가 ndarray 를 못 알아봄) — 설치 전에 numpy 를 통째로 지운다.
+#        opencv 4.11+ 휠은 numpy>=2 용이라 2단계에서 <4.11 로 상한.
+RUN rm -rf /usr/local/lib/python3.12/dist-packages/numpy \
+           /usr/local/lib/python3.12/dist-packages/numpy-*.dist-info \
+           /usr/local/lib/python3.12/dist-packages/numpy.libs && \
+    pip3 install --break-system-packages --ignore-installed --no-cache-dir \
     -i https://pypi.tuna.tsinghua.edu.cn/simple \
     "setuptools<80" \
     "numpy<2"
@@ -74,6 +80,8 @@ RUN pip3 install --break-system-packages --ignore-installed --no-cache-dir \
 #        transformers-dep 핀과 동일하게 맞춘다 — 5.x 를 깔면 lerobot 이 깨진다.
 RUN pip3 install --break-system-packages --no-cache-dir \
     "transformers>=4.50.3,<4.52.0" \
+    "draccus==0.10.0" \
+    "deepdiff>=7.0.1,<9.0.0" \
     "num2words>=0.5.14" \
     "accelerate>=1.7.0" \
     "safetensors>=0.4.3"
