@@ -16,7 +16,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, LogInfo
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
@@ -194,6 +194,15 @@ def generate_launch_description():
         output='screen',
     )
 
+    # ─── 탑뷰캠 노출 고정 ───
+    # usb_cam 은 구형 컨트롤명(exposure_auto/exposure_absolute)을 써서 이 커널에선 노출 설정이 무시되고
+    # brightness 50 + 자동노출로 베드 반사가 포화된다(2026-10-06 실측 포화 14%). usb_cam 초기화 후 덮어쓴다.
+    # 탑뷰는 ACT 입력 카메라 — 값 변경 시 파지 성능 재확인 필요.
+    topcam_exposure_fix = TimerAction(period=4.0, actions=[ExecuteProcess(
+        cmd=['v4l2-ctl', '-d', LaunchConfiguration('topcam_device'), '--set-ctrl',
+             'auto_exposure=1,exposure_time_absolute=80,brightness=0'],
+        output='screen')])
+
     return LaunchDescription([
         # 인자
         sidecam_device_arg,
@@ -219,5 +228,6 @@ def generate_launch_description():
         camera1_node,
         camera2_node,
         camera3_node,
+        topcam_exposure_fix,
         inspect_node,
     ])
