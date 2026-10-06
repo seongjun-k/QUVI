@@ -1,12 +1,32 @@
-# Innomaker U20CAM 카메라는 고유 시리얼 번호가 SN0001로 중복되므로,
-# USB 물리 포트 위치(KERNELS)를 기반으로 구분하여 심볼릭 링크를 생성합니다.
-# 또한 장치 인식 시점에 v4l2-ctl을 구동하여 전원 플리커 차단(60Hz) 설정을 강제합니다.
+# U20CAM 3대 고정 심링크.
+#
+# 세 대가 VID:PID(0c45:6366) 도 시리얼(SN0001) 도 전부 같아서 물리 경로 말고는
+# 구분할 방법이 없다. 그래서 허브 포트 위치로 역할을 고정한다.
+#
+# 허브는 7구(Genesys 05e3:0610) 이고 내부가 4포트 칩 두 개 캐스케이드다:
+#   칩A = 포트 1~3, 칩A 포트4 → 칩B = 포트 1~4
+# 커널 이름이 `1-9.3:1.0`(칩A 3번) / `1-9.4.1:1.0`(칩B 1번) 형태로 나온다.
+#
+# 주의 1: 접미사만 보면 `*.3:1.0` 이 칩A 3번과 칩B 3번에 동시에 걸린다.
+#   그래서 칩A 규칙에는 KERNELS!= 로 칩B 경로를 빼 준다. 이걸 빼먹으면 두
+#   카메라가 같은 룰에 걸려 심링크가 하나만 생긴다(2026-09-19 실제 증상).
+# 주의 2: ATTRS{idVendor} 로 모델을 같이 걸면 안 된다 — udev 는 KERNELS 와
+#   ATTRS 가 **같은 부모 장치**에서 일치해야 하는데 idVendor 는 USB 장치
+#   레벨(`1-9.3`), KERNELS 는 인터페이스 레벨(`1-9.3:1.0`) 이라 영영 안 맞는다.
+# 주의 3: 노트북의 어느 USB 단자에 허브를 꽂든(루트 포트 3→9 처럼 바뀐다)
+#   동작하도록 앞부분은 `*` 로 둔다.
+#
+# ATTR{index}=="0" — 같은 카메라가 video 노드를 2개 만드는데(index1 은 UVC
+# 메타데이터 노드라 캡처가 안 된다) 0번만 잡는다.
 
-# Fixed Camera (고정/검사캠) - USB 허브 포트 2 연결 (/dev/fixed_cam)
-SUBSYSTEM=="video4linux", KERNELS=="*.2:1.0", ATTR{index}=="0", SYMLINK+="fixed_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
+# 탑뷰캠 (camera3, VLA 관측) — 노트북 USB 단자 직결
+# `*-?:1.0` 은 루트 포트에 바로 꽂힌 경우다(`1-8:1.0`). 허브 경유는 경로에
+# 점이 들어가(`1-9.4.1:1.0`) 여기에 안 걸린다. 노트북 내장캠은 포트 11 이라
+# 두 자리(`1-11:1.0`)라서 `?`(한 글자) 에 안 걸린다 — 가로채지 않는다.
+SUBSYSTEM=="video4linux", KERNELS=="*-?:1.0", ATTR{index}=="0", SYMLINK+="topcam top_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
 
-# Top-view Camera (탑뷰캠) - USB 허브 포트 3 연결 (/dev/topcam)
-SUBSYSTEM=="video4linux", KERNELS=="*.3:1.0", ATTR{index}=="0", SYMLINK+="topcam top_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
+# 사이드캠 (camera1, VLA 관측) — 칩B 포트1
+SUBSYSTEM=="video4linux", KERNELS=="*.4.1:1.0", ATTR{index}=="0", SYMLINK+="sidecam handcam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
 
-# Sidecam / Handcam (사이드캠) - USB 허브 포트 4 연결 (/dev/sidecam)
-SUBSYSTEM=="video4linux", KERNELS=="*.4:1.0", ATTR{index}=="0", SYMLINK+="sidecam handcam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
+# 검사캠 (camera2, PatchCore 검사) — 칩B 포트4
+SUBSYSTEM=="video4linux", KERNELS=="*.4.4:1.0", ATTR{index}=="0", SYMLINK+="fixed_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
