@@ -180,6 +180,8 @@ def generate_launch_description():
             LaunchConfiguration('inspect_config'),
             {
                 'camera_topic': LaunchConfiguration('inspect_topic'),
+                # 노출 v4l2-ctl 대상 — usb_cam 과 같은 장치여야 한다(HMI 장치 재매핑 시 /dev/fixed_cam 고정이면 노출 설정 실패)
+                'inspection_cam_device': LaunchConfiguration('fixed_cam_device'),
                 'reference_image_dir': LaunchConfiguration('reference_image_dir'),
                 'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
                 'inspection_products_dir': LaunchConfiguration('inspection_products_dir'),
