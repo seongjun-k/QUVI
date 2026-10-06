@@ -1462,9 +1462,8 @@ class RobotControlNode(Node):
         if held is False:
             self.get_logger().error('검사장 재파지 실패 — 그리퍼가 비어 있음')
 
-        self._move_arm(POSE_P3)
-
-        success = self._move_arm(POSE_P5)  # P5가 회전 포함 — 복귀 완료 확인 후 done 발행
+        # 집은 뒤 P3 로 올라온 자세 그대로 둔다 — 분류함까지는 레일만 이동하고 거기서 그리퍼만 연다
+        success = self._move_arm(POSE_P3)
         success = success and not self._should_abort()   # abort 시 실패로 보고
         success = success and held is not False
         self._pick_chamber_done_pub.publish(Bool(data=success))
@@ -1768,7 +1767,7 @@ class RobotControlNode(Node):
         P1~P6 웨이포인트 저속 실행 (시간기반 프로파일 PROFILE_VELOCITY_SEQ=2000ms).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
-        순서: P1(경유) → P6(분류장) → 그리퍼 열기
+        순서: (P3 자세 유지, 레일로 분류함 도착) → 그리퍼 열기 → P2 접기
         (P1→P4 안착/재파지 구간은 _execute_place_in_chamber /
         _execute_pick_from_chamber 로 이전돼 중복 제거)
         """
@@ -1791,12 +1790,13 @@ class RobotControlNode(Node):
             )
             self._wait_gripper()
 
-        # P1 경유 → P6 분류장 → 그리퍼 열기
-        if not move_arm(POSE_P1, 'P1: 경유'):
-            return False
-        if not move_arm(POSE_P6, 'P6: 분류장 위치'):
-            return False
+        # 재파지 후 P3 자세 그대로 레일만 분류함으로 이동해 온 상태 — 팔은 움직이지 않고 그리퍼만 연다
         grip_open()
+        if self._should_abort():
+            return False
+        # 뻗은 P3 에서 곧장 홈(P1)으로 180° 휘두르지 않도록 같은 쪽 P2 로 먼저 접는다(빈손)
+        if not move_arm(POSE_P2, 'P2: 접기'):
+            return False
 
         return True
 

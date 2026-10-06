@@ -201,7 +201,7 @@ def generate_launch_description():
         parameters=[{
             'use_act': LaunchConfiguration('use_act'),
             # 검사 settle 2.0s 캡처와 다음 회전 명령 레이스 방지 페이싱
-            'step_delay_sec': 3.0,
+            'step_delay_sec': 1.0,   # 2026-10-06 3.0→1.0 — capture_settle_sec(0.5) 보다 커야 한다
             'loop_rate_hz': 10.0,
             # micro_ros_port 와 동일한 장치 — 미전달 시 하드리셋이 기본값 포트를 써서 어긋난다
             'esp32_reset_port': LaunchConfiguration('micro_ros_port'),

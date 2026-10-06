@@ -629,15 +629,15 @@ class MainOrchestratorNode(Node):
             self._inspect_done = False
             # LED ON — 카메라 노출 안정화 대기 시작
             self._led_pub.publish(Bool(data=True))
-            self.get_logger().info('조명 ON — 카메라 노출 안정화 대기 5초')
+            self.get_logger().info('조명 ON — 카메라 노출 안정화 대기 3초')
             self._state_timer_counter = 0
             self._state = FsmState.INSPECTING_LED_STABILIZE
 
         elif self._state == FsmState.INSPECTING_LED_STABILIZE:
             self._state_timer_counter += 1
             # 안착 done은 P3 후퇴 완료 직후 발행되므로, 이 대기가 곧
-            # '진입점 도착 후 5초' 안정화 대기에 해당한다.
-            if self._state_timer_counter >= int(5.0 * self._loop_rate):
+            # '진입점 도착 후 3초' 안정화 대기에 해당한다(2026-10-06 5→3초 단축).
+            if self._state_timer_counter >= int(3.0 * self._loop_rate):
                 # 검사 노드 활성화 및 턴테이블 회전 진입
                 self._inspect_trigger_pub.publish(Bool(data=True))
                 self._inspect_angle_idx = 0
