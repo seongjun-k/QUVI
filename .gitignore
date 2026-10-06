@@ -105,3 +105,23 @@ scratchpad/
 
 # W1 팀목표 제출본 — 대회 산출물, 로컬 보관
 올라운더_W1_팀목표.pdf
+
+# 대회 발표·데모데이 자료 (영상·PPT·음성·내부 안내 포함) — 저장소 공개용이 아님 (로컬 보관)
+docs/demoday/
+docs/w7_pitch_script_10min.md
+docs/QUVI_W7_발표대본.*
+
+# 대용량 데이터·가상환경 (재생성 가능)
+data/inspection_products/
+data/vla_sidecar/
+
+# 영상·음성 파일 (배포본은 gh-pages 또는 유튜브)
+*.mp4
+*.mp3
+*.mov
+
+# 비밀 정보 (실수로 올라가면 되돌릴 수 없음)
+.env
+*.pem
+*.key
+id_rsa*
