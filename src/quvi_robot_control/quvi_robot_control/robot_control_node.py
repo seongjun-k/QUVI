@@ -1767,7 +1767,7 @@ class RobotControlNode(Node):
         P1~P6 웨이포인트 저속 실행 (시간기반 프로파일 PROFILE_VELOCITY_SEQ=2000ms).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
-        순서: (P3 자세 유지, 레일로 분류함 도착) → 그리퍼 열기 → P2 접기
+        순서: (P3 자세 유지, 레일로 분류함 도착) → P4 내려가기 → 그리퍼 열기 → P3 올라오기 → P2 접기
         (P1→P4 안착/재파지 구간은 _execute_place_in_chamber /
         _execute_pick_from_chamber 로 이전돼 중복 제거)
         """
@@ -1790,9 +1790,14 @@ class RobotControlNode(Node):
             )
             self._wait_gripper()
 
-        # 재파지 후 P3 자세 그대로 레일만 분류함으로 이동해 온 상태 — 팔은 움직이지 않고 그리퍼만 연다
+        # 재파지 후 P3 자세 그대로 레일만 분류함으로 이동해 온 상태 — P4 높이로 내려가 놓고 P3 로 올라온다.
+        # P4 는 턴테이블 놓기 실측 자세(P3 에서 수직에 가깝게 하강) — 분류함 전용 실측값이 생기면 교체할 것
+        if not move_arm(POSE_P4, 'P4: 분류함 내려놓기'):
+            return False
         grip_open()
         if self._should_abort():
+            return False
+        if not move_arm(POSE_P3, 'P3: 올라오기'):
             return False
         # 뻗은 P3 에서 곧장 홈(P1)으로 180° 휘두르지 않도록 같은 쪽 P2 로 먼저 접는다(빈손)
         if not move_arm(POSE_P2, 'P2: 접기'):
