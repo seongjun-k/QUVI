@@ -277,7 +277,7 @@ pio run -t upload --upload-port /dev/ttyESP32  # 書き込み
 - **ACT** — Zhao et al., ["Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware"](https://arxiv.org/abs/2304.13705) (RSS 2023) — 把持模倣学習ポリシー
 - **ROBOTIS OpenMANIPULATOR-X (OMX)** — [ROBOTIS-GIT/open_manipulator](https://github.com/ROBOTIS-GIT/open_manipulator) — ロボットアームハードウェアおよび [DYNAMIXEL SDK](https://github.com/ROBOTIS-GIT/DynamixelSDK)
 - **PatchCore** — Roth et al., ["Towards Total Recall in Industrial Anomaly Detection"](https://arxiv.org/abs/2106.08265) (CVPR 2022) — 異常検知アルゴリズム
-- **ROBOTIS cyclo_intelligence** — [ROBOTIS-GIT/cyclo_intelligence](https://github.com/ROBOTIS-GIT/cyclo_intelligence) (Apache-2.0)。`cyclo_brain/policy/lerobot/lerobot_engine/` の推論用モジュール4つ(constants, image_preprocessing, loading, prediction)を2026-09-08時点の原本のまま `scripts/vla_sidecar/lerobot_engine/` に同梱。各ファイルのROBOTIS著作権・Apache-2.0ヘッダーを保持
+- **ROBOTIS cyclo_intelligence** — [ROBOTIS-GIT/cyclo_intelligence](https://github.com/ROBOTIS-GIT/cyclo_intelligence) (Apache-2.0)。`cyclo_brain/policy/lerobot/lerobot_engine/` の推論用モジュール4つ(constants, image_preprocessing, loading, prediction)を2026-09-08時点の原本のまま `scripts/vla_sidecar/lerobot_engine/` に同梱。各ファイルのROBOTIS著作権・Apache-2.0ヘッダーを保持。その後 `image_preprocessing.py` のみ、重複定数を `constants.py` からのimportに置き換える2行の修正(2026-09-17、コミット 5465f84)
 - **micro-ROS** — [micro-ROS-Agent](https://github.com/micro-ROS/micro-ROS-Agent), [micro_ros_platformio](https://github.com/micro-ROS/micro_ros_platformio) — ESP32-S3 ↔ ROS 2 通信
 
 ---
