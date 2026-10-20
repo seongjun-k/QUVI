@@ -3,6 +3,9 @@
 # Copyright 2026 ROBOTIS CO., LTD.
 #
 # Licensed under the Apache License, Version 2.0
+#
+# Modified by the QUVI team (2026-09-17, commit 5465f84): IMAGE_KEY_PREFIX
+# 중복 정의를 constants.py 에서 import 하도록 변경. 나머지는 원본과 동일.
 
 """Image shape helpers for LeRobot inference."""
 
