@@ -264,7 +264,7 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 
 - **개발 지원 AI**: Anthropic **Claude Code** (Claude Fable 5·Opus·Sonnet·Haiku 모델), OpenAI **Codex**, Google **Antigravity** — 코드 작성·리뷰·디버깅 보조. 최종 설계 판단과 실기 검증은 팀이 직접 수행
 - **제품에 탑재된 AI 모델**: **ACT** 파지 정책 (LeRobot으로 자체 텔레오퍼레이션 데이터 수집 후 직접 학습), **PatchCore** 이상탐지 (WideResNet50 백본, 자체 정상품 이미지로 메모리뱅크 구축)
-- **오픈소스** (라이선스 종류 포함): ROS 2 Jazzy (Apache-2.0), micro-ROS (Apache-2.0), LeRobot (Apache-2.0), OpenCV (Apache-2.0), PyTorch (BSD-3-Clause), Flask (BSD-3-Clause), Flask-SocketIO (MIT), NumPy (BSD-3-Clause), DYNAMIXEL SDK (Apache-2.0), PlatformIO (Apache-2.0) — 상세 출처는 아래 [레퍼런스](#레퍼런스) 참조
+- **오픈소스** (라이선스 종류 포함): ROS 2 Jazzy (Apache-2.0), micro-ROS (Apache-2.0), LeRobot (Apache-2.0), OpenCV (Apache-2.0), PyTorch (BSD-3-Clause), Flask (BSD-3-Clause), Flask-SocketIO (MIT), NumPy (BSD-3-Clause), DYNAMIXEL SDK (Apache-2.0), PlatformIO (Apache-2.0), ROBOTIS cyclo_intelligence (Apache-2.0, 일부 모듈 포함) — 상세 출처는 아래 [레퍼런스](#레퍼런스) 참조
 - **발표·데모 영상 음성(AI TTS)**: 8주차 3분 데모 영상은 **edge-tts**(Microsoft Edge 신경망 음성, `ko-KR-HyunsuMultilingualNeural`), 피칭 영상과 4주차 3분 데모 영상(1차 데모데이)은 **Typecast**(typecast.ai)로 합성한 AI 음성을 사용
 - **웹 데모 계측**: Google Analytics 4 — 공개 웹 데모의 방문·검사 사이클 완주 수를 집계. 개인 식별 정보는 수집하지 않음
 - **외부 자문**: 없음 (지도교사 지도 외 외부 기관·업체 자문 없음)
@@ -277,10 +277,11 @@ pio run -t upload --upload-port /dev/ttyESP32  # 플래시
 - **ACT** — Zhao et al., ["Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware"](https://arxiv.org/abs/2304.13705) (RSS 2023) — 파지 모방학습 정책
 - **ROBOTIS OpenMANIPULATOR-X (OMX)** — [ROBOTIS-GIT/open_manipulator](https://github.com/ROBOTIS-GIT/open_manipulator) — 로봇팔 하드웨어 및 [DYNAMIXEL SDK](https://github.com/ROBOTIS-GIT/DynamixelSDK)
 - **PatchCore** — Roth et al., ["Towards Total Recall in Industrial Anomaly Detection"](https://arxiv.org/abs/2106.08265) (CVPR 2022) — 이상탐지 알고리즘
+- **ROBOTIS cyclo_intelligence** — [ROBOTIS-GIT/cyclo_intelligence](https://github.com/ROBOTIS-GIT/cyclo_intelligence) (Apache-2.0). `cyclo_brain/policy/lerobot/lerobot_engine/`의 추론용 모듈 4개(constants, image_preprocessing, loading, prediction)를 2026-09-08 기준 원본 그대로 `scripts/vla_sidecar/lerobot_engine/`에 포함. 각 파일의 ROBOTIS 저작권·Apache-2.0 헤더 유지
 - **micro-ROS** — [micro-ROS-Agent](https://github.com/micro-ROS/micro-ROS-Agent), [micro_ros_platformio](https://github.com/micro-ROS/micro_ros_platformio) — ESP32-S3 ↔ ROS 2 통신
 
 ---
 
 ## 라이선스
 
-이 프로젝트는 [MIT License](LICENSE)에 따라 라이선스가 부여됩니다.
+이 프로젝트는 [MIT License](LICENSE)에 따라 라이선스가 부여됩니다. 단, `scripts/vla_sidecar/lerobot_engine/`의 ROBOTIS 원본 파일은 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)을 따릅니다.

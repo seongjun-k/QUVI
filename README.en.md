@@ -264,7 +264,7 @@ In the interest of transparency, we disclose the AI, open-source software, and e
 
 - **Development-assistance AI**: Anthropic **Claude Code** (Claude Fable 5/Opus/Sonnet/Haiku models), OpenAI **Codex**, Google **Antigravity** — assisted with code writing, review, and debugging. Final design decisions and hardware validation were performed by the team directly
 - **AI models embedded in the product**: **ACT** grasp policy (trained on our own teleoperation data collected via LeRobot), **PatchCore** anomaly detection (WideResNet50 backbone, memory bank built from our own known-good images)
-- **Open source** (with license types): ROS 2 Jazzy (Apache-2.0), micro-ROS (Apache-2.0), LeRobot (Apache-2.0), OpenCV (Apache-2.0), PyTorch (BSD-3-Clause), Flask (BSD-3-Clause), Flask-SocketIO (MIT), NumPy (BSD-3-Clause), DYNAMIXEL SDK (Apache-2.0), PlatformIO (Apache-2.0) — see [References](#references) below for detailed sources
+- **Open source** (with license types): ROS 2 Jazzy (Apache-2.0), micro-ROS (Apache-2.0), LeRobot (Apache-2.0), OpenCV (Apache-2.0), PyTorch (BSD-3-Clause), Flask (BSD-3-Clause), Flask-SocketIO (MIT), NumPy (BSD-3-Clause), DYNAMIXEL SDK (Apache-2.0), PlatformIO (Apache-2.0), ROBOTIS cyclo_intelligence (Apache-2.0, partially vendored) — see [References](#references) below for detailed sources
 - **Narration voice (AI TTS)**: the Week 8 three-minute demo video uses **edge-tts** (Microsoft Edge neural voice, `ko-KR-HyunsuMultilingualNeural`); the pitch video and the Week 4 three-minute demo video (first demo day) use AI voices synthesized with **Typecast** (typecast.ai)
 - **Web demo analytics**: Google Analytics 4 — counts visits and completed inspection cycles on the public web demo. No personally identifiable information is collected
 - **External consulting**: None (no consultation from outside institutions or companies beyond our supervising teacher)
@@ -277,10 +277,11 @@ In the interest of transparency, we disclose the AI, open-source software, and e
 - **ACT** — Zhao et al., ["Learning Fine-Grained Bimanual Manipulation with Low-Cost Hardware"](https://arxiv.org/abs/2304.13705) (RSS 2023) — grasp imitation-learning policy
 - **ROBOTIS OpenMANIPULATOR-X (OMX)** — [ROBOTIS-GIT/open_manipulator](https://github.com/ROBOTIS-GIT/open_manipulator) — robot arm hardware and [DYNAMIXEL SDK](https://github.com/ROBOTIS-GIT/DynamixelSDK)
 - **PatchCore** — Roth et al., ["Towards Total Recall in Industrial Anomaly Detection"](https://arxiv.org/abs/2106.08265) (CVPR 2022) — anomaly detection algorithm
+- **ROBOTIS cyclo_intelligence** — [ROBOTIS-GIT/cyclo_intelligence](https://github.com/ROBOTIS-GIT/cyclo_intelligence) (Apache-2.0). Four inference modules (constants, image_preprocessing, loading, prediction) from `cyclo_brain/policy/lerobot/lerobot_engine/` are vendored unmodified (as of 2026-09-08) in `scripts/vla_sidecar/lerobot_engine/`, with ROBOTIS copyright and Apache-2.0 headers retained
 - **micro-ROS** — [micro-ROS-Agent](https://github.com/micro-ROS/micro-ROS-Agent), [micro_ros_platformio](https://github.com/micro-ROS/micro_ros_platformio) — ESP32-S3 ↔ ROS 2 communication
 
 ---
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [MIT License](LICENSE). The ROBOTIS files in `scripts/vla_sidecar/lerobot_engine/` remain under the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0).
