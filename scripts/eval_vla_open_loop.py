@@ -2,10 +2,10 @@
 """SmolVLA 개루프 평가 — 데이터셋 영상을 넣어 예측 액션을 녹화 액션과 비교하고 떨림을 잰다.
 
 로봇·ROS 불필요, GPU 만 쓴다. 호스트에서 학습 이미지(lerobot 0.6.1)로 실행한다.
-    docker run --rm --gpus all --ipc=host --entrypoint bash \
-        -v ~/QUVI:/quvi -v ~/cyclo_intelligence/docker/workspace:/workspace \
+    docker run --rm --runtime=nvidia --gpus all --ipc=host --entrypoint bash \
+        -v ~/QUVI:/quvi -v ~/.cache/huggingface/hub:/root/.cache/huggingface/hub:ro -e HF_HUB_OFFLINE=1 \
         robotis/lerobot-zenoh:1.4.1-amd64 -lc "python3 /quvi/scripts/eval_vla_open_loop.py \
-        --dataset /workspace/lerobot/Task_1_pick_quvi_MCAP_lerobot_v30 \
+        --dataset /quvi/data/datasets/Task_1_pick_quvi_MCAP_lerobot_v30 \
         --model /quvi/data/models/smolvla_218ep/checkpoints/010000/pretrained_model"
 
 개루프라 예측 오차가 쌓이지 않는다. 실기 성공률을 대신하지 않고 모델 간 상대 비교에만 쓴다.

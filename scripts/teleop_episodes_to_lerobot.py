@@ -5,7 +5,7 @@
   python3 scripts/teleop_episodes_to_lerobot.py --episodes data/teleop_episodes
 
 변환 (호스트에서):
-  docker run --rm --entrypoint bash -v ~/QUVI:/quvi -v ~/cyclo_intelligence/docker/workspace:/workspace robotis/lerobot-zenoh:1.4.1-amd64 -lc "python3 /quvi/scripts/teleop_episodes_to_lerobot.py --episodes /quvi/data/teleop_episodes --out /workspace/lerobot/quvi_teleop_v30"
+  docker run --rm --entrypoint bash -v ~/QUVI:/quvi robotis/lerobot-zenoh:1.4.1-amd64 -lc "python3 /quvi/scripts/teleop_episodes_to_lerobot.py --episodes /quvi/data/teleop_episodes --out /quvi/data/datasets/quvi_teleop_v30"
 
 합격 기준은 docs/vla_episode_collection_guide.md 2단계. 불합격 에피소드는 변환에서 제외한다.
 """

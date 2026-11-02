@@ -31,8 +31,8 @@ sys.path.insert(0, str(ROOT / 'scripts'))
 import build_lerobot_dataset as bld  # noqa: E402
 from quvi_robot_control.act_common import JOINT_NAMES, POSE_HOME, raw_to_rad  # noqa: E402
 
-CYCLO_INFO = Path.home() / 'cyclo_intelligence/docker/workspace/lerobot/Task_1_pick_quvi_MCAP_lerobot_v30/meta/info.json'
-# 기존 Cyclo info.json 에서 비교 대상만 옮긴 스냅샷(컨테이너에서는 원본 경로가 안 보인다)
+CYCLO_INFO = ROOT / 'data/datasets/Task_1_pick_quvi_MCAP_lerobot_v30/meta/info.json'
+# 기존 Cyclo info.json 에서 비교 대상만 옮긴 스냅샷(데이터셋 사본이 없는 곳에서도 비교하도록)
 VEC = {'dtype': 'float32', 'shape': [6], 'names': ['joint1', 'joint2', 'joint3', 'joint4', 'joint5', 'gripper_joint_1']}
 VID = {'dtype': 'video', 'shape': [3, 480, 640], 'names': ['channels', 'height', 'width'],
        'info': {'video.fps': 15.0, 'video.height': 480, 'video.width': 640, 'video.channels': 3,
