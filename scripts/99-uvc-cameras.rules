@@ -19,14 +19,18 @@
 # ATTR{index}=="0" — 같은 카메라가 video 노드를 2개 만드는데(index1 은 UVC
 # 메타데이터 노드라 캡처가 안 된다) 0번만 잡는다.
 
-# 탑뷰캠 (camera3, VLA 관측) — 노트북 USB 단자 직결
+# 2026-11-02 현재 배치. 3대를 USB 2.0 버스 하나에 모으면 대역폭이 모자라 2대만
+# 스트리밍되므로(`No space left on device`) 검사캠만 허브 밖으로 뺐다.
+
+# 검사캠 (camera2, PatchCore 검사) — 노트북 USB 단자 직결
 # `*-?:1.0` 은 루트 포트에 바로 꽂힌 경우다(`1-8:1.0`). 허브 경유는 경로에
 # 점이 들어가(`1-9.4.1:1.0`) 여기에 안 걸린다. 노트북 내장캠은 포트 11 이라
 # 두 자리(`1-11:1.0`)라서 `?`(한 글자) 에 안 걸린다 — 가로채지 않는다.
-SUBSYSTEM=="video4linux", KERNELS=="*-?:1.0", ATTR{index}=="0", SYMLINK+="topcam top_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
+SUBSYSTEM=="video4linux", KERNELS=="*-?:1.0", ATTR{index}=="0", SYMLINK+="fixed_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
 
 # 사이드캠 (camera1, VLA 관측) — 칩B 포트1
 SUBSYSTEM=="video4linux", KERNELS=="*.4.1:1.0", ATTR{index}=="0", SYMLINK+="sidecam handcam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
 
-# 검사캠 (camera2, PatchCore 검사) — 칩B 포트4
-SUBSYSTEM=="video4linux", KERNELS=="*.4.4:1.0", ATTR{index}=="0", SYMLINK+="fixed_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
+# 탑뷰캠 (camera3, VLA 관측) — 칩A 포트3. `*-?` 로 한 단계 허브만 잡아 칩B 3번(`*.4.3`)을 빼고,
+# 허브 포트 표기가 바뀌어도 어긋나지 않게 포트 번호까지 고정한다.
+SUBSYSTEM=="video4linux", KERNELS=="*-?.3:1.0", ATTR{index}=="0", SYMLINK+="topcam top_cam", RUN+="/usr/bin/v4l2-ctl -d /dev/%k --set-ctrl=power_line_frequency=2"
