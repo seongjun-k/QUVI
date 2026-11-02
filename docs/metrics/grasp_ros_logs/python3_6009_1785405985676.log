@@ -1,0 +1,24 @@
+[INFO] [1785405986.258108218] [main_orchestrator_node]: MAIN_ORCHESTRATOR_NODE 기동 완료 | 자율 제어 모드 대기
+[INFO] [1785405986.345145894] [main_orchestrator_node]: [FSM] 상태 변경: None -> FsmState.INIT
+[INFO] [1785405986.445441165] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785405990.555102112] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785405990.555429779] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785405990.645283622] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785405990.645914339] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785405990.745145409] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785405990.745583476] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785405990.845308989] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785405990.846076278] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785405990.945213127] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785405991.245708185] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785405991.345518457] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785405991.346558323] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785405991.445447278] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785405991.446430286] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785405991.545169079] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785405996.745044613] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785405996.844952448] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785405999.246178353] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785405999.345018444] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785405999.345850650] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785405999.445033781] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT

@@ -1,0 +1,11 @@
+{
+  "passed": false,
+  "solidity": 0.9889,
+  "area_ratio": 5.9324,
+  "hole_count": 3,
+  "hole_area_ratio": 0.009,
+  "texture_variance": 4.47,
+  "ml_passed": null,
+  "anomaly_score_worst": null,
+  "ml_detail": ""
+}

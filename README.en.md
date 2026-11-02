@@ -45,9 +45,11 @@ The entire process is autonomously controlled by a finite state machine (FSM) or
 | :--- | :--- |
 | Total parts cost | About 600,000 KRW — under 1/50 the cost of tens-of-thousands-of-dollars industrial vision inspection equipment |
 | Cycle time | About 1 minute 10 seconds from grasp start to sorted stacking (measured from real hardware recordings; 67s for a good part, 64s for a defective part) |
-| Real-hardware inspection cycles | 133 completed cumulative (from inspection logs, 2026-06-26 to 07-30) |
-| Grasp success rate | 11 of 13 real-hardware attempts succeeded, 84.6% (measured 2026-07-30) |
-| Rule-ML verdict agreement rate | 100% over the most recent 13 cases (since 2026-07-15) — 88.3% across the full 103 cases including early validation |
+| Real-hardware inspection cycles | 133 completed cumulative (from inspection logs, 2026-06-26 to 07-30 20:43 KST) |
+| Grasp success rate | 11 of 13 real-hardware attempts succeeded, 84.6% (measured 2026-07-30, excluding 4 tests manually stopped by a person; 11/17 = 64.7% if included) |
+| Rule-ML verdict agreement rate | 100% over the most recent 13 cases (since 2026-07-15) — 88.3% across the full 103 cases including early validation (excluding 30 pre-07-08 records with no ML verdict) |
+
+The full raw data, including records after this range, gives 137 cycles, rule-ML 95/107 = 88.8%, and grasp 15/17 = 88.2%. Raw data is in [`docs/metrics/`](docs/metrics/); recompute with `python3 scripts/recount_metrics.py`. Web demo metrics follow the [W6 GA4 report](docs/metrics/QUVI_W6_실측지표.pdf) (2026-08-31 to 09-27).
 
 ---
 

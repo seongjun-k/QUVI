@@ -70,6 +70,7 @@ Thumbs.db
 
 # Logs
 *.log
+!docs/metrics/grasp_ros_logs/*.log
 
 # Temporary and Backup files
 *.bak

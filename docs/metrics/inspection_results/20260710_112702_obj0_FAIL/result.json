@@ -1,0 +1,11 @@
+{
+  "passed": false,
+  "solidity": 0.9771,
+  "area_ratio": 1.6328,
+  "hole_count": 0,
+  "hole_area_ratio": 0.0,
+  "texture_variance": 4.24,
+  "ml_passed": false,
+  "anomaly_score_worst": 24.557,
+  "ml_detail": "0°=24.56(임계18.87); 90°=20.59(임계17.29); 180°=23.76(임계15.99); 270°=23.88(임계14.32)"
+}

@@ -1,0 +1,33 @@
+[INFO] [1785405866.768025679] [main_orchestrator_node]: MAIN_ORCHESTRATOR_NODE 기동 완료 | 자율 제어 모드 대기
+[INFO] [1785405866.847275871] [main_orchestrator_node]: [FSM] 상태 변경: None -> FsmState.INIT
+[INFO] [1785405866.947135168] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785405879.104689036] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785405879.105041303] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785405879.147132909] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785405879.147591381] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785405879.247164786] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785405879.247557677] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785405879.347080647] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785405879.347602435] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785405879.447144629] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785405879.747422601] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785405879.847280008] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785405879.848024011] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785405879.947131789] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785405879.947794145] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785405880.047154964] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785405881.448037375] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785405881.547224281] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785405883.947926367] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785405884.047340024] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785405884.048475529] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785405884.146911769] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785405894.879099617] [main_orchestrator_node]: HMI 명령 수신: STOP
+[WARN] [1785405894.879455796] [main_orchestrator_node]: 자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.
+[INFO] [1785405894.947065408] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.IDLE
+[INFO] [1785405895.535668817] [main_orchestrator_node]: HMI 명령 수신: RESET
+[INFO] [1785405895.536035990] [main_orchestrator_node]: 시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.
+[INFO] [1785405895.544764402] [main_orchestrator_node]: micro-ROS agent 종료 — launch respawn 대기
+[INFO] [1785405895.546955799] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.INIT
+[INFO] [1785405895.647291374] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785405896.655067967] [main_orchestrator_node]: ESP32 하드 리셋 완료 (/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) — agent 재접속 후 시작 시 호밍이 재수행됩니다.

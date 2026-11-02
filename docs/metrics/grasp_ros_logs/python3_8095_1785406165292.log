@@ -1,0 +1,508 @@
+[INFO] [1785406165.601395201] [main_orchestrator_node]: MAIN_ORCHESTRATOR_NODE 기동 완료 | 자율 제어 모드 대기
+[INFO] [1785406165.676803343] [main_orchestrator_node]: [FSM] 상태 변경: None -> FsmState.INIT
+[INFO] [1785406165.776665170] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785406181.199317008] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406181.199967934] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406181.276591467] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406181.277135923] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406181.377153859] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406181.377932346] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406181.476689669] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406181.477236862] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406181.576596977] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406181.877206354] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406181.976977370] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406181.977938525] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406182.076915460] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406182.077898700] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406182.176659698] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406182.777639819] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406182.876601309] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406185.277137642] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406185.376607375] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406185.377391420] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406185.477091911] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406192.477620495] [main_orchestrator_node]: 로봇 ACT 파지 완료. 검사장 안착 단계로 진입
+[INFO] [1785406192.576578440] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.PLACING_CHAMBER_TRIGGER
+[INFO] [1785406192.577850016] [main_orchestrator_node]: 검사장(턴테이블) 안착 명령 전송
+[INFO] [1785406192.676503314] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_TRIGGER -> FsmState.PLACING_CHAMBER_WAIT
+[INFO] [1785406203.977540767] [main_orchestrator_node]: 검사장 안착 완료. 품질 검사 단계로 진입
+[INFO] [1785406204.076696147] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_WAIT -> FsmState.INSPECTING_TRIGGER
+[INFO] [1785406204.077742777] [main_orchestrator_node]: 조명 ON — 카메라 노출 안정화 대기 5초
+[INFO] [1785406204.176664190] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_TRIGGER -> FsmState.INSPECTING_LED_STABILIZE
+[INFO] [1785406209.078013430] [main_orchestrator_node]: 카메라 노출 안정화 완료 — 턴테이블 검사 시작
+[INFO] [1785406209.176983893] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_LED_STABILIZE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406209.178698437] [main_orchestrator_node]: 턴테이블 0도 회전 명령 전송
+[INFO] [1785406209.277044951] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406209.278570639] [main_orchestrator_node]: 턴테이블 0도 회전 완료 확인
+[INFO] [1785406209.376545953] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406212.376719531] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406212.377696441] [main_orchestrator_node]: 턴테이블 90도 회전 명령 전송
+[INFO] [1785406212.476832338] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406214.377141269] [main_orchestrator_node]: 턴테이블 90도 회전 완료 확인
+[INFO] [1785406214.476613283] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406217.476887367] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406217.478362116] [main_orchestrator_node]: 턴테이블 180도 회전 명령 전송
+[INFO] [1785406217.576558367] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406219.377086398] [main_orchestrator_node]: 턴테이블 180도 회전 완료 확인
+[INFO] [1785406219.476781446] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406222.476490921] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406222.477439508] [main_orchestrator_node]: 턴테이블 270도 회전 명령 전송
+[INFO] [1785406222.576614000] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406224.477318134] [main_orchestrator_node]: 턴테이블 270도 회전 완료 확인
+[INFO] [1785406224.576618019] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406226.527489590] [main_orchestrator_node]: 검사 결과 수신: passed=True
+[INFO] [1785406227.576523096] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_WAIT_RESULT
+[INFO] [1785406227.676608621] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_RESULT -> FsmState.PICKING_CHAMBER_TRIGGER
+[INFO] [1785406227.677871736] [main_orchestrator_node]: 검사장 재파지 명령 전송
+[INFO] [1785406227.776589751] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_TRIGGER -> FsmState.PICKING_CHAMBER_WAIT
+[INFO] [1785406235.577838726] [main_orchestrator_node]: 검사장 재파지 완료. 분류 이송 단계로 진입
+[INFO] [1785406235.676515247] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_WAIT -> FsmState.SORTING_TRIGGER
+[INFO] [1785406235.677813386] [main_orchestrator_node]: 검사 결과: PASS -> PASS 적재함(X=B)으로 레일 이송
+[INFO] [1785406235.776563554] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_TRIGGER -> FsmState.SORTING_WAIT_RAIL
+[INFO] [1785406238.077886709] [main_orchestrator_node]: 레일 분류 목적지 이동 완료
+[INFO] [1785406238.176671043] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_WAIT_RAIL -> FsmState.RELEASING_TRIGGER
+[INFO] [1785406238.178116716] [main_orchestrator_node]: 분류 적재함 위 출력물 투하 명령 전송
+[INFO] [1785406238.276691791] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_TRIGGER -> FsmState.RELEASING_WAIT
+[INFO] [1785406242.878514548] [main_orchestrator_node]: 적재 및 그리퍼 해제 완료
+[INFO] [1785406242.976687777] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_WAIT -> FsmState.HOMING_ARM_TRIGGER
+[INFO] [1785406242.978414957] [main_orchestrator_node]: 로봇팔 홈 복귀 명령 전송
+[INFO] [1785406243.076997460] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_TRIGGER -> FsmState.HOMING_ARM_WAIT
+[INFO] [1785406245.278880883] [main_orchestrator_node]: 로봇팔 홈 복귀 완료. 레일 베드 복귀 시작
+[INFO] [1785406245.376515489] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_WAIT -> FsmState.HOMING_RAIL_TRIGGER
+[INFO] [1785406245.378013054] [main_orchestrator_node]: 레일 홈 복귀 명령 전송
+[INFO] [1785406245.476602025] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_TRIGGER -> FsmState.HOMING_RAIL_WAIT
+[INFO] [1785406247.777852940] [main_orchestrator_node]: 레일 홈 복귀 완료
+[INFO] [1785406247.876550641] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_WAIT -> FsmState.FINISHED
+[INFO] [1785406247.878063396] [main_orchestrator_node]: 모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.
+[INFO] [1785406247.976656237] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.FINISHED -> FsmState.IDLE
+[INFO] [1785406259.540735028] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406259.541327384] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406259.576951215] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406259.577718211] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406259.676670448] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406262.076704370] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406262.176887148] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406262.177431227] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406262.276881532] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406262.577236903] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406262.676960478] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406262.677915482] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406262.776956015] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406264.676835975] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406264.776609007] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406264.777322598] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406264.876681259] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406267.177300432] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406267.276522534] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406267.277290595] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406267.376773002] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406274.377711483] [main_orchestrator_node]: 로봇 ACT 파지 완료. 검사장 안착 단계로 진입
+[INFO] [1785406274.476694331] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.PLACING_CHAMBER_TRIGGER
+[INFO] [1785406274.477639960] [main_orchestrator_node]: 검사장(턴테이블) 안착 명령 전송
+[INFO] [1785406274.576635577] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_TRIGGER -> FsmState.PLACING_CHAMBER_WAIT
+[INFO] [1785406285.176975469] [main_orchestrator_node]: 검사장 안착 완료. 품질 검사 단계로 진입
+[INFO] [1785406285.276694405] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_WAIT -> FsmState.INSPECTING_TRIGGER
+[INFO] [1785406285.277686285] [main_orchestrator_node]: 조명 ON — 카메라 노출 안정화 대기 5초
+[INFO] [1785406285.376517897] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_TRIGGER -> FsmState.INSPECTING_LED_STABILIZE
+[INFO] [1785406290.277081756] [main_orchestrator_node]: 카메라 노출 안정화 완료 — 턴테이블 검사 시작
+[INFO] [1785406290.376562273] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_LED_STABILIZE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406290.377640306] [main_orchestrator_node]: 턴테이블 0도 회전 명령 전송
+[INFO] [1785406290.476677512] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406290.477676052] [main_orchestrator_node]: 턴테이블 0도 회전 완료 확인
+[INFO] [1785406290.576555512] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406293.576706895] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406293.577696970] [main_orchestrator_node]: 턴테이블 90도 회전 명령 전송
+[INFO] [1785406293.677022987] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406295.477700695] [main_orchestrator_node]: 턴테이블 90도 회전 완료 확인
+[INFO] [1785406295.576517307] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406298.576540624] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406298.577543560] [main_orchestrator_node]: 턴테이블 180도 회전 명령 전송
+[INFO] [1785406298.676477822] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406300.577931527] [main_orchestrator_node]: 턴테이블 180도 회전 완료 확인
+[INFO] [1785406300.676594366] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406303.676650359] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406303.677668831] [main_orchestrator_node]: 턴테이블 270도 회전 명령 전송
+[INFO] [1785406303.776898843] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406305.678186892] [main_orchestrator_node]: 턴테이블 270도 회전 완료 확인
+[INFO] [1785406305.776943447] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406307.390617463] [main_orchestrator_node]: 검사 결과 수신: passed=False
+[INFO] [1785406308.777145634] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_WAIT_RESULT
+[INFO] [1785406308.876782710] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_RESULT -> FsmState.PICKING_CHAMBER_TRIGGER
+[INFO] [1785406308.878152543] [main_orchestrator_node]: 검사장 재파지 명령 전송
+[INFO] [1785406308.976654428] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_TRIGGER -> FsmState.PICKING_CHAMBER_WAIT
+[INFO] [1785406316.777520020] [main_orchestrator_node]: 검사장 재파지 완료. 분류 이송 단계로 진입
+[INFO] [1785406316.876661199] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_WAIT -> FsmState.SORTING_TRIGGER
+[INFO] [1785406316.877934807] [main_orchestrator_node]: 검사 결과: FAIL -> FAIL 적재함(X=C)으로 레일 이송
+[INFO] [1785406316.976586335] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_TRIGGER -> FsmState.SORTING_WAIT_RAIL
+[INFO] [1785406318.777712760] [main_orchestrator_node]: 레일 분류 목적지 이동 완료
+[INFO] [1785406318.876657115] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_WAIT_RAIL -> FsmState.RELEASING_TRIGGER
+[INFO] [1785406318.878193205] [main_orchestrator_node]: 분류 적재함 위 출력물 투하 명령 전송
+[INFO] [1785406318.977073909] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_TRIGGER -> FsmState.RELEASING_WAIT
+[INFO] [1785406323.577757013] [main_orchestrator_node]: 적재 및 그리퍼 해제 완료
+[INFO] [1785406323.676590186] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_WAIT -> FsmState.HOMING_ARM_TRIGGER
+[INFO] [1785406323.678206440] [main_orchestrator_node]: 로봇팔 홈 복귀 명령 전송
+[INFO] [1785406323.776764900] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_TRIGGER -> FsmState.HOMING_ARM_WAIT
+[INFO] [1785406325.845092577] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406326.077862067] [main_orchestrator_node]: 로봇팔 홈 복귀 완료. 레일 베드 복귀 시작
+[INFO] [1785406326.176925824] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_WAIT -> FsmState.HOMING_RAIL_TRIGGER
+[INFO] [1785406326.179140871] [main_orchestrator_node]: 레일 홈 복귀 명령 전송
+[INFO] [1785406326.276870625] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_TRIGGER -> FsmState.HOMING_RAIL_WAIT
+[INFO] [1785406327.978443873] [main_orchestrator_node]: 레일 홈 복귀 완료
+[INFO] [1785406328.076825951] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_WAIT -> FsmState.FINISHED
+[INFO] [1785406328.078451511] [main_orchestrator_node]: 모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.
+[INFO] [1785406328.176892368] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.FINISHED -> FsmState.IDLE
+[INFO] [1785406338.744353192] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406338.744713124] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406338.776652269] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406338.777146697] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406338.877014464] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406341.276636333] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406341.376647665] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406341.377149772] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406341.476688857] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406341.776787735] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406341.876547387] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406341.877138448] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406341.976878860] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406343.877060532] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406343.977021385] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406343.978268550] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406344.076639579] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406346.376914579] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406346.476546909] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406346.477334450] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406346.576893631] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406353.577646847] [main_orchestrator_node]: 로봇 ACT 파지 완료. 검사장 안착 단계로 진입
+[INFO] [1785406353.676537236] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.PLACING_CHAMBER_TRIGGER
+[INFO] [1785406353.677418142] [main_orchestrator_node]: 검사장(턴테이블) 안착 명령 전송
+[INFO] [1785406353.777019932] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_TRIGGER -> FsmState.PLACING_CHAMBER_WAIT
+[INFO] [1785406364.977166976] [main_orchestrator_node]: 검사장 안착 완료. 품질 검사 단계로 진입
+[INFO] [1785406365.076644484] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_WAIT -> FsmState.INSPECTING_TRIGGER
+[INFO] [1785406365.077597891] [main_orchestrator_node]: 조명 ON — 카메라 노출 안정화 대기 5초
+[INFO] [1785406365.176627869] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_TRIGGER -> FsmState.INSPECTING_LED_STABILIZE
+[INFO] [1785406370.078228489] [main_orchestrator_node]: 카메라 노출 안정화 완료 — 턴테이블 검사 시작
+[INFO] [1785406370.176908247] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_LED_STABILIZE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406370.178480587] [main_orchestrator_node]: 턴테이블 0도 회전 명령 전송
+[INFO] [1785406370.277143948] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406370.278687088] [main_orchestrator_node]: 턴테이블 0도 회전 완료 확인
+[INFO] [1785406370.376879819] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406373.376773366] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406373.377844483] [main_orchestrator_node]: 턴테이블 90도 회전 명령 전송
+[INFO] [1785406373.476606392] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406375.377215174] [main_orchestrator_node]: 턴테이블 90도 회전 완료 확인
+[INFO] [1785406375.476547071] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406378.476904093] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406378.478558524] [main_orchestrator_node]: 턴테이블 180도 회전 명령 전송
+[INFO] [1785406378.576900987] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406380.377117454] [main_orchestrator_node]: 턴테이블 180도 회전 완료 확인
+[INFO] [1785406380.476675857] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406383.476655135] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406383.477678070] [main_orchestrator_node]: 턴테이블 270도 회전 명령 전송
+[INFO] [1785406383.576623636] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406385.377090679] [main_orchestrator_node]: 턴테이블 270도 회전 완료 확인
+[INFO] [1785406385.476505943] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406387.084312638] [main_orchestrator_node]: 검사 결과 수신: passed=True
+[INFO] [1785406388.476925712] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_WAIT_RESULT
+[INFO] [1785406388.576639015] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_RESULT -> FsmState.PICKING_CHAMBER_TRIGGER
+[INFO] [1785406388.577923527] [main_orchestrator_node]: 검사장 재파지 명령 전송
+[INFO] [1785406388.676502425] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_TRIGGER -> FsmState.PICKING_CHAMBER_WAIT
+[INFO] [1785406396.577899385] [main_orchestrator_node]: 검사장 재파지 완료. 분류 이송 단계로 진입
+[INFO] [1785406396.676687631] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_WAIT -> FsmState.SORTING_TRIGGER
+[INFO] [1785406396.678231363] [main_orchestrator_node]: 검사 결과: PASS -> PASS 적재함(X=B)으로 레일 이송
+[INFO] [1785406396.776661750] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_TRIGGER -> FsmState.SORTING_WAIT_RAIL
+[INFO] [1785406399.078810092] [main_orchestrator_node]: 레일 분류 목적지 이동 완료
+[INFO] [1785406399.176927371] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_WAIT_RAIL -> FsmState.RELEASING_TRIGGER
+[INFO] [1785406399.179124313] [main_orchestrator_node]: 분류 적재함 위 출력물 투하 명령 전송
+[INFO] [1785406399.277002101] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_TRIGGER -> FsmState.RELEASING_WAIT
+[INFO] [1785406403.682057686] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406403.878566916] [main_orchestrator_node]: 적재 및 그리퍼 해제 완료
+[INFO] [1785406403.976579973] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_WAIT -> FsmState.HOMING_ARM_TRIGGER
+[INFO] [1785406403.978196070] [main_orchestrator_node]: 로봇팔 홈 복귀 명령 전송
+[INFO] [1785406404.076580686] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_TRIGGER -> FsmState.HOMING_ARM_WAIT
+[INFO] [1785406406.277882650] [main_orchestrator_node]: 로봇팔 홈 복귀 완료. 레일 베드 복귀 시작
+[INFO] [1785406406.376546864] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_WAIT -> FsmState.HOMING_RAIL_TRIGGER
+[INFO] [1785406406.378045210] [main_orchestrator_node]: 레일 홈 복귀 명령 전송
+[INFO] [1785406406.476524690] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_TRIGGER -> FsmState.HOMING_RAIL_WAIT
+[INFO] [1785406408.778632830] [main_orchestrator_node]: 레일 홈 복귀 완료
+[INFO] [1785406408.876445150] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_WAIT -> FsmState.FINISHED
+[INFO] [1785406408.877956328] [main_orchestrator_node]: 모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.
+[INFO] [1785406408.976598482] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.FINISHED -> FsmState.IDLE
+[INFO] [1785406409.046369971] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406409.046905470] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406409.076586888] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406409.077019299] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406409.176677167] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406411.577245173] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406411.676826429] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406411.677652542] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406411.776902849] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406412.077235334] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406412.176709140] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406412.177313545] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406412.276520273] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406414.176832608] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406414.276559461] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406414.277268238] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406414.376507161] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406416.676871181] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406416.776594870] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406416.777377657] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406416.878225169] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406419.427329653] [main_orchestrator_node]: HMI 명령 수신: ESTOP
+[ERROR] [1785406419.427986143] [main_orchestrator_node]: 비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.
+[ERROR] [1785406419.428718008] [main_orchestrator_node]: 시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 전환합니다.
+[INFO] [1785406419.476512066] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.ERROR
+[INFO] [1785406421.926197964] [main_orchestrator_node]: HMI 명령 수신: RESET
+[INFO] [1785406421.927003129] [main_orchestrator_node]: 시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.
+[INFO] [1785406421.940845750] [main_orchestrator_node]: micro-ROS agent 종료 — launch respawn 대기
+[INFO] [1785406421.976972288] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.ERROR -> FsmState.INIT
+[INFO] [1785406422.077097328] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785406423.051489206] [main_orchestrator_node]: ESP32 하드 리셋 완료 (/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) — agent 재접속 후 시작 시 호밍이 재수행됩니다.
+[INFO] [1785406423.621895352] [main_orchestrator_node]: HMI 명령 수신: RESET
+[INFO] [1785406423.622349287] [main_orchestrator_node]: 시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.
+[INFO] [1785406423.632398285] [main_orchestrator_node]: micro-ROS agent 종료 — launch respawn 대기
+[INFO] [1785406423.676617577] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.INIT
+[INFO] [1785406423.776581782] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785406424.734963169] [main_orchestrator_node]: ESP32 하드 리셋 완료 (/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) — agent 재접속 후 시작 시 호밍이 재수행됩니다.
+[INFO] [1785406428.258163963] [main_orchestrator_node]: HMI 명령 수신: RESET
+[INFO] [1785406428.258514504] [main_orchestrator_node]: 시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.
+[INFO] [1785406428.268433541] [main_orchestrator_node]: micro-ROS agent 종료 — launch respawn 대기
+[INFO] [1785406428.276565735] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.INIT
+[INFO] [1785406428.376813039] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785406429.378139203] [main_orchestrator_node]: ESP32 하드 리셋 완료 (/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) — agent 재접속 후 시작 시 호밍이 재수행됩니다.
+[INFO] [1785406436.798071283] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406436.798411482] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406436.876637497] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406436.877112284] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406436.976728419] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406436.977111651] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406437.076938998] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406437.077753672] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406437.176840986] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406437.477262848] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406437.576959867] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406437.577948666] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406437.677119975] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406437.678025044] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406437.776902047] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406439.277308276] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406439.377026362] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406441.676965279] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406441.776521435] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406441.777294897] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406441.876760270] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406448.877019268] [main_orchestrator_node]: 로봇 ACT 파지 완료. 검사장 안착 단계로 진입
+[INFO] [1785406448.976628390] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.PLACING_CHAMBER_TRIGGER
+[INFO] [1785406448.977594906] [main_orchestrator_node]: 검사장(턴테이블) 안착 명령 전송
+[INFO] [1785406449.076693233] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_TRIGGER -> FsmState.PLACING_CHAMBER_WAIT
+[INFO] [1785406460.277829722] [main_orchestrator_node]: 검사장 안착 완료. 품질 검사 단계로 진입
+[INFO] [1785406460.377004193] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_WAIT -> FsmState.INSPECTING_TRIGGER
+[INFO] [1785406460.378019828] [main_orchestrator_node]: 조명 ON — 카메라 노출 안정화 대기 5초
+[INFO] [1785406460.476496886] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_TRIGGER -> FsmState.INSPECTING_LED_STABILIZE
+[INFO] [1785406465.377397588] [main_orchestrator_node]: 카메라 노출 안정화 완료 — 턴테이블 검사 시작
+[INFO] [1785406465.476706907] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_LED_STABILIZE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406465.477781958] [main_orchestrator_node]: 턴테이블 0도 회전 명령 전송
+[INFO] [1785406465.577020968] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406465.578620886] [main_orchestrator_node]: 턴테이블 0도 회전 완료 확인
+[INFO] [1785406465.676981337] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406468.676941995] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406468.678538576] [main_orchestrator_node]: 턴테이블 90도 회전 명령 전송
+[INFO] [1785406468.776898735] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406470.577866224] [main_orchestrator_node]: 턴테이블 90도 회전 완료 확인
+[INFO] [1785406470.676857679] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406473.676655657] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406473.677682981] [main_orchestrator_node]: 턴테이블 180도 회전 명령 전송
+[INFO] [1785406473.776618936] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406475.678083116] [main_orchestrator_node]: 턴테이블 180도 회전 완료 확인
+[INFO] [1785406475.776699808] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406478.776935946] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406478.778477119] [main_orchestrator_node]: 턴테이블 270도 회전 명령 전송
+[INFO] [1785406478.876892685] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406480.677569191] [main_orchestrator_node]: 턴테이블 270도 회전 완료 확인
+[INFO] [1785406480.776650493] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406482.416608047] [main_orchestrator_node]: 검사 결과 수신: passed=False
+[INFO] [1785406483.777119653] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_WAIT_RESULT
+[INFO] [1785406483.876795756] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_RESULT -> FsmState.PICKING_CHAMBER_TRIGGER
+[INFO] [1785406483.878665770] [main_orchestrator_node]: 검사장 재파지 명령 전송
+[INFO] [1785406483.976981491] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_TRIGGER -> FsmState.PICKING_CHAMBER_WAIT
+[INFO] [1785406491.777886859] [main_orchestrator_node]: 검사장 재파지 완료. 분류 이송 단계로 진입
+[INFO] [1785406491.876458444] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_WAIT -> FsmState.SORTING_TRIGGER
+[INFO] [1785406491.877734754] [main_orchestrator_node]: 검사 결과: FAIL -> FAIL 적재함(X=C)으로 레일 이송
+[INFO] [1785406491.976806387] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_TRIGGER -> FsmState.SORTING_WAIT_RAIL
+[INFO] [1785406493.778465517] [main_orchestrator_node]: 레일 분류 목적지 이동 완료
+[INFO] [1785406493.877024027] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_WAIT_RAIL -> FsmState.RELEASING_TRIGGER
+[INFO] [1785406493.879234870] [main_orchestrator_node]: 분류 적재함 위 출력물 투하 명령 전송
+[INFO] [1785406493.976960856] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_TRIGGER -> FsmState.RELEASING_WAIT
+[INFO] [1785406498.578590233] [main_orchestrator_node]: 적재 및 그리퍼 해제 완료
+[INFO] [1785406498.676902340] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_WAIT -> FsmState.HOMING_ARM_TRIGGER
+[INFO] [1785406498.679506106] [main_orchestrator_node]: 로봇팔 홈 복귀 명령 전송
+[INFO] [1785406498.776558413] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_TRIGGER -> FsmState.HOMING_ARM_WAIT
+[INFO] [1785406500.979050012] [main_orchestrator_node]: 로봇팔 홈 복귀 완료. 레일 베드 복귀 시작
+[INFO] [1785406501.077090702] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_WAIT -> FsmState.HOMING_RAIL_TRIGGER
+[INFO] [1785406501.079527141] [main_orchestrator_node]: 레일 홈 복귀 명령 전송
+[INFO] [1785406501.176548097] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_TRIGGER -> FsmState.HOMING_RAIL_WAIT
+[INFO] [1785406502.878708932] [main_orchestrator_node]: 레일 홈 복귀 완료
+[INFO] [1785406502.976995738] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_WAIT -> FsmState.FINISHED
+[INFO] [1785406502.978674230] [main_orchestrator_node]: 모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.
+[INFO] [1785406503.076745413] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.FINISHED -> FsmState.IDLE
+[INFO] [1785406504.585397555] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406504.585728841] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406504.676724386] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406504.677205038] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406504.776814120] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406507.176719596] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406507.276701908] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406507.277219562] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406507.376693802] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406507.677006359] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406507.776624806] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406507.777244116] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406507.876584452] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406509.776865605] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406509.877347799] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406509.878449373] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406509.976665825] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406512.377016268] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406512.476576251] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406512.477332315] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406512.576759533] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406519.577760963] [main_orchestrator_node]: 로봇 ACT 파지 완료. 검사장 안착 단계로 진입
+[INFO] [1785406519.676619210] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.PLACING_CHAMBER_TRIGGER
+[INFO] [1785406519.677559348] [main_orchestrator_node]: 검사장(턴테이블) 안착 명령 전송
+[INFO] [1785406519.776800051] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_TRIGGER -> FsmState.PLACING_CHAMBER_WAIT
+[INFO] [1785406530.877181980] [main_orchestrator_node]: 검사장 안착 완료. 품질 검사 단계로 진입
+[INFO] [1785406530.976629203] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_WAIT -> FsmState.INSPECTING_TRIGGER
+[INFO] [1785406530.977602136] [main_orchestrator_node]: 조명 ON — 카메라 노출 안정화 대기 5초
+[INFO] [1785406531.076618703] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_TRIGGER -> FsmState.INSPECTING_LED_STABILIZE
+[INFO] [1785406535.978326840] [main_orchestrator_node]: 카메라 노출 안정화 완료 — 턴테이블 검사 시작
+[INFO] [1785406536.076988955] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_LED_STABILIZE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406536.078027589] [main_orchestrator_node]: 턴테이블 0도 회전 명령 전송
+[INFO] [1785406536.176622876] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406536.177619104] [main_orchestrator_node]: 턴테이블 0도 회전 완료 확인
+[INFO] [1785406536.276871426] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406539.277129371] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406539.278667675] [main_orchestrator_node]: 턴테이블 90도 회전 명령 전송
+[INFO] [1785406539.377046932] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406541.277398758] [main_orchestrator_node]: 턴테이블 90도 회전 완료 확인
+[INFO] [1785406541.376702563] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406544.376648799] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406544.377668357] [main_orchestrator_node]: 턴테이블 180도 회전 명령 전송
+[INFO] [1785406544.476950301] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406546.377227187] [main_orchestrator_node]: 턴테이블 180도 회전 완료 확인
+[INFO] [1785406546.476598370] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406549.476596756] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406549.477622768] [main_orchestrator_node]: 턴테이블 270도 회전 명령 전송
+[INFO] [1785406549.577019904] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406551.477337363] [main_orchestrator_node]: 턴테이블 270도 회전 완료 확인
+[INFO] [1785406551.576607309] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406553.139386178] [main_orchestrator_node]: 검사 결과 수신: passed=False
+[INFO] [1785406554.576450849] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_WAIT_RESULT
+[INFO] [1785406554.676713127] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_RESULT -> FsmState.PICKING_CHAMBER_TRIGGER
+[INFO] [1785406554.678122343] [main_orchestrator_node]: 검사장 재파지 명령 전송
+[INFO] [1785406554.776394695] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_TRIGGER -> FsmState.PICKING_CHAMBER_WAIT
+[INFO] [1785406562.677611401] [main_orchestrator_node]: 검사장 재파지 완료. 분류 이송 단계로 진입
+[INFO] [1785406562.776743237] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_WAIT -> FsmState.SORTING_TRIGGER
+[INFO] [1785406562.778329656] [main_orchestrator_node]: 검사 결과: FAIL -> FAIL 적재함(X=C)으로 레일 이송
+[INFO] [1785406562.876897295] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_TRIGGER -> FsmState.SORTING_WAIT_RAIL
+[INFO] [1785406564.678417890] [main_orchestrator_node]: 레일 분류 목적지 이동 완료
+[INFO] [1785406564.776979480] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_WAIT_RAIL -> FsmState.RELEASING_TRIGGER
+[INFO] [1785406564.779223441] [main_orchestrator_node]: 분류 적재함 위 출력물 투하 명령 전송
+[INFO] [1785406564.876938934] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_TRIGGER -> FsmState.RELEASING_WAIT
+[INFO] [1785406569.477713650] [main_orchestrator_node]: 적재 및 그리퍼 해제 완료
+[INFO] [1785406569.576649925] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_WAIT -> FsmState.HOMING_ARM_TRIGGER
+[INFO] [1785406569.578200452] [main_orchestrator_node]: 로봇팔 홈 복귀 명령 전송
+[INFO] [1785406569.676909358] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_TRIGGER -> FsmState.HOMING_ARM_WAIT
+[INFO] [1785406571.978163610] [main_orchestrator_node]: 로봇팔 홈 복귀 완료. 레일 베드 복귀 시작
+[INFO] [1785406572.076951731] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_WAIT -> FsmState.HOMING_RAIL_TRIGGER
+[INFO] [1785406572.078495028] [main_orchestrator_node]: 레일 홈 복귀 명령 전송
+[INFO] [1785406572.177037271] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_TRIGGER -> FsmState.HOMING_RAIL_WAIT
+[INFO] [1785406573.977761512] [main_orchestrator_node]: 레일 홈 복귀 완료
+[INFO] [1785406574.077061059] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_WAIT -> FsmState.FINISHED
+[INFO] [1785406574.079424189] [main_orchestrator_node]: 모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.
+[INFO] [1785406574.177077252] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.FINISHED -> FsmState.IDLE
+[INFO] [1785406600.801012367] [main_orchestrator_node]: HMI 명령 수신: START
+[INFO] [1785406600.801616100] [main_orchestrator_node]: 시작 초기화 시퀀스: 레일 0mm 홈 이동 시작
+[INFO] [1785406600.876563924] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.STARTUP_RAIL_HOME_TRIGGER
+[INFO] [1785406600.877013490] [main_orchestrator_node]: [STARTUP] 레일 0mm 홈 이동 + 로봇팔 홈(P1) 명령 발행
+[INFO] [1785406600.976615471] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_TRIGGER -> FsmState.STARTUP_RAIL_HOME_WAIT
+[INFO] [1785406603.377075023] [main_orchestrator_node]: [STARTUP] 레일 0mm 도착. 12.5mm 검사장 이동 시작
+[INFO] [1785406603.477192376] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_RAIL_HOME_WAIT -> FsmState.STARTUP_INSPECT_TRIGGER
+[INFO] [1785406603.477755984] [main_orchestrator_node]: [STARTUP] 레일 12.5mm INSPECT 이동 명령 발행
+[INFO] [1785406603.576561221] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_TRIGGER -> FsmState.STARTUP_INSPECT_WAIT
+[INFO] [1785406603.877247699] [main_orchestrator_node]: [STARTUP] 레일 12.5mm 도착. 턴테이블 0° 초기화 시작
+[INFO] [1785406603.976962679] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_INSPECT_WAIT -> FsmState.STARTUP_TURNTABLE_TRIGGER
+[INFO] [1785406603.977895323] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 초기화 명령 발행
+[INFO] [1785406604.077078513] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_TRIGGER -> FsmState.STARTUP_TURNTABLE_WAIT
+[INFO] [1785406605.976807533] [main_orchestrator_node]: [STARTUP] 턴테이블 0° 완료. 자율 구동 시퀀스 진입
+[INFO] [1785406606.076845658] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.STARTUP_TURNTABLE_WAIT -> FsmState.START_RAIL_MOVE_BED_TRIGGER
+[INFO] [1785406606.077704954] [main_orchestrator_node]: 레일 베드 위치(30,500스텝) 이동 명령 전송
+[INFO] [1785406606.176816436] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_TRIGGER -> FsmState.START_RAIL_MOVE_BED_WAIT
+[INFO] [1785406608.477305138] [main_orchestrator_node]: 레일 베드 위치 이동 완료
+[INFO] [1785406608.576639590] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.START_RAIL_MOVE_BED_WAIT -> FsmState.GRASPING_TRIGGER
+[INFO] [1785406608.577398194] [main_orchestrator_node]: 로봇 ACT 파지 명령 발행
+[INFO] [1785406608.677128361] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_TRIGGER -> FsmState.GRASPING_WAIT
+[INFO] [1785406615.677261846] [main_orchestrator_node]: 로봇 ACT 파지 완료. 검사장 안착 단계로 진입
+[INFO] [1785406615.777049154] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.GRASPING_WAIT -> FsmState.PLACING_CHAMBER_TRIGGER
+[INFO] [1785406615.778610477] [main_orchestrator_node]: 검사장(턴테이블) 안착 명령 전송
+[INFO] [1785406615.877197274] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_TRIGGER -> FsmState.PLACING_CHAMBER_WAIT
+[INFO] [1785406626.977178467] [main_orchestrator_node]: 검사장 안착 완료. 품질 검사 단계로 진입
+[INFO] [1785406627.076584638] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PLACING_CHAMBER_WAIT -> FsmState.INSPECTING_TRIGGER
+[INFO] [1785406627.077590213] [main_orchestrator_node]: 조명 ON — 카메라 노출 안정화 대기 5초
+[INFO] [1785406627.176562291] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_TRIGGER -> FsmState.INSPECTING_LED_STABILIZE
+[INFO] [1785406632.077204949] [main_orchestrator_node]: 카메라 노출 안정화 완료 — 턴테이블 검사 시작
+[INFO] [1785406632.176631907] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_LED_STABILIZE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406632.177686213] [main_orchestrator_node]: 턴테이블 0도 회전 명령 전송
+[INFO] [1785406632.276632505] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406632.277614123] [main_orchestrator_node]: 턴테이블 0도 회전 완료 확인
+[INFO] [1785406632.376672806] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406635.376575603] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406635.377571576] [main_orchestrator_node]: 턴테이블 90도 회전 명령 전송
+[INFO] [1785406635.476759213] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406637.377951457] [main_orchestrator_node]: 턴테이블 90도 회전 완료 확인
+[INFO] [1785406637.476968723] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406640.476654066] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406640.477684533] [main_orchestrator_node]: 턴테이블 180도 회전 명령 전송
+[INFO] [1785406640.576639816] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406642.378523524] [main_orchestrator_node]: 턴테이블 180도 회전 완료 확인
+[INFO] [1785406642.477011117] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406645.476692613] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_ROTATE
+[INFO] [1785406645.477713002] [main_orchestrator_node]: 턴테이블 270도 회전 명령 전송
+[INFO] [1785406645.576661450] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_ROTATE -> FsmState.INSPECTING_WAIT_TURNTABLE
+[INFO] [1785406647.377071785] [main_orchestrator_node]: 턴테이블 270도 회전 완료 확인
+[INFO] [1785406647.476716146] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_TURNTABLE -> FsmState.INSPECTING_CAPTURE
+[INFO] [1785406649.082870295] [main_orchestrator_node]: 검사 결과 수신: passed=True
+[INFO] [1785406650.476961689] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_CAPTURE -> FsmState.INSPECTING_WAIT_RESULT
+[INFO] [1785406650.576601616] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INSPECTING_WAIT_RESULT -> FsmState.PICKING_CHAMBER_TRIGGER
+[INFO] [1785406650.577854721] [main_orchestrator_node]: 검사장 재파지 명령 전송
+[INFO] [1785406650.676712972] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_TRIGGER -> FsmState.PICKING_CHAMBER_WAIT
+[INFO] [1785406658.477577345] [main_orchestrator_node]: 검사장 재파지 완료. 분류 이송 단계로 진입
+[INFO] [1785406658.576618452] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.PICKING_CHAMBER_WAIT -> FsmState.SORTING_TRIGGER
+[INFO] [1785406658.577914888] [main_orchestrator_node]: 검사 결과: PASS -> PASS 적재함(X=B)으로 레일 이송
+[INFO] [1785406658.676688343] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_TRIGGER -> FsmState.SORTING_WAIT_RAIL
+[INFO] [1785406660.978670701] [main_orchestrator_node]: 레일 분류 목적지 이동 완료
+[INFO] [1785406661.076490787] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.SORTING_WAIT_RAIL -> FsmState.RELEASING_TRIGGER
+[INFO] [1785406661.077924072] [main_orchestrator_node]: 분류 적재함 위 출력물 투하 명령 전송
+[INFO] [1785406661.176614581] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_TRIGGER -> FsmState.RELEASING_WAIT
+[INFO] [1785406665.777760016] [main_orchestrator_node]: 적재 및 그리퍼 해제 완료
+[INFO] [1785406665.876895874] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.RELEASING_WAIT -> FsmState.HOMING_ARM_TRIGGER
+[INFO] [1785406665.878718465] [main_orchestrator_node]: 로봇팔 홈 복귀 명령 전송
+[INFO] [1785406665.976921396] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_TRIGGER -> FsmState.HOMING_ARM_WAIT
+[INFO] [1785406668.277763716] [main_orchestrator_node]: 로봇팔 홈 복귀 완료. 레일 베드 복귀 시작
+[INFO] [1785406668.376603108] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_ARM_WAIT -> FsmState.HOMING_RAIL_TRIGGER
+[INFO] [1785406668.378123724] [main_orchestrator_node]: 레일 홈 복귀 명령 전송
+[INFO] [1785406668.476557751] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_TRIGGER -> FsmState.HOMING_RAIL_WAIT
+[INFO] [1785406670.777791062] [main_orchestrator_node]: 레일 홈 복귀 완료
+[INFO] [1785406670.877115870] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.HOMING_RAIL_WAIT -> FsmState.FINISHED
+[INFO] [1785406670.879916884] [main_orchestrator_node]: 모든 탐지된 출력물의 검사 및 적재 분류가 완료되었습니다.
+[INFO] [1785406670.977015930] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.FINISHED -> FsmState.IDLE
+[INFO] [1785406689.220683179] [main_orchestrator_node]: HMI 명령 수신: ESTOP
+[ERROR] [1785406689.221333898] [main_orchestrator_node]: 비상 정지 명령(ESTOP)이 작동했습니다! 비상 에러 상태로 강제 전환합니다.
+[ERROR] [1785406689.222066733] [main_orchestrator_node]: 시스템 비상 정지(ESTOP) 수신! 비상 에러 상태로 강제 전환합니다.
+[INFO] [1785406689.277087060] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.IDLE -> FsmState.ERROR
+[INFO] [1785406692.104098569] [main_orchestrator_node]: HMI 명령 수신: RESET
+[INFO] [1785406692.104461164] [main_orchestrator_node]: 시스템 리셋을 시도합니다. 초기화 단계로 진입합니다.
+[INFO] [1785406692.113637115] [main_orchestrator_node]: micro-ROS agent 종료 — launch respawn 대기
+[INFO] [1785406692.176687270] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.ERROR -> FsmState.INIT
+[INFO] [1785406692.276729835] [main_orchestrator_node]: [FSM] 상태 변경: FsmState.INIT -> FsmState.IDLE
+[INFO] [1785406693.222294004] [main_orchestrator_node]: ESP32 하드 리셋 완료 (/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0) — agent 재접속 후 시작 시 호밍이 재수행됩니다.

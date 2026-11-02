@@ -1,0 +1,11 @@
+{
+  "passed": false,
+  "solidity": 0.9871,
+  "area_ratio": 0.9455,
+  "hole_count": 3,
+  "hole_area_ratio": 0.0103,
+  "texture_variance": 5.27,
+  "ml_passed": false,
+  "anomaly_score_worst": 34.5678,
+  "ml_detail": "180°=34.57(임계29.11)"
+}
