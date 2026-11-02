@@ -64,5 +64,10 @@ h2.inline { margin: 0; }
 tr.playing td { background: rgba(37, 99, 235, .12); }
 #convLog { background: #0d0f12; color: #cfd6df; padding: 8px; border-radius: 6px; max-height: 320px; overflow: auto; font-size: 12px; white-space: pre-wrap; margin: 8px 0 0; }
 #confirm { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--card); border: 2px solid var(--bad); border-radius: 8px; padding: 12px 16px; display: flex; gap: 12px; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,.35); max-width: 94vw; }
+#camCard summary { cursor: pointer; }
+.campanels { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 8px 0; }
+.campanel h3 { font-size: 14px; margin: 0 0 6px; }
+.campanel input[type=number] { width: 90px; }
+.campanel button { margin-top: 6px; }
 [hidden] { display: none !important; }
-@media (max-width: 640px) { .cams { grid-template-columns: 1fr; } .dev { grid-template-columns: 90px 1fr 48px; } }
+@media (max-width: 640px) { .cams, .campanels { grid-template-columns: 1fr; } .dev { grid-template-columns: 90px 1fr 48px; } }

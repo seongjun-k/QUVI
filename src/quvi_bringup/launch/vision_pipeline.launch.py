@@ -16,10 +16,31 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, TimerAction
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, LogInfo, OpaqueFunction, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+from quvi_robot_control import camera_profile
+
+# 탑뷰 프로필이 없을 때의 고정값 — 자동노출 + brightness 50 이면 베드 반사가 포화된다(2026-10-06 실측 포화 14%)
+TOPCAM_FALLBACK_CTRLS = 'auto_exposure=1,exposure_time_absolute=80,brightness=0'
+
+
+def _vla_cam_ctrls(context):
+    """수집 앱이 저장한 data/camera_profile.json 이 있으면 그 값을 건다 — 수집과 추론의 영상 조건을 맞춘다.
+    없으면 기존 동작(탑뷰 고정값, 사이드캠은 손대지 않음)."""
+    profile = camera_profile.load(LaunchConfiguration('data_dir').perform(context))
+    actions = []
+    for cam, dev_arg, fallback in (('camera1', 'sidecam_device', ''),
+                                   ('camera3', 'topcam_device', TOPCAM_FALLBACK_CTRLS)):
+        arg = camera_profile.set_ctrl_arg(profile[cam]) if cam in profile else fallback
+        if not arg:
+            continue
+        src = '프로필' if cam in profile else '기본값'
+        actions += [LogInfo(msg=f'{cam} v4l2 설정({src}): {arg}'),
+                    ExecuteProcess(cmd=['v4l2-ctl', '-d', LaunchConfiguration(dev_arg), '--set-ctrl', arg],
+                                   output='screen')]
+    return actions
 
 
 def _default_data_dir() -> str:
@@ -199,14 +220,10 @@ def generate_launch_description():
         output='screen',
     )
 
-    # ─── 탑뷰캠 노출 고정 ───
-    # usb_cam 은 구형 컨트롤명(exposure_auto/exposure_absolute)을 써서 이 커널에선 노출 설정이 무시되고
-    # brightness 50 + 자동노출로 베드 반사가 포화된다(2026-10-06 실측 포화 14%). usb_cam 초기화 후 덮어쓴다.
-    # 탑뷰는 ACT 입력 카메라 — 값 변경 시 파지 성능 재확인 필요.
-    topcam_exposure_fix = TimerAction(period=4.0, actions=[ExecuteProcess(
-        cmd=['v4l2-ctl', '-d', LaunchConfiguration('topcam_device'), '--set-ctrl',
-             'auto_exposure=1,exposure_time_absolute=80,brightness=0'],
-        output='screen')])
+    # ─── VLA 입력 카메라(사이드캠·탑뷰) v4l2 설정 ───
+    # usb_cam 은 구형 컨트롤명(exposure_auto/exposure_absolute)을 써서 이 커널에선 노출 설정이 무시된다.
+    # usb_cam 초기화 후 v4l2-ctl 로 덮어쓴다. 정책 입력 영상이 바뀌므로 값 변경 시 파지 성능 재확인 필요.
+    vla_cam_ctrls = TimerAction(period=4.0, actions=[OpaqueFunction(function=_vla_cam_ctrls)])
 
     return LaunchDescription([
         # 인자
@@ -234,6 +251,6 @@ def generate_launch_description():
         camera1_node,
         camera2_node,
         camera3_node,
-        topcam_exposure_fix,
+        vla_cam_ctrls,
         inspect_node,
     ])

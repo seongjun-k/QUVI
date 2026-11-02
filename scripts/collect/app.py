@@ -29,14 +29,15 @@ from std_msgs.msg import Float32MultiArray
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import episode_store as store  # noqa: E402
-from quvi_robot_control import topics  # noqa: E402
+from quvi_robot_control import camera_profile, topics  # noqa: E402
 from quvi_robot_control.act_common import (  # noqa: E402
     EPISODE_DURATION_SEC, JOINT_NAMES, POSE_HOME, rad_to_raw)
 
 # ─── 상수 ───
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(APP_DIR, '..', '..'))
-DEVICE_CONFIG_PATH = os.path.join(REPO, 'data', 'device_config.json')
+DATA_DIR = os.path.join(REPO, 'data')  # 로봇 launch 의 data_dir(/workspace/data)과 같은 곳 — 카메라 프로필 공유
+DEVICE_CONFIG_PATH = os.path.join(DATA_DIR, 'device_config.json')
 # hmi_node.DEVICE_DEFAULTS 의 사이드캠·탑뷰 값과 같아야 한다(HMI 는 import 하지 않는다)
 DEVICE_DEFAULTS = {'sidecam_device': '/dev/sidecam', 'topcam_device': '/dev/topcam'}
 CAMERA_SPEC = {  # camera -> (토픽, device_config 키)
@@ -44,7 +45,8 @@ CAMERA_SPEC = {  # camera -> (토픽, device_config 키)
     'camera3': ('/camera3/image_raw/compressed', 'topcam_device'),
 }
 V4L2_CTRLS = ('exposure_time_absolute', 'gain', 'brightness', 'contrast', 'saturation',
-              'white_balance_temperature', 'auto_exposure', 'white_balance_automatic')
+              'white_balance_temperature', 'auto_exposure', 'white_balance_automatic',
+              'exposure_dynamic_framerate')
 CONVERT_PY = os.path.join(REPO, 'data', 'collect_tools', 'venv', 'bin', 'python')
 CONVERT_SCRIPT = os.path.join(REPO, 'scripts', 'build_lerobot_dataset.py')
 
@@ -79,8 +81,8 @@ def read_v4l2_ctrls(dev: str) -> dict:
             err = str(e)
             break
         if r.returncode == 0 and ':' in r.stdout:
-            try:
-                ctrls[name] = int(r.stdout.split(':', 1)[1].strip())
+            try:  # 메뉴형은 "auto_exposure: 1 (Manual Mode)" 처럼 설명이 붙는다
+                ctrls[name] = int(r.stdout.split(':', 1)[1].split()[0])
                 continue
             except ValueError:
                 pass
@@ -89,6 +91,32 @@ def read_v4l2_ctrls(dev: str) -> dict:
     if not ctrls and err:
         out['error'] = err
     return out
+
+
+def list_cam_ctrls(dev: str) -> dict:
+    """설정 패널용: 프로필 대상 컨트롤의 현재값·범위. 실패하면 ValueError."""
+    try:
+        r = subprocess.run(['v4l2-ctl', '-d', dev, '--list-ctrls'],
+                           capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise ValueError(f'{dev} 읽기 실패: {e}') from e
+    ctrls = camera_profile.parse_list_ctrls(r.stdout)
+    if not ctrls:
+        raise ValueError(f'{dev} 읽기 실패: {(r.stderr or r.stdout).strip() or "컨트롤 없음"}')
+    return ctrls
+
+
+def apply_cam_ctrls(dev: str, ctrls: dict) -> str:
+    """v4l2 값 쓰기. 장치 오류 문구를 돌려준다(빈 문자열 = 성공). 결과 확인은 다시 읽어서 한다."""
+    arg = camera_profile.set_ctrl_arg(ctrls)
+    if not arg:
+        return ''
+    try:
+        r = subprocess.run(['v4l2-ctl', '-d', dev, '--set-ctrl', arg],
+                           capture_output=True, text=True, timeout=3)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return str(e)
+    return r.stderr.strip() if r.returncode else ''
 
 
 # ─── ROS 노드 + 녹화 상태기계 ───
@@ -251,7 +279,7 @@ class CollectNode(Node):
         with self.lock:
             return self._latest[cam]
 
-    def start_session(self, product: str, task: str) -> str:
+    def start_session(self, product: str, task: str) -> tuple:
         name = store.sanitize_name(product)
         if not name:
             raise ValueError('품종 이름이 비어 있음')
@@ -259,9 +287,22 @@ class CollectNode(Node):
             if self.phase not in ('idle', 'align', 'ready'):
                 raise ValueError('녹화/결과 처리 중에는 세션을 바꿀 수 없음')
         devices = _load_devices()
-        cameras = {}
+        profile = camera_profile.load(DATA_DIR)
+        cameras, warnings = {}, []
         for cam, (topic, key) in CAMERA_SPEC.items():  # v4l2 읽기는 느릴 수 있어 락 밖에서
-            cameras[cam] = {'topic': topic, 'device': devices[key], **read_v4l2_ctrls(devices[key])}
+            dev = devices[key]
+            # 카메라를 다시 꽂거나 재부팅하면 값이 기본으로 돌아가므로 세션마다 프로필을 다시 건다
+            want = profile.get(cam, {})
+            err = apply_cam_ctrls(dev, want)
+            cameras[cam] = {'topic': topic, 'device': dev, **read_v4l2_ctrls(dev)}
+            if want:
+                cameras[cam]['profile'] = want
+                bad = camera_profile.mismatches(want, cameras[cam].get('ctrls', {}))
+                if err or bad:
+                    cameras[cam]['profile_mismatch'] = ([err] if err else []) + bad
+                    warnings.append(f'{cam} 프로필 불일치: ' + '; '.join(cameras[cam]['profile_mismatch']))
+            else:
+                warnings.append(f'{cam} 카메라 프로필 없음 — 카메라 설정에서 맞추고 저장하세요')
         sid = f'{datetime.now():%Y%m%d_%H%M%S}_{name}'
         sdir = os.path.join(self.data_root, sid)
         os.makedirs(sdir)
@@ -273,7 +314,7 @@ class CollectNode(Node):
             self.saved_count = 0
             self.error = None
             self._reset_to_align()
-        return sid
+        return sid, warnings
 
     def end_session(self):
         with self.lock:
@@ -357,8 +398,62 @@ def create_flask_app(node: CollectNode, data_root: str):
     @app.route('/api/session', methods=['POST'])
     def api_session_start():
         d = request.get_json(force=True)
-        return jsonify(ok=True, session=node.start_session(
-            d.get('product', ''), d.get('task') or store.DEFAULT_TASK))
+        sid, warnings = node.start_session(d.get('product', ''), d.get('task') or store.DEFAULT_TASK)
+        return jsonify(ok=True, session=sid, warnings=warnings)
+
+    # ─── 카메라 설정 (VLA 입력 카메라 노출·화이트밸런스) ───
+    def _cam_dev(cam) -> str:
+        if cam not in CAMERA_SPEC:
+            raise ValueError(f'알 수 없는 카메라: {cam}')
+        return _load_devices()[CAMERA_SPEC[cam][1]]
+
+    def _guard_cam_change():
+        # 에피소드 도중 영상 조건이 바뀌면 그 에피소드는 못 쓴다
+        if node.phase in ('recording', 'result', 'saving'):
+            raise ValueError('녹화/결과 처리 중에는 카메라 설정을 바꿀 수 없음')
+
+    def _cam_view():
+        profile = camera_profile.load(DATA_DIR)
+        out = {}
+        for cam in CAMERA_SPEC:
+            dev = _cam_dev(cam)
+            try:
+                out[cam] = {'device': dev, 'ctrls': list_cam_ctrls(dev)}
+            except ValueError as e:
+                out[cam] = {'device': dev, 'error': str(e)}
+            out[cam]['profile'] = profile.get(cam)
+        return out
+
+    @app.route('/api/camera')
+    def api_camera():
+        return jsonify(ok=True, cameras=_cam_view())
+
+    @app.route('/api/camera/set', methods=['POST'])
+    def api_camera_set():
+        d = request.get_json(force=True)
+        _guard_cam_change()
+        ctrls = {k: int(v) for k, v in (d.get('ctrls') or {}).items() if k in camera_profile.CTRL_ORDER}
+        err = apply_cam_ctrls(_cam_dev(d.get('camera')), ctrls)
+        return jsonify(ok=not err, error=err or None, cameras=_cam_view())
+
+    @app.route('/api/camera/profile/save', methods=['POST'])
+    def api_camera_profile_save():
+        # 지금 장치 값을 그대로 저장한다(입력칸 값이 아니라 실제로 적용된 값)
+        profile = {}
+        for cam in CAMERA_SPEC:
+            profile[cam] = camera_profile.from_ctrls(list_cam_ctrls(_cam_dev(cam)))
+        camera_profile.save(DATA_DIR, profile)
+        return jsonify(ok=True, cameras=_cam_view())
+
+    @app.route('/api/camera/profile/apply', methods=['POST'])
+    def api_camera_profile_apply():
+        _guard_cam_change()
+        profile = camera_profile.load(DATA_DIR)
+        if not profile:
+            raise ValueError('저장된 프로필 없음')
+        errs = [f'{cam}: {e}' for cam in CAMERA_SPEC
+                if (e := apply_cam_ctrls(_cam_dev(cam), profile.get(cam, {})))]
+        return jsonify(ok=not errs, error='; '.join(errs) or None, cameras=_cam_view())
 
     @app.route('/api/session/end', methods=['POST'])
     def api_session_end():

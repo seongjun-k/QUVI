@@ -48,6 +48,7 @@ GEMINI.local.md
 data/inspection_logs/
 data/reference_images/
 data/device_config.json
+data/camera_profile.json
 data/.restart_requested
 data/act_last_model.json
 data/act_traces/

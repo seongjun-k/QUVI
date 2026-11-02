@@ -98,9 +98,76 @@ function renderStatus(s) {
 
 $('btnStart').onclick = async () => {
   const j = await api('/api/session', {product: $('product').value});
-  if (!j.ok) $('errorBanner').textContent = j.error, $('errorBanner').hidden = false;
+  if (!j.ok) return $('errorBanner').textContent = j.error, $('errorBanner').hidden = false;
+  $('sessionWarn').hidden = !j.warnings.length; $('sessionWarn').textContent = j.warnings.join(' / ');
+  loadCams();
 };
-$('btnEnd').onclick = async () => { await api('/api/session/end', {}); };
+$('btnEnd').onclick = async () => { await api('/api/session/end', {}); $('sessionWarn').hidden = true; };
+
+// ─── 카메라 설정 ───
+const CAM_LABEL = {camera1: 'camera1 (사이드캠)', camera3: 'camera3 (탑뷰)'};
+const CTRL_LABEL = {auto_exposure: '자동 노출', exposure_time_absolute: '노출 시간', gain: '게인', brightness: '밝기',
+  white_balance_automatic: '자동 화이트밸런스', white_balance_temperature: '화이트밸런스 온도(K)',
+  exposure_dynamic_framerate: '어두우면 fps 낮춤'};
+const AE_MANUAL = 1, AE_AUTO = 3;  // v4l2 auto_exposure 메뉴: 1 수동, 3 조리개 우선(자동)
+const isOn = (k, v) => k === 'auto_exposure' ? v !== AE_MANUAL : !!v;
+
+function renderCams(cams) {
+  let allMatch = true, anyProfile = false;
+  $('camPanels').innerHTML = Object.entries(cams).map(([cam, c]) => {
+    if (c.error) { allMatch = false; return `<div class="campanel"><h3>${CAM_LABEL[cam]}</h3><p class="bad-t">${esc(c.error)}</p></div>`; }
+    const prof = c.profile || {};
+    if (c.profile) anyProfile = true; else allMatch = false;
+    const rows = Object.keys(CTRL_LABEL).filter(k => c.ctrls[k]).map(k => {
+      const x = c.ctrls[k], p = prof[k];
+      const diff = p !== undefined && p !== x.value;
+      if (diff) allMatch = false;
+      const input = (x.type === 'int')
+        ? `<input type="number" data-cam="${cam}" data-k="${k}" min="${x.min}" max="${x.max}" step="${x.step || 1}" value="${x.value}">`
+        : `<input type="checkbox" data-cam="${cam}" data-k="${k}" ${isOn(k, x.value) ? 'checked' : ''}>`;
+      const show = v => v === undefined ? '-' : (x.type === 'int' ? v : (isOn(k, v) ? '켬' : '끔'));
+      return `<tr><td>${CTRL_LABEL[k]}${x.type === 'int' ? ` <span class="muted small">${x.min}~${x.max}</span>` : ''}</td>
+        <td>${input}</td><td class="${diff ? 'warn-t' : ''}">${show(x.value)}</td><td>${show(p)}</td></tr>`;
+    }).join('');
+    return `<div class="campanel"><h3>${CAM_LABEL[cam]} <span class="muted small">${esc(c.device)}</span></h3>
+      <table><tr><th>항목</th><th>바꿀 값</th><th>현재</th><th>프로필</th></tr>${rows}</table>
+      <button data-apply="${cam}">적용</button></div>`;
+  }).join('');
+  const b = $('camProfileBadge');
+  b.className = 'badge ' + (!anyProfile ? 'warn' : allMatch ? 'ok' : 'bad');
+  b.textContent = !anyProfile ? '프로필 없음' : allMatch ? '프로필 적용됨' : '현재 값 ≠ 프로필';
+  document.querySelectorAll('[data-apply]').forEach(btn => btn.onclick = () => applyCam(btn.dataset.apply));
+}
+
+function camMsg(text, cls) { $('camMsg').textContent = text; $('camMsg').className = cls ? cls + '-t' : 'muted'; }
+
+async function loadCams() {
+  const j = await api('/api/camera');
+  if (j.ok) renderCams(j.cameras); else camMsg(j.error, 'bad');
+}
+
+async function camAction(url, body, okText) {
+  const j = await api(url, body);
+  if (j.cameras) renderCams(j.cameras);
+  camMsg(j.ok ? okText : `실패: ${j.error}`, j.ok ? 'ok' : 'bad');
+}
+
+function applyCam(cam) {
+  const v = {};
+  document.querySelectorAll(`[data-cam="${cam}"]`).forEach(el => {
+    const k = el.dataset.k;
+    if (el.type === 'checkbox') v[k] = k === 'auto_exposure' ? (el.checked ? AE_AUTO : AE_MANUAL) : (el.checked ? 1 : 0);
+    else v[k] = Number(el.value);
+  });
+  // 자동 모드가 무시하는 수동 값은 보내지 않는다(장치가 거부함)
+  if (v.auto_exposure !== undefined && v.auto_exposure !== AE_MANUAL) delete v.exposure_time_absolute;
+  if (v.white_balance_automatic) delete v.white_balance_temperature;
+  camAction('/api/camera/set', {camera: cam, ctrls: v}, `${cam} 적용됨 — 영상 확인 후 프로필 저장`);
+}
+$('btnCamSave').onclick = () => camAction('/api/camera/profile/save', {}, '프로필 저장됨 (다음 세션·로봇 기동부터 이 값)');
+$('btnCamApply').onclick = () => camAction('/api/camera/profile/apply', {}, '프로필 다시 적용됨');
+$('btnCamReload').onclick = () => { camMsg(''); loadCams(); };
+loadCams();
 $('btnSave').onclick = async () => {
   const j = await api('/api/episode/save', {});
   if (!j.ok) $('errorBanner').textContent = '저장 실패: ' + j.error, $('errorBanner').hidden = false;
