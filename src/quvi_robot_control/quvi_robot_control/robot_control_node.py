@@ -34,6 +34,7 @@ ROS 2 인터페이스 (Subscriber, 토픽명은 topics.py SSoT — 일부 예외
   /robot/place_in_chamber    std_msgs/Bool                  검사장 안착 시퀀스
   /robot/pick_in_chamber     std_msgs/Bool                  검사장 재파지 시퀀스
   /robot/teleop_command      std_msgs/Bool                  텔레옵 시작/종료
+  /robot/teleop_record       std_msgs/Bool                  텔레옵 시연 녹화 시작(true)/저장(false)
   /system/estop              std_msgs/Bool                  비상 정지 → 토크 차단 + ERROR 전환
   /robot/reset_command       std_msgs/Bool                  리셋 + Dynamixel 포트 재연결
   /robot/act_model_select    std_msgs/String                ACT 모델 경로 선택(대시보드) → 백그라운드 재로드
@@ -81,6 +82,7 @@ from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
 from quvi_robot_control.utils import decode_compressed
+from quvi_robot_control.teleop_recorder import TeleopRecorder
 
 from quvi_msgs.msg import GraspGoal
 
@@ -126,6 +128,8 @@ class RobotState(IntEnum):
 # 그리퍼 raw 위치값 (XL330-M288T)
 GRIPPER_OPEN  = 2500
 GRIPPER_CLOSE = 1800
+TELEOP_EPISODE_DIR = '/workspace/data/teleop_episodes'
+RECORD_MAX_FRAME_AGE_SEC = 0.2   # 이보다 오래된 카메라 프레임은 녹화하지 않는다
 
 
 # 관절 이름 (ROS 2 JointState 메시지용)
@@ -301,11 +305,17 @@ class RobotControlNode(Node):
         self._sidecam_lock = threading.Lock()
         self._latest_topcam: Optional[np.ndarray] = None
         self._topcam_lock = threading.Lock()
+        # (jpeg, perf_counter 수신 시각) — 녹화가 오래된 프레임을 쓰지 않게 한다.
+        self._latest_sidecam_jpeg: Optional[tuple] = None
+        self._latest_topcam_jpeg: Optional[tuple] = None
 
         self._esp32_rail_done = False
 
         # ─── 텔레오퍼레이션 상태 ───
         self._teleop_running = False
+        self._recorder = TeleopRecorder(
+            TELEOP_EPISODE_DIR, [POSE_HOME[n] for n in JOINT_NAMES],
+            on_error=self._on_record_save_error)
         self._leader: Optional[OmxLeader] = None
         self._teleop_offsets = {}
 
@@ -771,6 +781,11 @@ class RobotControlNode(Node):
             self._teleop_cmd_callback, 10,
             callback_group=self._cb_group)
 
+        self._teleop_record_sub = self.create_subscription(
+            Bool, topics.TOPIC_ROBOT_TELEOP_RECORD,
+            self._teleop_record_callback, 10,
+            callback_group=self._cb_group)
+
         self._estop_sub = self.create_subscription(
             Bool, topics.TOPIC_ESTOP,
             self._estop_cmd_callback, 10,
@@ -853,12 +868,14 @@ class RobotControlNode(Node):
         if frame is not None:
             with self._sidecam_lock:
                 self._latest_sidecam = frame
+                self._latest_sidecam_jpeg = (bytes(msg.data), time.perf_counter())
 
     def _topcam_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
         if frame is not None:
             with self._topcam_lock:
                 self._latest_topcam = frame
+                self._latest_topcam_jpeg = (bytes(msg.data), time.perf_counter())
 
     def _esp32_rail_done_callback(self, msg: Bool):
         # 레일 이동 중일 때만 done 을 수락한다. 오케스트레이터가 STARTUP 에서
@@ -1843,6 +1860,58 @@ class RobotControlNode(Node):
             t = threading.Thread(target=self._stop_teleop, daemon=True)
             t.start()
 
+    def _teleop_record_callback(self, msg: Bool):
+        if msg.data:
+            if not self._teleop_running:
+                self.get_logger().warn('텔레옵 중이 아니라 녹화 시작을 무시합니다')
+                return
+            if self._recorder.active:
+                self.get_logger().warn('이미 녹화 중이라 시작을 무시합니다')
+                return
+            os.makedirs(TELEOP_EPISODE_DIR, exist_ok=True)
+            self._recorder.start(time.perf_counter())
+            self._publish_status('텔레옵 녹화 시작')
+        elif self._recorder.active:
+            self._finish_recording()
+
+    def _finish_recording(self):
+        # 저장은 recorder 의 스레드가 하므로 호출한 쪽(루프 포함)을 막지 않는다.
+        if not self._recorder.active:
+            return
+        if self._recorder.stop() is None:
+            self.get_logger().warn('녹화된 프레임이 없어 저장하지 않습니다')
+        else:
+            self._publish_status('텔레옵 녹화 저장 시작')
+
+    def _on_record_save_error(self, e: Exception):
+        self.get_logger().error(f'텔레옵 녹화 저장 실패: {e}')
+        self._publish_status(f'텔레옵 녹화 저장 실패: {e}')
+
+    def _record_teleop_sample(self, now: float):
+        try:
+            with self._dxl_io_lock:
+                present = self._follower.bus.sync_read('Present_Position', normalize=False)
+                goal = self._follower.bus.sync_read('Goal_Position', normalize=False)
+        except Exception as e:
+            self.get_logger().warn(f'녹화 샘플 읽기 오류: {e}')
+            if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                self._follower.bus.port_handler.is_using = False
+            return
+        with self._sidecam_lock:
+            side = self._latest_sidecam_jpeg
+        with self._topcam_lock:
+            top = self._latest_topcam_jpeg
+        if (side is None or top is None
+                or now - side[1] > RECORD_MAX_FRAME_AGE_SEC
+                or now - top[1] > RECORD_MAX_FRAME_AGE_SEC):
+            self.get_logger().warn('녹화할 카메라 프레임이 없거나 오래돼 건너뜁니다', throttle_duration_sec=2.0)
+            return
+        self._recorder.add(
+            now,
+            [raw_to_rad(present[n]) for n in JOINT_NAMES],
+            [raw_to_rad(goal[n]) for n in JOINT_NAMES],
+            side[0], top[0])
+
     def _start_teleop(self) -> bool:
         with self._state_lock:
             if self._state == RobotState.TELEOPING:
@@ -1955,6 +2024,7 @@ class RobotControlNode(Node):
         self._teleop_running = False
         if hasattr(self, '_teleop_thread') and self._teleop_thread.is_alive():
             self._teleop_thread.join(timeout=2.0)
+        self._finish_recording()
 
         if self._leader:
             try:
@@ -1999,6 +2069,14 @@ class RobotControlNode(Node):
                         self._follower.bus.port_handler.is_using = False
                     if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
                         self._leader.bus.port_handler.is_using = False
+                else:
+                    # 녹화 실패가 조작을 막지 않도록 send_action 과 분리한다.
+                    now = time.perf_counter()
+                    if self._recorder.due(now):
+                        try:
+                            self._record_teleop_sample(now)
+                        except Exception as e:
+                            self.get_logger().warn(f'녹화 오류: {e}')
 
             next_tick += dt
             sleep_time = next_tick - time.perf_counter()
@@ -2006,6 +2084,8 @@ class RobotControlNode(Node):
                 time.sleep(sleep_time)
             else:
                 next_tick = time.perf_counter()
+
+        self._finish_recording()  # ESTOP·중단으로 루프가 끝나도 녹화분은 저장한다
 
 
 # ─── 진입점 ───

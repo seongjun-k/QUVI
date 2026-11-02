@@ -55,6 +55,7 @@ TOPIC_ROBOT_PICK_CHAMBER_CMD = '/robot/pick_in_chamber'
 TOPIC_ROBOT_PICK_CHAMBER_DONE = '/robot/pick_in_chamber_done'
 
 TOPIC_ROBOT_TELEOP_CMD = '/robot/teleop_command'
+TOPIC_ROBOT_TELEOP_RECORD = '/robot/teleop_record'   # Bool: true=녹화 시작, false=저장 (텔레옵 중에만)
 TOPIC_ROBOT_JOINT_STATES = '/robot/joint_states'
 TOPIC_ACT_MODELS = '/robot/act_models'
 TOPIC_ACT_CURRENT = '/robot/act_current'
