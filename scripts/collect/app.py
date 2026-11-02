@@ -383,9 +383,21 @@ def create_flask_app(node: CollectNode, data_root: str):
 
     @app.route('/api/frame/<sid>/<int:ep>/<cam>/<pos>')
     def api_frame(sid, ep, cam, pos):
-        if cam not in store.CAMERAS or pos not in ('first', 'mid', 'last'):
+        if cam not in store.CAMERAS or not (pos in ('first', 'mid', 'last') or pos.isdigit()):
             return 'bad request', 400
-        return send_file(store.frame_path(_sdir(sid), ep, cam, pos), mimetype='image/jpeg')
+        return send_file(store.frame_path(_sdir(sid), ep, cam, pos), mimetype='image/jpeg',
+                         max_age=3600)  # 재생 시 프리로드한 프레임을 다시 받지 않게
+
+    @app.route('/api/episode/<sid>/<int:ep>/stamps')
+    def api_episode_stamps(sid, ep):
+        return jsonify(ok=True, stamps=store.episode_stamps(_sdir(sid), ep),
+                       duration=EPISODE_DURATION_SEC, target=store.TARGET_RETURN_SEC)
+
+    @app.route('/api/review', methods=['POST'])
+    def api_review():
+        d = request.get_json(force=True)
+        store.set_review(_sdir(d['session']), int(d['episode']), d.get('review'))
+        return jsonify(ok=True)
 
     @app.route('/api/delete', methods=['POST'])
     def api_delete():

@@ -68,8 +68,25 @@
       <span id="mngMsg" class="muted"></span></div>
     <div id="sessions"></div>
   </section>
-  <section id="previewCard" class="card" hidden>
-    <h2 id="previewTitle"></h2><div id="preview"></div>
+  <section id="playerCard" class="card" hidden>
+    <div class="row">
+      <h2 id="playerTitle" class="inline"></h2>
+      <span id="playerReview" class="badge none"></span>
+      <span id="playerPos" class="muted small"></span>
+    </div>
+    <section class="cams">
+      <figure><img id="pcam1" alt="사이드캠"><figcaption>camera1 (사이드캠)</figcaption></figure>
+      <figure><img id="pcam3" alt="탑뷰"><figcaption>camera3 (탑뷰)</figcaption></figure>
+    </section>
+    <div id="pbar" class="bar tall seek"><div id="pfill" class="fill"></div><div id="ptarget" class="target" title="목표 복귀"></div></div>
+    <div class="row">
+      <button id="pPlay" class="secondary">정지</button>
+      <button id="pKeep" class="ok">사용 (Y)</button>
+      <button id="pDrop" class="danger">안 씀 (N)</button>
+      <button id="pClear" class="secondary">표시 해제 (U)</button>
+      <button id="pClose" class="secondary">닫기 (Esc)</button>
+    </div>
+    <div class="muted small">Space 재생/정지 · R 처음부터 · ←/→ 이전/다음 에피소드 · Y/N 표시 후 다음으로 · 막대 클릭으로 이동 · "안 씀"은 지우지 않고 변환에서만 뺀다</div>
   </section>
   <section class="card">
     <h2>선택한 에피소드 삭제</h2>

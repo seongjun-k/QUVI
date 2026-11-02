@@ -166,3 +166,27 @@ def test_meta_bad_on_state_gap_and_empty():
     state = [s for s in _traj() if not 2.0 <= s[0] <= 2.8]
     assert st.compute_meta('w', state, _cams())['verdict'] == 'bad'
     assert st.compute_meta('w', [], _cams())['verdict'] == 'bad'
+
+
+def test_review_mark_and_clear(tmp_path):
+    s = _make_session(str(tmp_path), 'a', 2)
+    st.set_review(s, 1, 'discard')
+    eps = st.list_sessions(str(tmp_path))[0]['episodes']
+    assert [e.get('review') for e in eps] == [None, 'discard']
+    assert eps[1]['verdict'] == 'ok'  # 기존 판정은 보존
+    st.set_review(s, 1, None)
+    assert 'review' not in st.read_json(os.path.join(s, 'ep_0001', 'meta.json'))
+    with pytest.raises(ValueError):
+        st.set_review(s, 0, 'maybe')
+
+
+def test_playback_stamps_and_numbered_frame(tmp_path):
+    s = _make_session(str(tmp_path), 'a', 1)
+    for cam in st.CAMERAS:
+        os.makedirs(os.path.join(s, 'ep_0000', cam), exist_ok=True)
+        with open(os.path.join(s, 'ep_0000', cam, 'stamps.csv'), 'w') as f:
+            f.write('idx,t\n0,-0.100000\n1,0.033000\n')
+    assert st.episode_stamps(s, 0)['camera1'] == [-0.1, 0.033]
+    assert st.frame_path(s, 0, 'camera1', '0').endswith('000000.jpg')
+    with pytest.raises(FileNotFoundError):
+        st.frame_path(s, 0, 'camera1', '7')

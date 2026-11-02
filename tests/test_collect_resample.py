@@ -30,3 +30,15 @@ def test_default_grid_is_83_frames_and_holds_last_sample():
     assert len(idx) == 83 and clamped == 0
     assert (np.diff(idx) > 0).all()
     assert sample_ages(t, idx).max() < 1 / 30 + 1e-9          # 30fps 소스면 샘플 나이는 한 프레임 미만
+
+
+def test_discarded_episodes_are_skipped(tmp_path):
+    import json
+    from build_lerobot_dataset import load_session
+    (tmp_path / 'session.json').write_text('{}')
+    for i, review in enumerate([None, 'discard', 'keep']):
+        ep = tmp_path / f'ep_{i:04d}'
+        ep.mkdir()
+        (ep / 'meta.json').write_text(json.dumps({'review': review} if review else {}))
+    _, eps = load_session(tmp_path)
+    assert [p.name for p in eps] == ['ep_0000', 'ep_0002']

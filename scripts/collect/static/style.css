@@ -17,6 +17,7 @@ main { max-width: 1100px; margin: 0 auto; padding: 12px 16px; display: grid; gap
 button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer; }
 button.secondary { background: transparent; color: var(--fg); border: 1px solid var(--line); }
 button.danger { background: var(--bad); }
+button.ok { background: var(--ok); }
 button.tab { background: transparent; color: var(--muted); border: 0; border-bottom: 2px solid transparent; border-radius: 0; }
 button.tab.active { color: var(--fg); border-bottom-color: var(--accent); }
 button:disabled { opacity: .4; cursor: default; }
@@ -25,6 +26,7 @@ input.wide { width: 380px; max-width: 100%; }
 .banner { margin-top: 8px; padding: 8px 12px; border-radius: 6px; color: #fff; }
 .banner.ok { background: var(--ok); } .banner.warn { background: var(--warn); } .banner.bad { background: var(--bad); }
 .badge { padding: 2px 10px; border-radius: 10px; color: #fff; font-size: 13px; }
+.badge.none { background: var(--muted); }
 .badge.ok { background: var(--ok); } .badge.warn { background: var(--warn); } .badge.bad { background: var(--bad); }
 .ok-t { color: var(--ok); } .warn-t { color: var(--warn); } .bad-t { color: var(--bad); }
 
@@ -35,7 +37,7 @@ input.wide { width: 380px; max-width: 100%; }
 .bar.tall { height: 18px; overflow: visible; }
 .fill { height: 100%; width: 0; background: var(--accent); border-radius: inherit; }
 .fill.ok { background: var(--ok); }
-#targetLine { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--bad); }
+#targetLine, .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--bad); }
 
 .cams { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .cams figure { margin: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
@@ -57,8 +59,9 @@ th, td { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--line
 .sess { border: 1px solid var(--line); border-radius: 6px; margin: 8px 0; }
 .sess > .head { display: flex; gap: 10px; align-items: center; padding: 8px; flex-wrap: wrap; }
 .sess .eps { padding: 0 8px 8px; overflow-x: auto; }
-#preview { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-#preview img { width: 100%; background: #000; }
+h2.inline { margin: 0; }
+.bar.seek { cursor: pointer; }
+tr.playing td { background: rgba(37, 99, 235, .12); }
 #convLog { background: #0d0f12; color: #cfd6df; padding: 8px; border-radius: 6px; max-height: 320px; overflow: auto; font-size: 12px; white-space: pre-wrap; margin: 8px 0 0; }
 #confirm { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--card); border: 2px solid var(--bad); border-radius: 8px; padding: 12px 16px; display: flex; gap: 12px; align-items: center; box-shadow: 0 4px 20px rgba(0,0,0,.35); max-width: 94vw; }
 [hidden] { display: none !important; }

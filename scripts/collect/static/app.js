@@ -22,6 +22,7 @@ function showTab(rec) {
   // 관리 화면에서는 MJPEG 연결을 끊는다
   $('cam1').src = rec ? '/stream/camera1' : ''; $('cam3').src = rec ? '/stream/camera3' : '';
   if (!rec) loadSessions();
+  else if (player) player.playing = false;
 }
 $('tabRec').onclick = () => showTab(true);
 $('tabMng').onclick = () => showTab(false);
@@ -110,15 +111,16 @@ if (typeof io !== 'undefined') io().on('status', renderStatus);
 else setInterval(async () => renderStatus(await api('/api/status')), 500);  // CDN 접속 불가 시 폴링
 
 // ─── 데이터 관리 화면 ───
-let convReady = false, sessionData = [], selSessions = new Set(), selEps = new Set(), datasetRoot = '';
+let convReady = false, sessionData = [], selSessions = new Set(), selEps = new Set(), datasetRoot = '', currentSid = null;
 
 async function loadSessions() {
   const j = await api('/api/sessions');
   sessionData = j.sessions; datasetRoot = j.dataset_root;
   selSessions = new Set([...selSessions].filter(id => sessionData.some(s => s.id === id)));
   selEps = new Set([...selEps].filter(k => sessionData.some(s => s.episodes.some(e => k === `${s.id}:${e.index}`))));
-  convReady = j.convert_ready;
-  renderSessions(j.current);
+  convReady = j.convert_ready; currentSid = j.current;
+  if (player && !findEp(player.sid, player.ep)) closePlayer();  // 삭제·재정렬로 사라진 에피소드
+  renderSessions(currentSid);
   pollConvert(true);
 }
 
@@ -131,18 +133,20 @@ function renderSessions(current) {
       <div class="head">
         <label><input type="checkbox" data-sess="${esc(s.id)}" ${selSessions.has(s.id) ? 'checked' : ''}> <b>${esc(s.id)}</b></label>
         <span>품종 ${esc(s.product)}</span><span class="muted">${s.episodes.length}개${s.id === current ? ' · 진행 중' : ''}</span>
+        <span class="muted">사용 ${s.episodes.filter(e => e.review === 'keep').length} · 안 씀 ${s.episodes.filter(e => e.review === 'discard').length} · 미정 ${s.episodes.filter(e => !e.review).length}</span>
         ${s.merged_from.length ? `<span class="muted">합침: ${esc(s.merged_from.join(', '))}</span>` : ''}
         ${s.error ? `<span class="bad-t">${esc(s.error)}</span>` : ''}
       </div>
       ${s.episodes.length ? `<div class="eps"><table>
-        <tr><th></th><th>#</th><th>길이</th><th>복귀</th><th>시작 편차</th><th>끝 편차</th><th>판정</th><th>경고</th><th></th></tr>
-        ${s.episodes.map(e => `<tr>
+        <tr><th></th><th>#</th><th>길이</th><th>복귀</th><th>시작 편차</th><th>끝 편차</th><th>판정</th><th>검수</th><th>경고</th><th></th></tr>
+        ${s.episodes.map(e => `<tr class="${player && player.sid === s.id && player.ep === e.index ? 'playing' : ''}">
           <td><input type="checkbox" data-ep="${esc(s.id)}:${e.index}" ${selEps.has(s.id + ':' + e.index) ? 'checked' : ''}></td>
           <td>${e.index}</td><td>${e.duration_sec ?? '-'}</td><td>${e.return_time_sec ?? '-'}</td>
           <td>${maxAbs(e.start_dev_raw)}</td><td>${maxAbs(e.end_dev_raw)}</td>
           <td><span class="badge ${esc(e.verdict)}">${esc(e.verdict)}</span></td>
+          <td><span class="badge ${reviewCls(e.review)}">${REVIEW_LABEL[e.review] || '미정'}</span></td>
           <td>${esc((e.warnings || []).join('; '))}</td>
-          <td><button class="secondary" data-prev="${esc(s.id)}:${e.index}">미리보기</button></td></tr>`).join('')}
+          <td><button class="secondary" data-play="${esc(s.id)}:${e.index}">재생</button></td></tr>`).join('')}
       </table></div>` : ''}
     </div>`).join('');
 }
@@ -153,13 +157,121 @@ $('sessions').onchange = ev => {
   if (t.dataset.ep) t.checked ? selEps.add(t.dataset.ep) : selEps.delete(t.dataset.ep);
 };
 $('sessions').onclick = ev => {
-  const key = ev.target.dataset.prev;
+  const key = ev.target.dataset.play;
   if (!key) return;
-  const [sid, ep] = [key.slice(0, key.lastIndexOf(':')), key.slice(key.lastIndexOf(':') + 1)];
-  $('previewCard').hidden = false; $('previewTitle').textContent = `${sid} / ep_${ep.padStart(4, '0')}`;
-  $('preview').innerHTML = ['camera1', 'camera3'].flatMap(c => ['first', 'mid', 'last'].map(p =>
-    `<figure style="margin:0"><img src="/api/frame/${encodeURIComponent(sid)}/${ep}/${c}/${p}"><figcaption>${c} · ${{first: '처음', mid: '중간', last: '끝'}[p]}</figcaption></figure>`)).join('');
+  const i = key.lastIndexOf(':');
+  openPlayer(key.slice(0, i), +key.slice(i + 1));
 };
+
+// ─── 재생·검수 ───
+// 두 카메라를 녹화 수신 시각(stamps) 기준으로 실제 속도로 재생한다. 시각 t 에는 t 이하 마지막 프레임을 보여준다
+// (변환기의 격자 맞춤과 같은 규칙이라 보이는 것이 학습에 들어갈 장면이다).
+const REVIEW_LABEL = {keep: '사용', discard: '안 씀'};
+const reviewCls = r => r === 'keep' ? 'ok' : r === 'discard' ? 'bad' : 'none';
+const CAMS = [['camera1', 'pcam1'], ['camera3', 'pcam3']];
+let player = null;
+
+function findEp(sid, ep) { const s = sessionData.find(x => x.id === sid); return s && s.episodes.find(e => e.index === ep); }
+function epOrder() { return sessionData.flatMap(s => s.episodes.map(e => [s.id, e.index])); }
+
+async function openPlayer(sid, ep) {
+  const j = await api(`/api/episode/${encodeURIComponent(sid)}/${ep}/stamps`);
+  if (!j.ok) return mngMsg(`재생 실패: ${j.error}`, 'bad');
+  const base = `/api/frame/${encodeURIComponent(sid)}/${ep}`;
+  const urls = {};
+  for (const [c] of CAMS) urls[c] = j.stamps[c].map((_, k) => { const u = `${base}/${c}/${k}`; new Image().src = u; return u; });
+  const t0 = Math.min(0, ...CAMS.map(([c]) => j.stamps[c][0] ?? 0));
+  player = {sid, ep, stamps: j.stamps, urls, t0, t: t0, dur: j.duration, target: j.target, playing: true, last: null, shown: {}};
+  $('playerCard').hidden = false;
+  $('playerTitle').textContent = `${sid} / ep_${String(ep).padStart(4, '0')}`;
+  $('ptarget').style.left = `${(j.target - t0) / (j.duration - t0) * 100}%`;
+  renderSessions(currentSid); renderReview();
+  $('playerCard').scrollIntoView({block: 'nearest'});
+  requestAnimationFrame(tick(player));
+}
+
+function closePlayer() { player = null; $('playerCard').hidden = true; renderSessions(currentSid); }
+
+function lastAtOrBefore(ts, t) {
+  let lo = 0, hi = ts.length - 1, ans = 0;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (ts[m] <= t) { ans = m; lo = m + 1; } else hi = m - 1; }
+  return ans;
+}
+
+function tick(p) {
+  return now => {
+    if (p !== player) return;  // 다른 에피소드를 열었거나 닫힘
+    if (p.playing && p.last !== null) p.t = Math.min(p.dur, p.t + (now - p.last) / 1000);
+    if (p.t >= p.dur) p.playing = false;
+    p.last = p.playing ? now : null;
+    for (const [c, id] of CAMS) {
+      if (!p.urls[c].length) continue;
+      const k = lastAtOrBefore(p.stamps[c], p.t);
+      if (p.shown[c] !== k) { p.shown[c] = k; $(id).src = p.urls[c][k]; }
+    }
+    $('pfill').style.width = `${(p.t - p.t0) / (p.dur - p.t0) * 100}%`;
+    const order = epOrder(), pos = order.findIndex(([s, e]) => s === p.sid && e === p.ep);
+    $('playerPos').textContent = `${Math.max(0, p.t).toFixed(2)} / ${p.dur}초 · ${pos + 1} / ${order.length}`;
+    $('pPlay').textContent = p.playing ? '정지' : '재생';
+    requestAnimationFrame(tick(p));
+  };
+}
+
+function togglePlay() {
+  if (!player) return;
+  if (!player.playing && player.t >= player.dur) player.t = player.t0;
+  player.playing = !player.playing;
+}
+function restart() { if (player) { player.t = player.t0; player.playing = true; } }
+
+function renderReview() {
+  const e = player && findEp(player.sid, player.ep);
+  const r = e && e.review;
+  $('playerReview').className = 'badge ' + reviewCls(r);
+  $('playerReview').textContent = REVIEW_LABEL[r] || '미정';
+}
+
+function step(d) {
+  if (!player) return;
+  const order = epOrder(), i = order.findIndex(([s, e]) => s === player.sid && e === player.ep) + d;
+  if (i < 0 || i >= order.length) return mngMsg(d > 0 ? '마지막 에피소드' : '첫 에피소드', 'warn');
+  openPlayer(...order[i]);
+}
+
+async function setReview(review, advance) {
+  if (!player) return;
+  const {sid, ep} = player;
+  const j = await api('/api/review', {session: sid, episode: ep, review});
+  if (!j.ok) return mngMsg(`검수 기록 실패: ${j.error}`, 'bad');
+  const e = findEp(sid, ep);
+  if (e) { if (review) e.review = review; else delete e.review; }
+  mngMsg(`ep_${String(ep).padStart(4, '0')} → ${REVIEW_LABEL[review] || '미정'}`, review === 'discard' ? 'warn' : 'ok');
+  renderReview(); renderSessions(currentSid);
+  if (advance) step(1);
+}
+
+$('pPlay').onclick = togglePlay;
+$('pKeep').onclick = () => setReview('keep', true);
+$('pDrop').onclick = () => setReview('discard', true);
+$('pClear').onclick = () => setReview(null, false);
+$('pClose').onclick = closePlayer;
+$('pbar').onclick = ev => {
+  if (!player) return;
+  const r = $('pbar').getBoundingClientRect();
+  player.t = player.t0 + Math.max(0, Math.min(1, (ev.clientX - r.left) / r.width)) * (player.dur - player.t0);
+};
+
+// 한글 입력 상태에서도 동작하도록 e.key 대신 물리 키(e.code)로 판정
+document.addEventListener('keydown', ev => {
+  if (!player || $('viewMng').hidden || !$('confirm').hidden) return;
+  if (ev.target.matches('input, textarea') || ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  const act = {Space: togglePlay, KeyR: restart, ArrowLeft: () => step(-1), ArrowRight: () => step(1),
+               KeyY: () => setReview('keep', true), KeyN: () => setReview('discard', true),
+               KeyU: () => setReview(null, false), Escape: closePlayer}[ev.code];
+  if (!act) return;
+  ev.preventDefault();
+  act();
+});
 $('btnReload').onclick = loadSessions;
 
 function setConvDefault() {

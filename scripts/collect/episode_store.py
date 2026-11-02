@@ -204,8 +204,13 @@ def list_sessions(root: str) -> list:
 
 
 def frame_path(session_dir: str, ep_index: int, cam: str, pos: str) -> str:
-    """처음/중간/끝 프레임 jpg 경로. 없으면 FileNotFoundError."""
+    """처음/중간/끝 또는 프레임 번호(숫자 문자열) jpg 경로. 없으면 FileNotFoundError."""
     cdir = os.path.join(session_dir, f'ep_{ep_index:04d}', cam)
+    if pos.isdigit():
+        path = os.path.join(cdir, f'{int(pos):06d}.jpg')
+        if not os.path.isfile(path):
+            raise FileNotFoundError(path)
+        return path
     frames = sorted(n for n in os.listdir(cdir) if n.endswith('.jpg'))
     if not frames:
         raise FileNotFoundError(cdir)
@@ -213,7 +218,39 @@ def frame_path(session_dir: str, ep_index: int, cam: str, pos: str) -> str:
                                'last': frames[-1]}[pos])
 
 
+def episode_stamps(session_dir: str, ep_index: int) -> dict:
+    """재생용 카메라별 수신 시각 [t…]. 리스트 위치 = 프레임 번호."""
+    edir = os.path.join(session_dir, f'ep_{ep_index:04d}')
+    out = {}
+    for cam in CAMERAS:
+        with open(os.path.join(edir, cam, 'stamps.csv'), newline='', encoding='utf-8') as f:
+            out[cam] = [float(r['t']) for r in csv.DictReader(f)]
+    return out
+
+
 # ─── 편집 ───
+
+REVIEWS = ('keep', 'discard')
+
+
+def set_review(session_dir: str, ep_index: int, review) -> None:
+    """사람의 사용/안 씀 표시를 meta.json 'review' 에 기록(None = 해제). 변환기는 discard 를 건너뛴다.
+
+    지우지 않고 표시만 하므로 언제든 되돌릴 수 있다. 실제 삭제는 delete_episodes.
+    """
+    if review is not None and review not in REVIEWS:
+        raise ValueError(f'review 는 {REVIEWS} 또는 null: {review!r}')
+    path = os.path.join(session_dir, f'ep_{ep_index:04d}', 'meta.json')
+    meta = read_json(path)
+    if review is None:
+        meta.pop('review', None)
+    else:
+        meta['review'] = review
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        json.dump(meta, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
+
 
 def _renumber(session_dir: str):
     """ep_* 를 0부터 빈칸 없이. 목표 번호 ≤ 현재 번호라 오름차순 rename 이 서로 안 덮는다."""

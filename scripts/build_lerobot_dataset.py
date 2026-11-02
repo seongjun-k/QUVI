@@ -53,7 +53,14 @@ def sample_ages(t, idx, fps=DATASET_FPS):
 # ─── 입력 읽기 ───
 def load_session(path):
     meta = json.loads((path / 'session.json').read_text(encoding='utf-8'))
-    eps = sorted(p for p in path.glob('ep_*') if p.is_dir())
+    eps = []
+    for p in sorted(p for p in path.glob('ep_*') if p.is_dir()):
+        # 수집 앱 검수에서 "안 씀" 표시한 에피소드는 지우지 않고 여기서 뺀다
+        if (p / 'meta.json').is_file() and \
+                json.loads((p / 'meta.json').read_text(encoding='utf-8')).get('review') == 'discard':
+            print(f'  건너뜀(안 씀 표시): {path.name}/{p.name}')
+            continue
+        eps.append(p)
     if not eps:
         raise SystemExit(f'에피소드 없음: {path}')
     return meta, eps
