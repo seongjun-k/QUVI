@@ -90,6 +90,9 @@ class MainOrchestratorNode(Node):
         # RESET 명령 시 ESP32 하드 리셋(DTR/RTS 펄스)에 쓰는 시리얼 포트
         self.declare_parameter('esp32_reset_port', '/dev/ttyESP32')
         self.declare_parameter('auto_end_macro', False)
+        # 불량 판정 사이클이 끝나면 마지막 gcode 를 자동 재출력할지. 실제로 프린터가
+        # 출력을 시작하는 동작이라 기본은 꺼둔다(2026-11-02 사용자 결정: 구현만, 비활성).
+        self.declare_parameter('auto_reprint_on_fail', False)
         self.declare_parameter('moonraker_url', 'http://100.122.38.13:7125')
 
         # ─── 파라미터 로드 ───
@@ -104,6 +107,7 @@ class MainOrchestratorNode(Node):
         self._inspect_timeout = self.get_parameter('inspect_timeout_sec').value
 
         self._auto_end_macro = bool(self.get_parameter('auto_end_macro').value)
+        self._auto_reprint_on_fail = bool(self.get_parameter('auto_reprint_on_fail').value)
         self._moonraker_url = str(self.get_parameter('moonraker_url').value).rstrip('/')
         self._end_macro_triggered = False
         self._printer_pickup_ready = False
@@ -163,6 +167,7 @@ class MainOrchestratorNode(Node):
         # FSM 주기 제어 타이머 기동 (10 Hz)
         self.create_subscription(Bool, topics.TOPIC_PRINTER_AUTO_END, self._auto_end_macro_cb, 10)
         self._end_macro_cli = self.create_client(Trigger, topics.SRV_PRINTER_END_MACRO)
+        self._start_print_cli = self.create_client(Trigger, topics.SRV_PRINTER_START_PRINT)
 
         self._fsm_timer = self.create_timer(1.0 / self._loop_rate, self._fsm_loop)
 
@@ -279,6 +284,14 @@ class MainOrchestratorNode(Node):
     def _auto_end_macro_cb(self, msg: Bool):
         self._auto_end_macro = msg.data
 
+    def _request_reprint(self):
+        # 레일이 베드로 돌아온 뒤 = 출력물을 이미 베드에서 치운 상태에서만 부른다
+        if not self._start_print_cli.service_is_ready():
+            self.get_logger().warn('자동 재출력 생략: 프린터 서비스 미연결')
+            return
+        self._start_print_cli.call_async(Trigger.Request())
+        self.get_logger().info('불량 판정 → 마지막 gcode 재출력 요청')
+
     def _call_printer_end_macro(self):
         threading.Thread(target=self._call_printer_end_macro_thread, daemon=True).start()
 
@@ -317,6 +330,9 @@ class MainOrchestratorNode(Node):
 
         if command == "START":
             if self._state == FsmState.IDLE:
+                # 시연은 실출력이 없어 HMI 시작 버튼이 출력 완료 신호를 대신한다.
+                # 경로는 자동 시작과 같다(_begin_start_sequence) — 베드 온도 게이트만 없다.
+                self.get_logger().info('출력 완료 신호 수신(HMI 시작) → 시퀀스 시작')
                 self._begin_start_sequence()
         elif command == "STOP":
             self.get_logger().warn('자율 구동 시퀀스가 정지되었습니다. IDLE 상태로 복귀합니다.')
@@ -773,6 +789,8 @@ class MainOrchestratorNode(Node):
                 self.get_logger().info('레일 홈 복귀 완료')
                 # 단일 오브젝트 파이프라인 — 사이클당 물체 1개를 처리하고 FINISHED 로
                 # 종료한다 (다중 객체 순회 분기는 도달 불가라 제거됨)
+                if self._auto_reprint_on_fail and not self._latest_inspection_passed:
+                    self._request_reprint()
                 self._state = FsmState.FINISHED
             elif self._state_timer_counter > int(self._home_timeout * self._loop_rate):
                 self.get_logger().error('레일 홈 복귀 대기 타임아웃! ERROR 상태로 전환')

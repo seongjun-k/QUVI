@@ -137,6 +137,10 @@ def generate_launch_description():
         'auto_end_macro', default_value='false',
         description='시작 시 END 매크로 자동 실행 여부')
 
+    auto_reprint_arg = DeclareLaunchArgument(
+        'auto_reprint_on_fail', default_value='false',
+        description='불량 판정 사이클 종료 후 마지막 gcode 자동 재출력 (프린터가 실제로 출력을 시작한다)')
+
     # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -214,6 +218,8 @@ def generate_launch_description():
             'bed_temp_max_age_sec': ParameterValue(
                 LaunchConfiguration('bed_temp_max_age_sec'), value_type=float),
             'auto_end_macro': LaunchConfiguration('auto_end_macro'),
+            'auto_reprint_on_fail': ParameterValue(
+                LaunchConfiguration('auto_reprint_on_fail'), value_type=bool),
             'moonraker_url': LaunchConfiguration('moonraker_url'),
         }],
         output='screen',
@@ -281,6 +287,7 @@ def generate_launch_description():
         bed_temp_start_max_arg,
         bed_temp_max_age_arg,
         auto_end_macro_arg,
+        auto_reprint_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),
