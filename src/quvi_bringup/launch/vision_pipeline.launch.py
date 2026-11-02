@@ -95,6 +95,10 @@ def generate_launch_description():
         'fixed_cam_exposure', default_value='70',
         description='고정캠(검사챔버) 수동 노출값 (autoexposure가 false일 때 적용) — 조명 ON 시 과노출 방지 실측 튜닝')
 
+    fixed_cam_rotate_180_arg = DeclareLaunchArgument(
+        'fixed_cam_rotate_180', default_value='false',
+        description='검사캠을 거꾸로 장착했을 때 true — 검사 프레임을 180° 회전')
+
     anomaly_enabled_arg = DeclareLaunchArgument(
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
@@ -187,6 +191,7 @@ def generate_launch_description():
                 'inspection_products_dir': LaunchConfiguration('inspection_products_dir'),
                 'anomaly_enabled': ParameterValue(LaunchConfiguration('anomaly_enabled'), value_type=bool),
                 'area_ratio_enabled': ParameterValue(LaunchConfiguration('area_ratio_enabled'), value_type=bool),
+                'fixed_cam_rotate_180': ParameterValue(LaunchConfiguration('fixed_cam_rotate_180'), value_type=bool),
                 'anomaly_model_dir': [LaunchConfiguration('data_dir'), '/models'],
                 'anomaly_device': 'cuda',
             }
@@ -218,6 +223,7 @@ def generate_launch_description():
         sidecam_exposure_arg,
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
+        fixed_cam_rotate_180_arg,
         anomaly_enabled_arg,
         area_ratio_enabled_arg,
 

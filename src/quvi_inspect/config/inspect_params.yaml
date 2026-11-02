@@ -3,6 +3,12 @@ inspect_node:
     # ─── 카메라 설정 ───
     camera_topic: "/camera2/image_raw/compressed"   # 고정 카메라 (검사 챔버)
 
+    # ─── LED 꺼짐(대기) 노출 ───
+    # 2026-10-27 검사캠 재장착 후 실내광이 더 들어와 코드 기본값(400/게인30)은 화면 52% 포화.
+    # 실측: 200/게인0 → 평균 110, 포화 1.5%. LED 켜짐(검사) 노출은 출력물 올려 재실측 전까지 코드 기본값 유지.
+    led_off_exposure: 200
+    led_off_gain: 0
+
     # ─── 기준 이미지 경로 ───
     reference_image_dir: "/workspace/data/reference_images"
 

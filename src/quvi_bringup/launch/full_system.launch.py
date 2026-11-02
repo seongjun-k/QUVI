@@ -97,6 +97,10 @@ def generate_launch_description():
         'fixed_cam_exposure', default_value='70',
         description='고정캠(검사챔버) 수동 노출값 (autoexposure가 false일 때 적용) — 조명 ON 시 과노출 방지 실측 튜닝')
 
+    fixed_cam_rotate_180_arg = DeclareLaunchArgument(
+        'fixed_cam_rotate_180', default_value='false',
+        description='검사캠을 거꾸로 장착했을 때 true — HMI 표시와 검사 프레임을 180° 회전')
+
     micro_ros_port_arg = DeclareLaunchArgument(
         'micro_ros_port', default_value=_dev.get('micro_ros_port', '/dev/ttyESP32'),
         description='micro-ROS agent 시리얼 포트')
@@ -154,6 +158,7 @@ def generate_launch_description():
             'sidecam_exposure': LaunchConfiguration('sidecam_exposure'),
             'fixed_cam_autoexposure': LaunchConfiguration('fixed_cam_autoexposure'),
             'fixed_cam_exposure': LaunchConfiguration('fixed_cam_exposure'),
+            'fixed_cam_rotate_180': LaunchConfiguration('fixed_cam_rotate_180'),
             'anomaly_enabled': LaunchConfiguration('anomaly_enabled'),
         }.items(),
     )
@@ -173,6 +178,8 @@ def generate_launch_description():
             'inspect_debug_topic': '/inspect/debug_image',
             'jpeg_quality': 70,
             'stream_fps': 15,
+            'fixed_cam_rotate_180': ParameterValue(
+                LaunchConfiguration('fixed_cam_rotate_180'), value_type=bool),
         }],
         output='screen',
     )
@@ -277,6 +284,7 @@ def generate_launch_description():
         sidecam_exposure_arg,
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
+        fixed_cam_rotate_180_arg,
         micro_ros_port_arg,
         micro_ros_baud_arg,
         anomaly_enabled_arg,

@@ -130,6 +130,8 @@ class HmiNode(Node):
         self.declare_parameter('inspect_debug_topic', '/inspect/debug_image')
         self.declare_parameter('jpeg_quality', 70)
         self.declare_parameter('stream_fps', 15)
+        # 검사캠 거꾸로 장착 시에만 True — inspect_node 의 같은 이름 파라미터와 맞춘다
+        self.declare_parameter('fixed_cam_rotate_180', False)
 
         self._host = self.get_parameter('host').value
         self._port = self.get_parameter('port').value
@@ -336,8 +338,8 @@ class HmiNode(Node):
         """디코딩된 프레임을 JPEG 인코딩해 캐시에 저장 (카메라 콜백 공통부)."""
         if frame is None:
             return
-        if key == 'camera2':
-            frame = cv2.flip(frame, -1)  # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전
+        if key == 'camera2' and self.get_parameter('fixed_cam_rotate_180').value:
+            frame = cv2.flip(frame, -1)  # 검사캠 거꾸로 장착 시 상하 반전 + 좌우 반전
         _, jpeg = cv2.imencode('.jpg', frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._jpeg_quality])
         with self._lock:

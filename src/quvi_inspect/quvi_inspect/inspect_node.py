@@ -173,6 +173,9 @@ class InspectNode(Node):
         """모든 파라미터를 선언하고 로컬 멤버 변수로 로드합니다."""
         params = [
             ('camera_topic',            '/camera2/image_raw/compressed',    '_camera_topic'),
+            # 검사캠을 거꾸로 장착했을 때만 True — 프레임을 180° 돌려(상하+좌우) 정방향으로 맞춘다.
+            # 2026-10-27 재장착 후 정방향이라 기본 False. HMI 의 같은 이름 파라미터와 맞춰야 한다.
+            ('fixed_cam_rotate_180',    False,                              '_rotate_180'),
             ('reference_image_dir',     '/workspace/data/reference_images',  '_ref_dir'),
             # 다품종 검사 자산 루트 — 품종별 하위 디렉토리(reference_images/models/anomaly_dataset/params.json)를 관리.
             # 위 reference_image_dir(_ref_dir)은 레거시 전역 경로로 남겨두되(자동 마이그레이션 금지),
@@ -420,10 +423,11 @@ class InspectNode(Node):
     def _image_callback(self, msg: CompressedImage):
         frame = decode_compressed(msg)
         if frame is not None:
-            # 검사캠이 거꾸로 장착되어 상하 반전 + 좌우 반전 → 동시 -1
-            flipped = cv2.flip(frame, -1)
+            # 검사캠 거꾸로 장착 시에만 상하 반전 + 좌우 반전 → 동시 -1
+            if self._rotate_180:
+                frame = cv2.flip(frame, -1)
             with self._frame_lock:
-                self._latest_frame = flipped
+                self._latest_frame = frame
 
     def _grasp_cmd_callback(self, msg: GraspGoal):
         self._current_object_index = msg.object_index
