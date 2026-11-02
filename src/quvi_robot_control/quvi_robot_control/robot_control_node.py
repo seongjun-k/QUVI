@@ -140,8 +140,13 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
 POSE_P1 = {'shoulder_pan': 2037, 'shoulder_lift': 1114, 'elbow_flex': 2771, 'wrist_flex': 3257, 'wrist_roll': 2016, 'gripper': 2077}  # 베드 위 대기 (2026-09-05 HMI 실측으로 상향 조정)
 POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
-POSE_P3 = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
-POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
+# P3/P4: 2026-10-27 턴테이블이 팔 기준 전방 38mm 이설 — URDF 평면 IK 로 높이·공구각 유지한 채 손목을 +38mm 이동
+#   (기존 P3 lift 1760 / elbow 2244 / wrist 3120, P4 lift 1907 / elbow 2464 / wrist 2822)
+POSE_P3 = {'shoulder_pan':   -1, 'shoulder_lift': 1969, 'elbow_flex': 2024, 'wrist_flex': 3131, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
+POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 2099, 'elbow_flex': 2229, 'wrist_flex': 2865, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
+# 분류함 적재 — 턴테이블 이설 전 P3/P4 실측값. 분류함은 옮기지 않았으므로 기존 값을 유지한다.
+POSE_SORT_UP   = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}
+POSE_SORT_DOWN = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}
 POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
 
@@ -1462,8 +1467,10 @@ class RobotControlNode(Node):
         if held is False:
             self.get_logger().error('검사장 재파지 실패 — 그리퍼가 비어 있음')
 
-        # 집은 뒤 P3 로 올라온 자세 그대로 둔다 — 분류함까지는 레일만 이동하고 거기서 그리퍼만 연다
+        # 집은 뒤 P3 로 올라와 턴테이블을 빠져나온 다음, 이설 전과 같은 SORT_UP 자세로 당긴다
+        # — 분류함까지는 이 자세로 레일만 이동한다(38mm 더 뻗은 채 레일을 타지 않도록)
         success = self._move_arm(POSE_P3)
+        success = success and not self._should_abort() and self._move_arm(POSE_SORT_UP)
         success = success and not self._should_abort()   # abort 시 실패로 보고
         success = success and held is not False
         self._pick_chamber_done_pub.publish(Bool(data=success))
@@ -1767,7 +1774,7 @@ class RobotControlNode(Node):
         P1~P6 웨이포인트 저속 실행 (시간기반 프로파일 PROFILE_VELOCITY_SEQ=2000ms).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
-        순서: (P3 자세 유지, 레일로 분류함 도착) → P4 내려가기 → 그리퍼 열기 → P3 올라오기 → P2 접기
+        순서: (SORT_UP 자세 유지, 레일로 분류함 도착) → SORT_DOWN 내려가기 → 그리퍼 열기 → SORT_UP 올라오기 → P2 접기
         (P1→P4 안착/재파지 구간은 _execute_place_in_chamber /
         _execute_pick_from_chamber 로 이전돼 중복 제거)
         """
@@ -1790,16 +1797,16 @@ class RobotControlNode(Node):
             )
             self._wait_gripper()
 
-        # 재파지 후 P3 자세 그대로 레일만 분류함으로 이동해 온 상태 — P4 높이로 내려가 놓고 P3 로 올라온다.
-        # P4 는 턴테이블 놓기 실측 자세(P3 에서 수직에 가깝게 하강) — 분류함 전용 실측값이 생기면 교체할 것
-        if not move_arm(POSE_P4, 'P4: 분류함 내려놓기'):
+        # 재파지 후 SORT_UP 자세 그대로 레일만 분류함으로 이동해 온 상태 — SORT_DOWN 높이로 내려가 놓고 올라온다.
+        # SORT_UP/DOWN 은 턴테이블 이설 전 P3/P4 실측값 — 분류함 전용 실측값이 생기면 교체할 것
+        if not move_arm(POSE_SORT_DOWN, 'SORT_DOWN: 분류함 내려놓기'):
             return False
         grip_open()
         if self._should_abort():
             return False
-        if not move_arm(POSE_P3, 'P3: 올라오기'):
+        if not move_arm(POSE_SORT_UP, 'SORT_UP: 올라오기'):
             return False
-        # 뻗은 P3 에서 곧장 홈(P1)으로 180° 휘두르지 않도록 같은 쪽 P2 로 먼저 접는다(빈손)
+        # 뻗은 SORT_UP 에서 곧장 홈(P1)으로 180° 휘두르지 않도록 같은 쪽 P2 로 먼저 접는다(빈손)
         if not move_arm(POSE_P2, 'P2: 접기'):
             return False
 
