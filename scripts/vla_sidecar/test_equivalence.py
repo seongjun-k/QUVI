@@ -31,7 +31,7 @@ import server as sidecar_server  # noqa: E402
 SEED = 20260908
 ATOL = 1e-4
 TASK = "Pick up the printed part from the bed."
-# 학습 데이터셋 시작 자세(prep_inference.sh와 동일) — 임의 랜덤보다 실제
+# 학습 데이터셋 시작 자세(삭제된 scripts/prep_inference.sh 와 같은 값) — 임의 랜덤보다 실제
 # 궤적 분포에 가까운 state로 검증한다.
 FIXED_STATE = np.array([0.06, -1.72, 1.40, 1.62, -0.17, 0.68], dtype=np.float32)
 
