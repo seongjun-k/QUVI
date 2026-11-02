@@ -118,6 +118,10 @@ data/inspection_products/
 data/vla_sidecar/
 data/demo_reference/
 
+# VLA 수집 원본 에피소드(JPEG)·변환 도구 venv — 대용량, 재생성 가능
+data/episodes_raw/
+data/collect_tools/
+
 # 영상·음성 파일 (배포본은 gh-pages 또는 유튜브)
 *.mp4
 *.mp3
