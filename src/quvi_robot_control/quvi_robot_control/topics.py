@@ -57,6 +57,10 @@ TOPIC_ROBOT_PICK_CHAMBER_DONE = '/robot/pick_in_chamber_done'
 TOPIC_ROBOT_TELEOP_CMD = '/robot/teleop_command'
 TOPIC_ROBOT_TELEOP_RECORD = '/robot/teleop_record'   # Bool: true=녹화 시작, false=저장 (텔레옵 중에만)
 TOPIC_ROBOT_JOINT_STATES = '/robot/joint_states'
+# Float32MultiArray, 텔레옵 중에만 act_common.RECORD_STATE_HZ. data = [present 6, goal 6]
+# act_common.raw_to_rad 라디안, act_common.JOINT_NAMES 순서. 시각은 수신 측이 찍는다
+# (float32로는 epoch·monotonic 초를 ms 단위로 못 담는다). 수집 도구(scripts/collect) 전용
+TOPIC_ROBOT_TELEOP_RECORD_STATE = '/robot/teleop_record_state'
 TOPIC_ACT_MODELS = '/robot/act_models'
 TOPIC_ACT_CURRENT = '/robot/act_current'
 TOPIC_ACT_MODEL_SELECT = '/robot/act_model_select'

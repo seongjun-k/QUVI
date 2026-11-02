@@ -77,10 +77,13 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor, ExternalShutdownException
 from rclpy.callback_groups import ReentrantCallbackGroup
 from sensor_msgs.msg import CompressedImage, JointState
-from std_msgs.msg import Bool, Int32, String
+from std_msgs.msg import Bool, Float32MultiArray, Int32, String
 from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
+from quvi_robot_control.act_common import (
+    JOINT_NAMES, GRIPPER_OPEN, GRIPPER_CLOSE, POSE_P1, POSE_HOME,
+    DXL_TICKS_PER_REV, RECORD_STATE_HZ, raw_to_rad, rad_to_raw)
 from quvi_robot_control.utils import decode_compressed
 from quvi_robot_control.teleop_recorder import TeleopRecorder
 
@@ -125,16 +128,8 @@ class RobotState(IntEnum):
     ERROR         = 99
 
 
-# 그리퍼 raw 위치값 (XL330-M288T)
-GRIPPER_OPEN  = 2500
-GRIPPER_CLOSE = 1800
 TELEOP_EPISODE_DIR = '/workspace/data/teleop_episodes'
 RECORD_MAX_FRAME_AGE_SEC = 0.2   # 이보다 오래된 카메라 프레임은 녹화하지 않는다
-
-
-# 관절 이름 (ROS 2 JointState 메시지용)
-JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
-               'wrist_flex', 'wrist_roll', 'gripper']
 
 # 사전 정의 자세 — raw Dynamixel 위치값 (0~4095 = 0~360°)
 # dict 형태로 lerobot bus에 직접 전달 (normalize=False)
@@ -142,7 +137,7 @@ JOINT_NAMES = ['shoulder_pan', 'shoulder_lift', 'elbow_flex',
 # ─── 티칭 웨이포인트 (test_sequence.py 티칭 모드로 기록 후 여기에 붙여넣기) ───
 # scripts/test_sequence.py 실행 → 't' 티칭 모드 → 자세 잡고 1~6 키 → 's' 로 출력
 # 출력된 POSE_P* 값을 아래에 붙여넣으면 해당 자세로 이동합니다.
-POSE_P1 = {'shoulder_pan': 2037, 'shoulder_lift': 1114, 'elbow_flex': 2771, 'wrist_flex': 3257, 'wrist_roll': 2016, 'gripper': 2077}  # 베드 위 대기 (2026-09-05 HMI 실측으로 상향 조정)
+# POSE_P1·POSE_HOME·GRIPPER_OPEN/CLOSE 는 act_common.py (수집 도구와 공유)
 POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
 # P3/P4: 2026-10-27 턴테이블이 팔 기준 전방 38mm 이설 — URDF 평면 IK 로 높이·공구각 유지한 채 손목을 +38mm 이동
 #   (기존 P3 lift 1760 / elbow 2244 / wrist 3120, P4 lift 1907 / elbow 2464 / wrist 2822)
@@ -153,9 +148,6 @@ POSE_SORT_UP   = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 224
 POSE_SORT_DOWN = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}
 POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
-
-# 홈 자세는 P1과 동일하되 그리퍼는 완전 개방 — ACT 파지 시작 자세
-POSE_HOME = dict(POSE_P1, gripper=GRIPPER_OPEN)
 
 # ─── Dynamixel 프로파일 (⚠️ 시간기반 프로파일 모드) ───
 # omx_follower.configure() 가 Drive_Mode Bit2(시간기반 프로파일)를 설정하므로
@@ -250,20 +242,9 @@ RAW_SAFE_RANGE = {
     'wrist_flex':    (0, 4095),
 }
 
-# ─── ACT rad↔raw 변환 상수 (학습 데이터셋 단위 — lerobot 정규화와 별개) ───
-DXL_TICKS_PER_REV = 4096.0   # XL430/XL330 1회전 틱 수 (변환 분모)
-DXL_TICK_CENTER   = 2048.0   # 중립(0 rad) 틱
+# ─── ACT rad↔raw 변환 ───
+# 변환 함수·틱 상수는 act_common.py (수집 도구·변환기와 공유)
 DXL_RAW_MAX       = 4095     # Goal_Position 클램프 상한
-
-
-def raw_to_rad(raw: float) -> float:
-    """raw Dynamixel 위치값 → 라디안 (ACT 학습 데이터셋 단위)."""
-    return (raw - DXL_TICK_CENTER) * (2.0 * math.pi) / DXL_TICKS_PER_REV
-
-
-def rad_to_raw(rad: float) -> float:
-    """라디안(ACT 정책 출력) → raw Dynamixel 위치값."""
-    return DXL_TICK_CENTER + rad * DXL_TICKS_PER_REV / (2.0 * math.pi)
 
 
 def _arm_only(pose: dict) -> dict:
@@ -367,6 +348,12 @@ class RobotControlNode(Node):
         # ─── 관절 상태 발행 타이머 (10 Hz) ───
         self._joint_pub_timer = self.create_timer(
             1.0 / 10.0, self._publish_joint_states,
+            callback_group=self._cb_group)
+
+        # ─── 수집 도구용 녹화 상태 발행 타이머 (텔레옵 중에만 동작) ───
+        self._record_drops = 0
+        self._record_state_timer = self.create_timer(
+            1.0 / RECORD_STATE_HZ, self._publish_record_state,
             callback_group=self._cb_group)
 
         # ─── 상태 주기적 브로드캐스트 타이머 (1 Hz) ───
@@ -820,6 +807,8 @@ class RobotControlNode(Node):
 
         self._joint_state_pub = self.create_publisher(
             JointState, topics.TOPIC_ROBOT_JOINT_STATES, 10)
+        self._record_state_pub = self.create_publisher(
+            Float32MultiArray, topics.TOPIC_ROBOT_TELEOP_RECORD_STATE, 10)
 
         self._rail_pub = self.create_publisher(
             Int32, topics.TOPIC_MOTOR_RAIL_CMD, 10)
@@ -1660,6 +1649,42 @@ class RobotControlNode(Node):
             for name in JOINT_NAMES
         ]
         self._joint_state_pub.publish(msg)
+
+    # ─── 수집 도구용 녹화 상태 발행 (RECORD_STATE_HZ 타이머) ───
+    def _publish_record_state(self):
+        """텔레옵 중 팔로워 present·goal raw → 라디안 발행. 읽기 전용, 동작에 관여하지 않는다.
+
+        /robot/joint_states(raw/4096·2π)와 단위가 달라 녹화에는 이 토픽만 쓴다 —
+        추론 입력(_execute_act_grasp 의 raw_to_rad)과 같은 변환이어야 학습·추론이 일치한다.
+        """
+        if not self._teleop_running or self._get_state() != RobotState.TELEOPING:
+            return
+        if not self._use_real_hardware or not self._dxl_ready:
+            return
+        # 50Hz 텔레옵 쓰기를 밀어내지 않도록 짧게만 기다리고, 못 잡으면 이 틱은 버린다.
+        # 수집 도구가 수신 시각 기준으로 15fps 격자에 맞추므로 틱 하나 빠져도 직전 값으로 채워진다.
+        if not self._dxl_io_lock.acquire(timeout=0.005):
+            self._record_drops += 1
+            self.get_logger().warn(
+                f'녹화 상태 락 획득 실패 누적 {self._record_drops}회',
+                throttle_duration_sec=5.0)
+            return
+        try:
+            present = self._follower.bus.sync_read('Present_Position', normalize=False)
+            goal = self._follower.bus.sync_read('Goal_Position', normalize=False)
+        except Exception as e:
+            self._record_drops += 1
+            self.get_logger().warn(f'녹화 상태 읽기 실패: {e}', throttle_duration_sec=5.0)
+            if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
+                self._follower.bus.port_handler.is_using = False
+            return
+        finally:
+            self._dxl_io_lock.release()
+
+        msg = Float32MultiArray()
+        msg.data = ([raw_to_rad(present[n]) for n in JOINT_NAMES]
+                    + [raw_to_rad(goal[n]) for n in JOINT_NAMES])
+        self._record_state_pub.publish(msg)
 
     # ─── 상태 관리 유틸리티 ───
     def _get_state(self) -> RobotState:
