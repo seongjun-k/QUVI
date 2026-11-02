@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QUVI 수집 도구</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>QUVI 수집 도구</h1>
+  <nav>
+    <button id="tabRec" class="tab active">녹화</button>
+    <button id="tabMng" class="tab">데이터 관리</button>
+  </nav>
+</header>
+
+<!-- ─── 녹화 화면 ─── -->
+<main id="viewRec">
+  <section class="card">
+    <div class="row">
+      <label>품종 <input id="product" placeholder="예: box"></label>
+      <button id="btnStart">세션 시작</button>
+      <button id="btnEnd" hidden>세션 종료</button>
+      <span id="sessionInfo" class="muted">세션 없음</span>
+    </div>
+    <div id="teleopBanner" class="banner bad" hidden>텔레옵 미실행 — HMI 에서 텔레옵을 시작하세요</div>
+    <div id="errorBanner" class="banner bad" hidden></div>
+  </section>
+
+  <section class="card">
+    <ol id="flow">
+      <li data-phase="align">정렬</li><li data-phase="ready">준비됨</li>
+      <li data-phase="recording">녹화</li><li data-phase="result">결과</li>
+    </ol>
+    <div class="bar"><div id="holdBar" class="fill ok"></div></div>
+    <div class="muted small">정렬 유지(0.5초) 진행</div>
+    <div class="bar tall"><div id="progBar" class="fill"></div><div id="targetLine" title="목표 복귀"></div></div>
+    <div id="progText" class="muted small"></div>
+  </section>
+
+  <section class="cams">
+    <figure><img id="cam1" alt="사이드캠"><figcaption>camera1 (사이드캠) <span id="age1" class="muted"></span></figcaption></figure>
+    <figure><img id="cam3" alt="탑뷰"><figcaption>camera3 (탑뷰) <span id="age3" class="muted"></span></figcaption></figure>
+  </section>
+
+  <section class="card">
+    <h2>관절 편차 (POSE_HOME 대비 raw, 음영 = ±<span id="tolText">20</span>)</h2>
+    <div id="devs"></div>
+  </section>
+
+  <section id="resultCard" class="card" hidden>
+    <h2>결과 <span id="verdict" class="badge"></span></h2>
+    <dl id="resultList"></dl>
+    <ul id="warnList"></ul>
+    <div class="row">
+      <button id="btnSave">저장</button>
+      <button id="btnDiscard" class="secondary">버리기</button>
+    </div>
+  </section>
+</main>
+
+<!-- ─── 데이터 관리 화면 ─── -->
+<main id="viewMng" hidden>
+  <section class="card">
+    <div class="row"><button id="btnReload" class="secondary">새로고침</button>
+      <span id="mngMsg" class="muted"></span></div>
+    <div id="sessions"></div>
+  </section>
+  <section id="previewCard" class="card" hidden>
+    <h2 id="previewTitle"></h2><div id="preview"></div>
+  </section>
+  <section class="card">
+    <h2>선택한 에피소드 삭제</h2>
+    <label><input type="checkbox" id="renumber" checked> 삭제 후 번호 재정렬</label>
+    <button id="btnDelete" class="danger">삭제</button>
+  </section>
+  <section class="card">
+    <h2>선택한 세션 합치기</h2>
+    <div class="row">
+      <label>새 세션 이름 <input id="mergeName" placeholder="비우면 날짜_merged"></label>
+      <label><input type="checkbox" id="mergeMove"> 복사 대신 이동</label>
+      <button id="btnMerge">합치기</button>
+    </div>
+  </section>
+  <section class="card">
+    <h2>데이터셋 변환</h2>
+    <div class="row">
+      <label>출력 경로 <input id="convOut" class="wide"></label>
+      <button id="btnConvert">변환 실행</button>
+      <span id="convState" class="muted"></span>
+    </div>
+    <pre id="convLog"></pre>
+    <div id="convResult" class="banner" hidden></div>
+  </section>
+</main>
+
+<div id="confirm" hidden>
+  <span id="confirmMsg"></span>
+  <button id="confirmYes" class="danger">확인</button>
+  <button id="confirmNo" class="secondary">취소</button>
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>
