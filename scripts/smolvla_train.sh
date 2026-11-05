@@ -3,7 +3,7 @@
 # lerobot 0.6.1 이미지(robotis/lerobot-zenoh)로 SmolVLA 2캠 정책을 fine-tuning 한다.
 # 입출력은 QUVI data/ 아래만 쓴다(~/cyclo_intelligence 폴더 불필요):
 #   데이터셋 data/datasets/<이름>, 베이스 data/models/smolvla_base_2cam, 출력 data/models/<출력 이름>
-# smolvla_218ep 학습 설정(train_config.json)을 그대로 따르고, bf16 mixed precision 만 추가했다.
+# smolvla_218ep은 이미지 증강 활성화·batch 32, 이 스크립트는 증강 없음·기본 batch 16·bf16이다.
 # 실행 위치: 호스트. QUVI 가 GPU 메모리를 쓰므로 먼저 내릴 것(8GB VRAM).
 #
 # 사용법: ./scripts/smolvla_train.sh [데이터셋 디렉토리명] [출력 이름] [steps] [batch]
