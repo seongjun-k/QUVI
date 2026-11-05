@@ -42,3 +42,20 @@ def test_discarded_episodes_are_skipped(tmp_path):
         (ep / 'meta.json').write_text(json.dumps({'review': review} if review else {}))
     _, eps = load_session(tmp_path)
     assert [p.name for p in eps] == ['ep_0000', 'ep_0002']
+
+
+def test_start_warning_gripper_tolerance(tmp_path):
+    import build_lerobot_dataset as b
+    from quvi_robot_control.act_common import raw_to_rad
+    home = np.array([raw_to_rad(b.POSE_HOME[j]) for j in b.JOINT_NAMES])
+    for cam in b.CAMERAS:
+        (tmp_path / cam).mkdir()
+        (tmp_path / cam / 'stamps.csv').write_text('idx,t\n0,0\n')
+        (tmp_path / cam / '000000.jpg').touch()
+    for index, delta, warned in [(5, -43, False), (5, -51, True), (0, 21, True)]:
+        pose = home.copy()
+        pose[index] += delta * 2 * np.pi / 4096
+        row = '0,' + ','.join(map(str, list(pose) * 2))
+        (tmp_path / 'states.csv').write_text(','.join(b.STATES_HEADER) + '\n' + row + '\n')
+        q = b.build_episode(tmp_path, 1, 15, home)[3]
+        assert any(w.startswith('시작 편차') for w in q['warnings']) == warned

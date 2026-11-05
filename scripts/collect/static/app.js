@@ -31,20 +31,20 @@ $('tabMng').onclick = () => showTab(false);
 const FLOW = {idle: -1, align: 0, ready: 1, recording: 2, result: 3, saving: 3};
 let devBuilt = false;
 
-function buildDevs(joints, tol) {
-  const scale = tol * 3;  // 트랙 반폭 = 허용치 3배
+function buildDevs(joints, tol, tolGripper) {
+  const scale = Math.max(tol, tolGripper) * 3;  // 트랙 반폭 = 허용치 3배
   $('devs').innerHTML = joints.map((j, i) => `
     <div class="dev"><span>${esc(j)}</span>
-      <div class="track"><div class="tol" style="left:${50 - tol / scale * 50}%;width:${tol / scale * 100}%"></div>
+      <div class="track"><div class="tol" style="left:${50 - (j === 'gripper' ? tolGripper : tol) / scale * 50}%;width:${(j === 'gripper' ? tolGripper : tol) / scale * 100}%"></div>
         <div class="mid"></div><div class="mark" id="mark${i}" style="left:50%"></div></div>
       <span class="val" id="val${i}">-</span></div>`).join('');
-  $('tolText').textContent = tol;
+  $('tolText').textContent = `${tol} (팔), ±${tolGripper} (그리퍼)`;
   devBuilt = true;
 }
 
 function renderStatus(s) {
-  if (!devBuilt) buildDevs(s.joints, s.tol);
-  const scale = s.tol * 3;
+  if (!devBuilt) buildDevs(s.joints, s.tol, s.tol_gripper);
+  const scale = Math.max(s.tol, s.tol_gripper) * 3;
   document.querySelectorAll('#flow li').forEach(li => {
     li.classList.toggle('active', FLOW[s.phase] === FLOW[li.dataset.phase]);
   });
@@ -64,11 +64,12 @@ function renderStatus(s) {
   $('progText').textContent = rec ? `${s.elapsed.toFixed(1)} / ${s.duration}초 (목표 복귀 ${s.target}초)` : '';
 
   for (let i = 0; i < s.joints.length; i++) {
+    const tol = s.joints[i] === 'gripper' ? s.tol_gripper : s.tol;
     const d = s.dev ? s.dev[i] : null, m = $('mark' + i);
     if (d === null) { m.style.left = '50%'; m.className = 'mark'; $('val' + i).textContent = '-'; continue; }
     const c = Math.max(-scale, Math.min(scale, d));
     m.style.left = `${50 + c / scale * 50}%`;
-    m.className = 'mark ' + (Math.abs(d) <= s.tol ? 'ok' : Math.abs(d) <= 2 * s.tol ? 'warn' : 'bad');
+    m.className = 'mark ' + (Math.abs(d) <= tol ? 'ok' : Math.abs(d) <= 2 * tol ? 'warn' : 'bad');
     $('val' + i).textContent = (d > 0 ? '+' : '') + d;
   }
   for (const [k, id] of [['camera1', 'age1'], ['camera3', 'age3']]) {

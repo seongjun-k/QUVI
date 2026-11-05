@@ -175,7 +175,7 @@ class CollectNode(Node):
 
     def _on_state(self, t, present):
         if self.phase == 'align':
-            if all(abs(d) <= store.START_TOL_RAW for d in self._dev):
+            if store.start_aligned(self._dev):
                 if self._align_since is None:
                     self._align_since = t
                 elif t - self._align_since >= store.START_HOLD_SEC:
@@ -263,7 +263,7 @@ class CollectNode(Node):
             return {
                 'phase': self.phase, 'teleop': alive, 'joints': JOINT_NAMES,
                 'dev': [round(d) for d in self._dev] if alive and self._dev else None,
-                'tol': store.START_TOL_RAW,
+                'tol': store.START_TOL_RAW, 'tol_gripper': store.START_TOL_GRIPPER_RAW,
                 'hold': hold,
                 'elapsed': round(now - self._t0, 2) if self.phase == 'recording' else None,
                 'duration': EPISODE_DURATION_SEC, 'target': store.TARGET_RETURN_SEC,

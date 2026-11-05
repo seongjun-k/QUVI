@@ -190,3 +190,13 @@ def test_playback_stamps_and_numbered_frame(tmp_path):
     assert st.frame_path(s, 0, 'camera1', '0').endswith('000000.jpg')
     with pytest.raises(FileNotFoundError):
         st.frame_path(s, 0, 'camera1', '7')
+
+
+def test_start_tolerance_gripper_only():
+    assert [st.start_tol(i) for i in range(6)] == [20] * 5 + [50]
+    assert st.start_aligned([20] * 5 + [-43])
+    assert st.start_aligned([-20] * 5 + [50])
+    assert not st.start_aligned([21] + [0] * 5)
+    assert not st.start_aligned([0] * 5 + [-51])
+    assert not st.start_aligned([0] * 5)
+    assert st.new_session_json('box')['start_tol_gripper_raw'] == 50

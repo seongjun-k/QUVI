@@ -18,6 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src' / 'quvi_robot
 from quvi_robot_control.act_common import (  # noqa: E402  pylint: disable=wrong-import-position
     DATASET_FPS, EPISODE_FRAMES, JOINT_NAMES, POSE_HOME, TASK_INSTRUCTION, raw_to_rad)
 
+sys.path.insert(0, str(Path(__file__).resolve().parent / 'collect'))
+from episode_store import START_TOL_GRIPPER_RAW  # noqa: E402
+
 # ─── 상수 ───
 TASK = TASK_INSTRUCTION   # 정확히 일치 검사
 ROBOT_TYPE = 'omx_f'
@@ -142,8 +145,12 @@ def build_episode(ep, n_frames, fps, home_rad):
         'max_sample_age_sec': {k: round(v, 3) for k, v in gap.items()},
     }
     warns = []
-    if q['start_dev_max_rad'] > START_TOL_RAD:
-        warns.append(f'시작 편차 {q["start_dev_max_rad"]} rad({q["start_dev_joint"]})')
+    # 팔 경고 기준은 유지하고 그리퍼만 수집 앱의 허용치를 공유한다.
+    limits = np.array([START_TOL_RAD] * 5 + [START_TOL_GRIPPER_RAW * 2 * math.pi / 4096])
+    over = start_dev / limits
+    if over.max() > 1:
+        i = int(over.argmax())
+        warns.append(f'시작 편차 {start_dev[i]:.4f} rad({JOINT_NAMES[i]})')
     if shake > START_TOL_RAD:
         warns.append(f'시작 흔들림 {q["start_shake_rad"]} rad')
     if q['first_move_frame'] is None:

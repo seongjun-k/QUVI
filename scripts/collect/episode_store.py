@@ -18,6 +18,7 @@ from quvi_robot_control.act_common import (
 # ─── 형식 상수 ───
 PRE_ROLL_SEC = 0.2
 START_TOL_RAW = 20
+START_TOL_GRIPPER_RAW = 50  # 리더 스프링으로 인한 -36~-43 raw 편차 허용
 START_HOLD_SEC = 0.5
 END_TOL_RAW = 40
 TARGET_RETURN_SEC = 4.5
@@ -29,7 +30,18 @@ DEFAULT_TASK = TASK_INSTRUCTION
 
 # 합치기 호환 검사 대상 — 하나라도 다르면 학습 데이터가 섞이면 안 되는 설정
 COMPAT_KEYS = ('task', 'dataset_fps', 'record_state_hz', 'episode_sec', 'pre_roll_sec',
-               'start_tol_raw', 'start_hold_sec', 'end_tol_raw', 'target_return_sec')
+               'start_tol_raw', 'start_hold_sec', 'end_tol_raw', 'target_return_sec')  # 그리퍼 허용치는 제외: ±20 세션과 합칠 수 있어야 함
+
+
+def start_tol(i: int) -> int:
+    """그리퍼만 별도 시작 허용치를 쓴다."""
+    return START_TOL_GRIPPER_RAW if JOINT_NAMES[i] == 'gripper' else START_TOL_RAW
+
+
+def start_aligned(dev: list) -> bool:
+    """6관절이 모두 시작 허용 범위인지 확인한다."""
+    return len(dev) == len(JOINT_NAMES) and all(abs(d) <= start_tol(i) for i, d in enumerate(dev))
+
 
 _EP_RE = re.compile(r'^ep_(\d{4})$')
 _HOME_RAW = [POSE_HOME[j] for j in JOINT_NAMES]
@@ -47,7 +59,8 @@ def new_session_json(product: str, task: str = DEFAULT_TASK, cameras: dict = Non
         'task': task,
         'dataset_fps': DATASET_FPS, 'record_state_hz': RECORD_STATE_HZ,
         'episode_sec': EPISODE_DURATION_SEC, 'pre_roll_sec': PRE_ROLL_SEC,
-        'start_tol_raw': START_TOL_RAW, 'start_hold_sec': START_HOLD_SEC,
+        'start_tol_raw': START_TOL_RAW, 'start_tol_gripper_raw': START_TOL_GRIPPER_RAW,
+        'start_hold_sec': START_HOLD_SEC,
         'end_tol_raw': END_TOL_RAW, 'target_return_sec': TARGET_RETURN_SEC,
         'cameras': cameras or {},
     }
