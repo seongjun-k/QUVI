@@ -52,6 +52,10 @@ def _default_data_dir() -> str:
     return os.environ.get('QUVI_DATA_DIR', '/workspace/data')
 
 
+# usb_cam 실행 직전에 by-path 장치를 실제 /dev/videoN 으로 푸는 래퍼(scripts/usb_cam_resolve.sh)
+_CAM_RESOLVE = os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', 'scripts', 'usb_cam_resolve.sh')
+
+
 def generate_launch_description():
 
     default_data_dir = _default_data_dir()
@@ -134,6 +138,8 @@ def generate_launch_description():
         executable='usb_cam_node_exe',
         name='camera1',
         namespace='camera1',
+        prefix=[_CAM_RESOLVE + ' ', LaunchConfiguration('sidecam_device')],
+        respawn=True, respawn_delay=3.0,   # 허브 재연결로 죽으면 다시 켬(번호는 래퍼가 새로 풂)
         parameters=[{
             'video_device': LaunchConfiguration('sidecam_device'),
             'image_width': 640,
@@ -158,6 +164,7 @@ def generate_launch_description():
         executable='usb_cam_node_exe',
         name='camera2',
         namespace='camera2',
+        prefix=[_CAM_RESOLVE + ' ', LaunchConfiguration('fixed_cam_device')],
         parameters=[{
             'video_device': LaunchConfiguration('fixed_cam_device'),
             'image_width': 1920,
@@ -182,6 +189,8 @@ def generate_launch_description():
         executable='usb_cam_node_exe',
         name='camera3',
         namespace='camera3',
+        prefix=[_CAM_RESOLVE + ' ', LaunchConfiguration('topcam_device')],
+        respawn=True, respawn_delay=3.0,   # 허브 재연결로 죽으면 다시 켬(번호는 래퍼가 새로 풂)
         parameters=[{
             'video_device': LaunchConfiguration('topcam_device'),
             'image_width': 640,
@@ -223,7 +232,15 @@ def generate_launch_description():
     # ─── VLA 입력 카메라(사이드캠·탑뷰) v4l2 설정 ───
     # usb_cam 은 구형 컨트롤명(exposure_auto/exposure_absolute)을 써서 이 커널에선 노출 설정이 무시된다.
     # usb_cam 초기화 후 v4l2-ctl 로 덮어쓴다. 정책 입력 영상이 바뀌므로 값 변경 시 파지 성능 재확인 필요.
-    vla_cam_ctrls = TimerAction(period=4.0, actions=[OpaqueFunction(function=_vla_cam_ctrls)])
+    # ─── 카메라 시분할 기동 순서 (USB 대역폭) ───
+    # 카메라 3대를 동시에 켜면 마지막 카메라가 대역폭이 없어 죽는다. 검사캠을 먼저 켜서 멈춰 두고
+    # (검사 때 inspect_node 가 켬), 사이드캠·탑뷰를 그 뒤에 켠다.
+    pause_inspect_cam = TimerAction(period=2.0, actions=[ExecuteProcess(
+        cmd=['ros2', 'service', 'call', '/camera2/set_capture', 'std_srvs/srv/SetBool', '{data: false}'],
+        output='screen')])
+    vla_cams = TimerAction(period=7.0, actions=[camera1_node, camera3_node])
+    # usb_cam 이 기동 때 자기 컨트롤을 걸므로 그 뒤에 덮어쓴다(카메라 기동 + 4초)
+    vla_cam_ctrls = TimerAction(period=11.0, actions=[OpaqueFunction(function=_vla_cam_ctrls)])
 
     return LaunchDescription([
         # 인자
@@ -248,9 +265,9 @@ def generate_launch_description():
         LogInfo(msg='====== QUVI Vision Pipeline 시작 ======'),
 
         # 노드
-        camera1_node,
         camera2_node,
-        camera3_node,
+        pause_inspect_cam,
+        vla_cams,
         vla_cam_ctrls,
         inspect_node,
     ])

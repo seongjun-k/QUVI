@@ -29,6 +29,7 @@ from rclpy.node import Node
 from rclpy.qos import QoSProfile, DurabilityPolicy, HistoryPolicy
 from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Bool, String
+from std_srvs.srv import SetBool
 
 from quvi_msgs.msg import GraspGoal, InspectionResult
 from quvi_robot_control.utils import decode_compressed, BinaryCache, encode_bgr
@@ -135,6 +136,25 @@ class InspectNode(Node):
         self._ref_capture_active = False
         self._dataset_capture_active = False
         self._current_object_index = 0
+
+        # ─── 카메라 시분할 (USB 대역폭) ───
+        # A 포트가 모두 한 USB 2.0 컨트롤러라 카메라 3대(각 최대 대역폭 요청)를 동시에 못 켠다.
+        # 검사캠은 검사·촬영에 필요할 때만 켜고 그동안 탑뷰(VLA 전용)를 멈춘다.
+        # 기동 시 검사캠은 launch 가 멈춰 둔 상태로 시작한다(vision_pipeline.launch.py).
+        self.declare_parameter('inspect_cam_time_share', True)
+        self._cam_share = bool(self.get_parameter('inspect_cam_time_share').value)
+        self._led_on = False
+        self._insp_cam_on = False
+        self._cam_off_since = None
+        self._cam_switching = False
+        if self._cam_share:
+            # 응답 처리가 검사 등 다른 콜백에 막히지 않게 별도 그룹
+            from rclpy.callback_groups import ReentrantCallbackGroup
+            self._cap_cb_group = ReentrantCallbackGroup()
+            self._cap_clients = {c: self.create_client(SetBool, f'/{c}/set_capture',
+                                                       callback_group=self._cap_cb_group)
+                                 for c in ('camera2', 'camera3')}
+            self.create_timer(0.2, self._cam_share_tick)
 
         # ─── 캡처 안정화 타이머 ───
         # 턴테이블 done 직후 기구 진동·카메라 노출이 안정될 때까지 잠깐 대기 후 캡처한다.
@@ -439,6 +459,7 @@ class InspectNode(Node):
         흰 출력물이 링조명 정반사로 과노출되어 표면 결이 사라지는 것을 막는다 —
         LED ON 시 저노출 고정, OFF 시 일반 노출로 원복. usb_cam은 기동 시 한 번만
         컨트롤을 걸므로 스트리밍 중 외부 v4l2 설정이 그대로 유지된다."""
+        self._led_on = bool(msg.data)   # 카메라 시분할 판단용
         if msg.data:
             self._set_cam_exposure(self._led_on_exp, self._led_on_bright, self._led_on_gain)
         else:
@@ -457,6 +478,55 @@ class InspectNode(Node):
                 f'검사캠 노출 전환: exposure={exposure}, brightness={brightness}, gain={gain}')
         except (subprocess.SubprocessError, OSError) as exc:
             self.get_logger().warn(f'검사캠 노출 설정 실패({exc}) — 무시하고 진행')
+
+    # ─── 카메라 시분할 ───
+    def _cam_share_tick(self):
+        """검사캠이 필요한지 보고 검사캠↔탑뷰 스트리밍을 전환한다(0.2초 주기)."""
+        want = (self._led_on or self._inspection_active
+                or self._ref_capture_active or self._dataset_capture_active)
+        now = time.time()
+        if want:
+            self._cam_off_since = None
+        elif self._insp_cam_on and self._cam_off_since is None:
+            self._cam_off_since = now
+        if self._cam_switching:
+            return
+        if want and not self._insp_cam_on:
+            target = True
+        elif (not want and self._insp_cam_on
+              and self._cam_off_since is not None and now - self._cam_off_since >= 2.0):
+            target = False   # 2초 유지 후 끔 — 검사 단계 사이 깜빡임 방지
+        else:
+            return
+        self._cam_switching = True
+        threading.Thread(target=self._apply_cam_share, args=(target,), daemon=True).start()
+
+    def _apply_cam_share(self, inspect_on: bool):
+        # 대역폭을 먼저 비운 뒤 켠다: 켤 때 탑뷰 정지→검사캠 시작, 끌 때 검사캠 정지→탑뷰 재개
+        order = ((('camera3', False), ('camera2', True)) if inspect_on
+                 else (('camera2', False), ('camera3', True)))
+        try:
+            if inspect_on:
+                with self._frame_lock:
+                    self._latest_frame = None   # 멈추기 전 마지막 프레임으로 캡처하지 않게
+            for cam, on in order:
+                cli = self._cap_clients[cam]
+                if not cli.wait_for_service(timeout_sec=2.0):
+                    self.get_logger().warn(f'/{cam}/set_capture 서비스 없음 — 다음 주기에 재시도')
+                    return
+                fut = cli.call_async(SetBool.Request(data=on))
+                t0 = time.time()
+                while not fut.done() and time.time() - t0 < 3.0:
+                    time.sleep(0.02)
+                if not fut.done():
+                    self.get_logger().warn(f'/{cam}/set_capture 응답 없음(3초) — 다음 주기에 재시도')
+                    return
+                # usb_cam 은 성공해도 success=False('Stop Capturing' 등)를 돌려줘 응답 도착만 본다
+            self._insp_cam_on = inspect_on   # 모든 단계 응답이 왔을 때만 갱신 → 실패 시 틱이 재시도
+            self.get_logger().info('카메라 전환: ' + ('검사캠 ON / 탑뷰 정지' if inspect_on
+                                                      else '검사캠 정지 / 탑뷰 ON'))
+        finally:
+            self._cam_switching = False
 
     def _turntable_done_callback(self, msg: Bool):
         """턴테이블 이동 완료 시 안정화 지연 후 캡처를 예약한다.
