@@ -281,6 +281,8 @@ class RobotControlNode(Node):
         # STOP/ESTOP 소프트 중단 이벤트. 진행 중 동작 스레드가 이 이벤트를
         # 확인하고 즉시 빠져나온다. 새 명령 수락 시 해제.
         self._abort_event = threading.Event()
+        # ESTOP(True)으로 ERROR 가 됐는지 — 물리 버튼 해제(False) 때만 자동 복귀하기 위한 표시
+        self._estop_latched = False
 
         self._latest_sidecam: Optional[np.ndarray] = None
         self._sidecam_lock = threading.Lock()
@@ -986,7 +988,14 @@ class RobotControlNode(Node):
         if msg.data:
             self.get_logger().error('비상 정지 명령 수신! 동작 강제 중단 및 에러 상태 전환')
             self._abort_event.set()   # _should_abort가 보는 이벤트 — state==ERROR만으로 커버 안 되는 가드 보강
+            self._estop_latched = True
             self._safe_estop_cleanup()
+        elif self._estop_latched and self._get_state() == RobotState.ERROR:
+            # 물리 비상정지 버튼 해제(ESP32 발행). ESTOP 이 아닌 ERROR 는 건드리지 않는다.
+            # 팔로워 재연결 → IDLE. 텔레옵·사이클은 자동 재시작하지 않는다.
+            self.get_logger().info('비상 정지 해제 수신 — Dynamixel 재연결 후 IDLE 복귀')
+            self._estop_latched = False
+            threading.Thread(target=self._execute_reset, daemon=True).start()
 
     def _reset_cmd_callback(self, msg: Bool):
         if msg.data:
@@ -1787,6 +1796,7 @@ class RobotControlNode(Node):
 
     def _execute_reset(self) -> bool:
         self._cmd_gen += 1
+        gen = self._cmd_gen
         self._abort_event.clear()   # 리셋 시 이전 STOP 중단 해제
         with self._dxl_io_lock:
             if self._follower:
@@ -1799,7 +1809,19 @@ class RobotControlNode(Node):
             
             if self._use_real_hardware:
                 self._init_follower()
-                
+
+            if gen != self._cmd_gen:
+                # 재연결 중 ESTOP 이 다시 들어옴(cleanup 이 gen 을 올림) — 토크를 끄고 ERROR 유지
+                if self._dxl_ready and self._follower:
+                    try:
+                        self._follower.bus.sync_write(
+                            'Torque_Enable', {n: 0 for n in JOINT_NAMES}, normalize=False)
+                    except Exception as e:
+                        self.get_logger().error(f'리셋 중 ESTOP 토크 해제 실패: {e}')
+                    self._dxl_ready = False
+                self._set_state(RobotState.ERROR)
+                return False
+
             if not self._use_real_hardware or self._dxl_ready:
                 self._set_state(RobotState.IDLE)
                 self._publish_status('ACT_READY')
@@ -1945,6 +1967,8 @@ class RobotControlNode(Node):
                 self.get_logger().warn('텔레옵 무시: 현재 로봇이 IDLE 상태가 아님')
                 return False
             self._state = RobotState.TELEOPING   # 체크와 전환을 락 안에서 원자적으로 (동시 진입 선점 방지)
+        # 새 명령 수락 → 이전 STOP 중단 해제(_try_acquire_state 와 동일). 안 지우면 루프가 즉시 끝난다.
+        self._abort_event.clear()
 
         self._publish_status('텔레오퍼레이션 활성화')
         self.get_logger().info('텔레오퍼레이션 시작 중...')
@@ -2059,7 +2083,10 @@ class RobotControlNode(Node):
                 self.get_logger().error(f'OmxLeader 해제 중 오류: {e}')
             self._leader = None
 
-        self._set_state(RobotState.IDLE)
+        with self._state_lock:
+            # 그 사이 ESTOP 으로 ERROR 가 됐으면 IDLE 로 덮지 않는다
+            if self._state == RobotState.TELEOPING:
+                self._state = RobotState.IDLE
         self._publish_status('텔레오퍼레이션 종료')
         return True
 
@@ -2111,6 +2138,9 @@ class RobotControlNode(Node):
                 next_tick = time.perf_counter()
 
         self._finish_recording()  # ESTOP·중단으로 루프가 끝나도 녹화분은 저장한다
+        if self._get_state() == RobotState.TELEOPING:
+            # STOP 으로 루프가 끝난 경우 — TELEOPING 에 묶여 재시작이 막히지 않게 리더 해제 후 IDLE
+            threading.Thread(target=self._stop_teleop, daemon=True).start()
 
 
 # ─── 진입점 ───

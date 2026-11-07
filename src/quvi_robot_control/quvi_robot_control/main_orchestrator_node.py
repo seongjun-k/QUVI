@@ -409,6 +409,16 @@ class MainOrchestratorNode(Node):
             # 피드백 루프가 발생해 ERROR 로그가 무한 반복된다.
             self._state = FsmState.ERROR
             self._error_msg = "ESTOP ACTIVE"
+            # HMI ESTOP 분기와 같게: 자동 시작 예약 취소(해제 순간 저절로 시작 방지), LED 끄기
+            # (펌웨어가 릴레이를 끄지만 /motor/turntable_led=false 가 없으면 검사 노드가 LED ON 으로 믿는다)
+            self._auto_start_at = None
+            self._led_pub.publish(Bool(data=False))
+        elif self._state == FsmState.ERROR and self._error_msg == "ESTOP ACTIVE":
+            # 물리 비상정지 버튼 해제(ESP32 발행) — 재호밍·카운터 초기화 없이 IDLE 로.
+            # 진행 중이던 사이클은 취소되며 START 로 새로 시작한다.
+            self.get_logger().info('비상 정지 해제 수신 — IDLE 복귀')
+            self._state = FsmState.IDLE
+            self._error_msg = ""
 
     def _robot_grasp_done_cb(self, msg: Bool):
         # 파지 완료 전용. False = 그리퍼가 비었다는 판정이므로 타임아웃을

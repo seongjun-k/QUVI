@@ -27,7 +27,11 @@
 #define ONBOARD_LED_PIN       38  // LOLIN S3 내장 WS2812B RGB LED
 
 // 안전 및 시스템
-#define ESTOP_PIN             16  // 비상정지 스위치 (GPIO 16, 내부 풀업 사용 Active LOW)
+#define ESTOP_PIN             16  // 비상정지 스위치 (GPIO 16)
+// 풀업 배선(NO 접점 → GND): 안 눌림 = HIGH(정상 동작), 눌림 = LOW(전체 정지).
+// 주의: 선이 끊기면 HIGH(안 눌림)로 읽혀 정지하지 않는다.
+#define ESTOP_ACTIVE_LEVEL    LOW
+#define ESTOP_PIN_MODE        INPUT_PULLUP
 
 // 리니어 레일 (TB6600 스테퍼 드라이버 - EN 핀 미사용)
 #define RAIL_PUL_PIN          4   // 펄스/스텝 신호

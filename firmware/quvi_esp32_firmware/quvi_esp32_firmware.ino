@@ -43,6 +43,16 @@ Adafruit_NeoPixel statusLed(1, ONBOARD_LED_PIN, NEO_GRB + NEO_KHZ800);
 // STATE & SAFETY VARIABLES
 // =============================================================================
 volatile bool isEmergencyStopped = false;
+// 비상정지 출처 구분: 물리 버튼은 누르는 동안만, 토픽(HMI)·시리얼 ESTOP 은 재부팅까지 래치
+volatile bool hwEstopActive     = false;  // 버튼 눌림(인터럽트 또는 폴링으로 감지)
+volatile bool hwEstopConfirmed  = false;  // 30ms 이상 눌림 확정 — 로봇 전체에 전파됨
+volatile bool topicEstopLatched = false;
+// vMotorTask → vCommTask: /system/estop 발행 요청(값, 남은 횟수, 즉시 발행)
+volatile bool estopPubValue = false;
+volatile int  estopPubCount = 0;
+volatile bool estopPubForce = false;
+volatile bool clearDonePending = false;   // 확정 ESTOP 해제 시 이전 이동의 done 발행 취소
+volatile unsigned long lastOwnTruePubMs = 0;
 volatile bool isHomingCompleted  = false;
 
 // [fix] vCommTask → vMotorTask 위임용 플래그
@@ -85,6 +95,8 @@ const uint32_t COLOR_PURPLE = statusLed.Color(80, 0, 80);    // Connection pendi
   rcl_publisher_t turn_done_pub;
   std_msgs__msg__Bool turn_done_msg;
   rcl_publisher_t status_pub;
+  rcl_publisher_t estop_pub;
+  std_msgs__msg__Bool estop_out_msg;
   quvi_msgs__msg__MotorStatus status_msg;
   rclc_executor_t executor;
   rclc_support_t support;
@@ -110,6 +122,8 @@ void vCommTask(void *pvParameters);
 // Homing Calibration routine
 void performHomingCalibration();
 void handleEmergencyStop();
+void handleEstopPin();
+void requestEstopPublish(bool value);
 void setLedColor(uint32_t color);
 
 // =============================================================================
@@ -138,8 +152,9 @@ void setup() {
     turnMotor.setAcceleration(TURN_ACCELERATION);
 
     // Initialize Emergency Stop Hardware interrupt
-    pinMode(ESTOP_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ESTOP_PIN), handleEmergencyStop, FALLING);
+    // 배선에 맞춘 풀업/풀다운(Config.h). 눌림 레벨로 바뀌는 순간 인터럽트
+    pinMode(ESTOP_PIN, ESTOP_PIN_MODE);
+    attachInterrupt(digitalPinToInterrupt(ESTOP_PIN), handleEstopPin, ESTOP_ACTIVE_LEVEL == HIGH ? RISING : FALLING);
 
     // If micro-ROS mode, initialize micro-ROS communication transport
     #ifdef USE_MICRO_ROS
@@ -194,8 +209,65 @@ void vMotorTask(void *pvParameters) {
     // Track last applied LED color to avoid redundant and blocking WS2812 writes
     static uint32_t lastAppliedColor = 0xFFFFFFFF;
 
+    // ESTOP 진입 시 이동 목표 보관(노이즈로 판명되면 이어서 이동)
+    static bool estopHeld = false;
+    static long savedRailTarget = 0;
+    static long savedTurnTarget = 0;
+    static int  lastPinLevel = !ESTOP_ACTIVE_LEVEL;
+    static unsigned long pinChangedAt = 0;
+
     for (;;) {
+        // ─── 비상정지 버튼 폴링 (눌림 = ESTOP_ACTIVE_LEVEL) ───
+        // 누름 30ms 유지 = 확정 → 로봇 전체 정지 전파. 뗌 200ms 유지 = 해제 → 자동 복귀.
+        // 30ms 안 된 LOW(노이즈)는 전파 없이 원래 이동을 이어 간다.
+        int pinLevel = digitalRead(ESTOP_PIN);
+        unsigned long nowMs = millis();
+        if (pinLevel != lastPinLevel) { lastPinLevel = pinLevel; pinChangedAt = nowMs; }
+        unsigned long stableMs = nowMs - pinChangedAt;
+        if (pinLevel == ESTOP_ACTIVE_LEVEL) {
+            if (stableMs >= 30 && !hwEstopConfirmed) {
+                hwEstopActive = true;
+                hwEstopConfirmed = true;
+                isEmergencyStopped = true;
+                requestEstopPublish(true);
+            }
+        } else if (hwEstopActive && stableMs >= (hwEstopConfirmed ? 200UL : 30UL)) {
+            bool wasConfirmed = hwEstopConfirmed;
+            hwEstopActive = false;
+            hwEstopConfirmed = false;
+            if (!topicEstopLatched) {
+                if (estopHeld) {
+                    // 속도 상태를 0으로 초기화한 뒤 다시 활성화(급출발 방지)
+                    railMotor.setCurrentPosition(railMotor.getCurrentPosition());
+                    turnMotor.setCurrentPosition(turnMotor.getCurrentPosition());
+                    if (isHomingCompleted) {
+                        railMotor.enable();
+                        turnMotor.enable();
+                    }
+                    if (wasConfirmed) {
+                        // 확정 ESTOP: 이전 이동은 취소(FSM 은 ERROR→IDLE 로 새로 시작)
+                        railTargetPending = false;
+                        turnTargetPending = false;
+                        clearDonePending = true;
+                    } else {
+                        railMotor.setTargetPosition(savedRailTarget);
+                        turnMotor.setTargetPosition(savedTurnTarget);
+                    }
+                    estopHeld = false;
+                    lastAppliedColor = 0xFFFFFFFF;
+                }
+                // 호밍 도중 눌렸다면 isHomingCompleted=false 로 남는다 — 떼도 자동 재호밍하지 않음(갑작스런 이동 방지)
+                isEmergencyStopped = false;
+                if (wasConfirmed) requestEstopPublish(false);
+            }
+        }
+
         if (isEmergencyStopped) {
+            if (!estopHeld) {
+                savedRailTarget = railMotor.getTargetPosition();
+                savedTurnTarget = turnMotor.getTargetPosition();
+                estopHeld = true;
+            }
             railMotor.disable();
             turnMotor.disable();
             digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF); // E-STOP safety action
@@ -203,7 +275,7 @@ void vMotorTask(void *pvParameters) {
                 setLedColor(COLOR_RED);
                 lastAppliedColor = COLOR_RED;
             }
-            vTaskDelay(pdMS_TO_TICKS(100));
+            vTaskDelay(pdMS_TO_TICKS(10));   // 해제 감지 주기
             continue;
         }
 
@@ -398,9 +470,28 @@ void turn_led_subscription_callback(const void * msin) {
     digitalWrite(TURN_LED_RELAY_PIN, msg->data ? LED_RELAY_ON : LED_RELAY_OFF);
 }
 
+// /motor/status 100ms 주기 발행 (ESTOP 중에도 estop 필드가 보이도록 공용화)
+void publishMotorStatus() {
+    static unsigned long last_status_pub = 0;
+    if (millis() - last_status_pub > 100) {
+        status_msg.rail_position = railMotor.getCurrentPosition();
+        status_msg.rail_target = railMotor.getTargetPosition();
+        status_msg.turntable_angle = turnMotor.getCurrentPosition() / (float)TURN_STEPS_PER_DEGREE;
+        status_msg.is_moving = railMotor.isMoving() || turnMotor.isMoving();
+        status_msg.homed = isHomingCompleted;
+        status_msg.estop = isEmergencyStopped;
+        RCSOFTCHECK(rcl_publish(&status_pub, &status_msg, NULL));
+        last_status_pub = millis();
+    }
+}
+
 void estop_subscription_callback(const void * msin) {
     const std_msgs__msg__Bool * msg = (const std_msgs__msg__Bool *)msin;
     if (msg->data) {
+        // 버튼 ESTOP 중이거나 직후에 받은 true 는 이 보드가 발행한 에코로 보고 무시
+        // (래치되면 버튼을 떼도 복귀하지 못한다)
+        if (hwEstopActive || (lastOwnTruePubMs != 0 && millis() - lastOwnTruePubMs < 1500)) return;
+        topicEstopLatched = true;
         handleEmergencyStop();
     }
 }
@@ -495,6 +586,13 @@ void vCommTask(void *pvParameters) {
             TOPIC_STATUS
         ));
 
+        RCCHECK(rclc_publisher_init_default(
+            &estop_pub,
+            &node,
+            ROSIDL_GET_MSG_TYPE_SUPPORT(std_msgs, msg, Bool),
+            TOPIC_ESTOP
+        ));
+
         // Create Executor (4 subscriptions)
         RCCHECK(rclc_executor_init(&executor, &support.context, 4, &allocator));
         RCCHECK(rclc_executor_add_subscription(&executor, &rail_sub, &rail_msg, &rail_subscription_callback, ON_NEW_DATA));
@@ -509,11 +607,33 @@ void vCommTask(void *pvParameters) {
 
         // micro-ROS Loop Executor
         for (;;) {
+            // 버튼 ESTOP 눌림(true)·해제(false)를 로봇팔·FSM 에 알린다(HMI ESTOP 과 같은 토픽).
+            // 전송 손실 대비 500ms 간격 3회.
+            static unsigned long last_estop_pub = 0;
+            if (estopPubCount > 0 && (estopPubForce || millis() - last_estop_pub >= 500)) {
+                estopPubForce = false;
+                bool v = estopPubValue;
+                estop_out_msg.data = v;
+                if (v) lastOwnTruePubMs = millis();
+                RCSOFTCHECK(rcl_publish(&estop_pub, &estop_out_msg, NULL));
+                estopPubCount--;
+                last_estop_pub = millis();
+            }
+
+            // ESTOP 중에도 spin: rail·turn·LED 콜백은 isEmergencyStopped 면 무시하고,
+            // 자기 발행 true 에코를 이때 소비해야 해제 후 래치되지 않는다.
+            RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)));
+
+            if (clearDonePending) {
+                clearDonePending = false;
+                rail_done_pending = false;
+                turn_done_pending = false;
+            }
             if (isEmergencyStopped) {
-                vTaskDelay(pdMS_TO_TICKS(100));
+                publishMotorStatus();
+                vTaskDelay(pdMS_TO_TICKS(10));
                 continue;
             }
-            RCSOFTCHECK(rclc_executor_spin_some(&executor, RCL_MS_TO_NS(10)));
 
             // 에이전트 생존 감시: 런타임에 agent 가 죽으면 재연결 수단이 없어
             // 노드가 유령 상태로 남는다. 3회 연속 ping 실패 시 모터를 세우고
@@ -550,17 +670,7 @@ void vCommTask(void *pvParameters) {
                 turn_done_pending = false;
             }
             
-            static unsigned long last_status_pub = 0;
-            if (millis() - last_status_pub > 100) {
-                status_msg.rail_position = railMotor.getCurrentPosition();
-                status_msg.rail_target = railMotor.getTargetPosition();
-                status_msg.turntable_angle = turnMotor.getCurrentPosition() / (float)TURN_STEPS_PER_DEGREE;
-                status_msg.is_moving = railMotor.isMoving() || turnMotor.isMoving();
-                status_msg.homed = isHomingCompleted;
-                status_msg.estop = isEmergencyStopped;
-                RCSOFTCHECK(rcl_publish(&status_pub, &status_msg, NULL));
-                last_status_pub = millis();
-            }
+            publishMotorStatus();
             
             vTaskDelay(pdMS_TO_TICKS(10));
         }
@@ -651,6 +761,7 @@ void vCommTask(void *pvParameters) {
                             Serial0.println("----------------------------------------");
                         }
                         else if (cmd == 'E') {
+                            topicEstopLatched = true;
                             handleEmergencyStop();
                         }
                         else if (cmd == 'L') {
@@ -686,6 +797,19 @@ void IRAM_ATTR handleEmergencyStop() {
     if (RAIL_ENA_PIN >= 0) digitalWrite(RAIL_ENA_PIN, HIGH); // Disable TB6600
     if (TURN_ENA_PIN >= 0) digitalWrite(TURN_ENA_PIN, HIGH); // Disable TB6600
     digitalWrite(TURN_LED_RELAY_PIN, LED_RELAY_OFF); // Turn off LED relay for safety
+}
+
+// 물리 버튼 인터럽트: 출처를 표시한 뒤 공통 정지 처리
+void IRAM_ATTR handleEstopPin() {
+    // 즉시 정지(레일·턴테이블). 전파 여부는 vMotorTask 폴링이 30ms 유지로 확정한다.
+    hwEstopActive = true;
+    handleEmergencyStop();
+}
+
+void requestEstopPublish(bool value) {
+    estopPubValue = value;
+    estopPubCount = 3;
+    estopPubForce = true;
 }
 
 // Set WS2812B Color
