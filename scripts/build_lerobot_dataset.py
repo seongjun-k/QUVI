@@ -16,10 +16,10 @@ import numpy as np
 # 수집 도구 venv 에는 rclpy 가 없다 — act_common 은 ROS 무관이라 소스 경로를 직접 붙인다
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'src' / 'quvi_robot_control'))
 from quvi_robot_control.act_common import (  # noqa: E402  pylint: disable=wrong-import-position
-    DATASET_FPS, EPISODE_FRAMES, JOINT_NAMES, POSE_HOME, TASK_INSTRUCTION, raw_to_rad)
+    DATASET_FPS, EPISODE_FRAMES, JOINT_NAMES, RECORD_START_POSE, TASK_INSTRUCTION, raw_to_rad)
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / 'collect'))
-from episode_store import START_TOL_GRIPPER_RAW  # noqa: E402
+from episode_store import START_TOL_GRIPPER_RAW, START_TOL_RAW  # noqa: E402
 
 # ─── 상수 ───
 TASK = TASK_INSTRUCTION   # 정확히 일치 검사
@@ -145,8 +145,9 @@ def build_episode(ep, n_frames, fps, home_rad):
         'max_sample_age_sec': {k: round(v, 3) for k, v in gap.items()},
     }
     warns = []
-    # 팔 경고 기준은 유지하고 그리퍼만 수집 앱의 허용치를 공유한다.
-    limits = np.array([START_TOL_RAD] * 5 + [START_TOL_GRIPPER_RAW * 2 * math.pi / 4096])
+    # 시작 편차 경고는 수집 앱의 시작 허용치(팔·그리퍼)를 그대로 쓴다.
+    limits = np.array([START_TOL_RAW * 2 * math.pi / 4096] * 5
+                      + [START_TOL_GRIPPER_RAW * 2 * math.pi / 4096])
     over = start_dev / limits
     if over.max() > 1:
         i = int(over.argmax())
@@ -174,7 +175,7 @@ def write_dataset(session_dirs, out, fps, repo_id):
     if any(m.get('dataset_fps') != fps for m in metas):
         raise SystemExit(f'--fps {fps} != session.json dataset_fps {metas[0].get("dataset_fps")}')
     n_frames = math.ceil(metas[0]['episode_sec'] * fps - 1e-9)
-    home_rad = np.array([raw_to_rad(POSE_HOME[j]) for j in JOINT_NAMES], np.float32)
+    home_rad = np.array([raw_to_rad(RECORD_START_POSE[j]) for j in JOINT_NAMES], np.float32)
 
     vec = {'dtype': 'float32', 'shape': (6,), 'names': DATASET_JOINT_NAMES}
     features = {'observation.state': dict(vec), 'action': dict(vec)}

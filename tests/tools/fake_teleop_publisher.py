@@ -18,9 +18,9 @@ from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray
 
 from quvi_robot_control import topics
-from quvi_robot_control.act_common import JOINT_NAMES, POSE_HOME, RECORD_STATE_HZ, raw_to_rad
+from quvi_robot_control.act_common import JOINT_NAMES, RECORD_START_POSE, RECORD_STATE_HZ, raw_to_rad
 
-HOME = [POSE_HOME[j] for j in JOINT_NAMES]
+HOME = [RECORD_START_POSE[j] for j in JOINT_NAMES]
 AMP = [200, 150, -200, 150, 100]   # 팔 5관절 최대 이동량(raw)
 REST, MOVE, HOLD, REOPEN = 2.0, 4.0, 2.0, 0.5
 CYCLE = REST + MOVE + HOLD + REOPEN

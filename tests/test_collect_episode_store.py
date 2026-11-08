@@ -7,9 +7,9 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts', 'collect'))
 import episode_store as st  # noqa: E402
-from quvi_robot_control.act_common import JOINT_NAMES, POSE_HOME, raw_to_rad  # noqa: E402
+from quvi_robot_control.act_common import JOINT_NAMES, RECORD_START_POSE, raw_to_rad  # noqa: E402
 
-HOME = [POSE_HOME[j] for j in JOINT_NAMES]
+HOME = [RECORD_START_POSE[j] for j in JOINT_NAMES]
 
 
 def _make_ep(sdir, idx, tag=b'x'):
@@ -193,10 +193,10 @@ def test_playback_stamps_and_numbered_frame(tmp_path):
 
 
 def test_start_tolerance_gripper_only():
-    assert [st.start_tol(i) for i in range(6)] == [20] * 5 + [50]
-    assert st.start_aligned([20] * 5 + [-43])
-    assert st.start_aligned([-20] * 5 + [50])
-    assert not st.start_aligned([21] + [0] * 5)
+    assert [st.start_tol(i) for i in range(6)] == [80] * 5 + [50]
+    assert st.start_aligned([80] * 5 + [-43])
+    assert st.start_aligned([-80] * 5 + [50])
+    assert not st.start_aligned([81] + [0] * 5)
     assert not st.start_aligned([0] * 5 + [-51])
     assert not st.start_aligned([0] * 5)
     assert st.new_session_json('box')['start_tol_gripper_raw'] == 50

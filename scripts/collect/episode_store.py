@@ -12,12 +12,12 @@ import shutil
 from datetime import datetime
 
 from quvi_robot_control.act_common import (
-    DATASET_FPS, EPISODE_DURATION_SEC, GRIPPER_OPEN, JOINT_NAMES, POSE_HOME,
+    DATASET_FPS, EPISODE_DURATION_SEC, GRIPPER_OPEN, JOINT_NAMES, RECORD_START_POSE,
     RECORD_STATE_HZ, TASK_INSTRUCTION, rad_to_raw)
 
 # ─── 형식 상수 ───
 PRE_ROLL_SEC = 0.2
-START_TOL_RAW = 20
+START_TOL_RAW = 80   # 팔 5관절 시작 자세 허용(약 ±7°). ±20·±40 은 손으로 맞추기 너무 빡빡해 넓힘(2026-11-08)
 START_TOL_GRIPPER_RAW = 50  # 리더 스프링으로 인한 -36~-43 raw 편차 허용
 START_HOLD_SEC = 0.5
 END_TOL_RAW = 40
@@ -44,7 +44,7 @@ def start_aligned(dev: list) -> bool:
 
 
 _EP_RE = re.compile(r'^ep_(\d{4})$')
-_HOME_RAW = [POSE_HOME[j] for j in JOINT_NAMES]
+_HOME_RAW = [RECORD_START_POSE[j] for j in JOINT_NAMES]
 
 
 def sanitize_name(name: str) -> str:
@@ -62,6 +62,7 @@ def new_session_json(product: str, task: str = DEFAULT_TASK, cameras: dict = Non
         'start_tol_raw': START_TOL_RAW, 'start_tol_gripper_raw': START_TOL_GRIPPER_RAW,
         'start_hold_sec': START_HOLD_SEC,
         'end_tol_raw': END_TOL_RAW, 'target_return_sec': TARGET_RETURN_SEC,
+        'start_pose_raw': _HOME_RAW,
         'cameras': cameras or {},
     }
 

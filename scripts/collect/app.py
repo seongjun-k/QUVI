@@ -31,7 +31,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import episode_store as store  # noqa: E402
 from quvi_robot_control import camera_profile, topics  # noqa: E402
 from quvi_robot_control.act_common import (  # noqa: E402
-    EPISODE_DURATION_SEC, JOINT_NAMES, POSE_HOME, rad_to_raw)
+    EPISODE_DURATION_SEC, JOINT_NAMES, RECORD_START_POSE, rad_to_raw)
 
 # ─── 상수 ───
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -54,7 +54,7 @@ MOVE_THRESH_RAW = 8      # 준비 시점 평균 대비 어느 관절이든 이�
 BUFFER_SEC = 1.5         # 시작 전 pre-roll 확보용 링버퍼 길이
 STATE_STALE_SEC = 1.0    # 이보다 오래 상태가 안 오면 "텔레옵 미실행"
 FINALIZE_MARGIN_SEC = 0.1  # 종료 시각 이후 지연 도착 샘플 대기
-HOME_RAW = [POSE_HOME[j] for j in JOINT_NAMES]
+HOME_RAW = [RECORD_START_POSE[j] for j in JOINT_NAMES]
 _ID_RE = re.compile(r'^[\w\-]+$')
 
 

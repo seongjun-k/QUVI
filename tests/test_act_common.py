@@ -19,3 +19,9 @@ def test_robot_node_values_unchanged():
     assert rcn.ACT_CONTROL_HZ == 30
     assert rcn.DXL_RAW_MAX == 4095
     assert rcn.POSE_HOME is ac.POSE_HOME
+
+
+def test_record_start_pose():
+    # 수집 시작·끝 기준 = VLA 시작 자세 (218ep 첫 프레임 평균)
+    assert [ac.RECORD_START_POSE[n] for n in ac.JOINT_NAMES] == [2070, 1003, 2921, 3036, 2039, 2500]
+    assert rcn.ACT_START_POSE == {n: ac.RECORD_START_POSE[n] for n in ac.JOINT_NAMES[:5]}

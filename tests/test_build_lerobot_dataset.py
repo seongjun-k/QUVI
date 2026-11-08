@@ -29,7 +29,7 @@ pytestmark = pytest.mark.skipif(not _has_lerobot_06(), reason='lerobot 0.6.x(도
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 import build_lerobot_dataset as bld  # noqa: E402
-from quvi_robot_control.act_common import JOINT_NAMES, POSE_HOME, raw_to_rad  # noqa: E402
+from quvi_robot_control.act_common import JOINT_NAMES, RECORD_START_POSE, raw_to_rad  # noqa: E402
 
 CYCLO_INFO = ROOT / 'data/datasets/Task_1_pick_quvi_MCAP_lerobot_v30/meta/info.json'
 # 기존 Cyclo info.json 에서 비교 대상만 옮긴 스냅샷(데이터셋 사본이 없는 곳에서도 비교하도록)
@@ -50,7 +50,7 @@ def make_session(root, name, n_eps, seed):
     (sd / 'session.json').write_text(json.dumps({
         'product': 'box', 'task': bld.TASK, 'dataset_fps': 15, 'record_state_hz': 30,
         'episode_sec': 5.5, 'pre_roll_sec': 0.2}), encoding='utf-8')
-    home = np.array([raw_to_rad(POSE_HOME[j]) for j in JOINT_NAMES])
+    home = np.array([raw_to_rad(RECORD_START_POSE[j]) for j in JOINT_NAMES])
     for e in range(n_eps):
         ep = sd / f'ep_{e:04d}'
         ts = np.arange(-0.2, 5.5 + 1e-9, 1 / 30)

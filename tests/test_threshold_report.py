@@ -33,4 +33,4 @@ def test_distribution_and_reviews(tmp_path):
     assert data['전체']['speed_dev_sec']['개수'] == 2
     assert data['전체']['warnings'] == {'경고': 3}
     assert data['사용']['에피소드'] == data['안 씀']['에피소드'] == data['미정']['에피소드'] == 1
-    assert data['현재 기준']['START_TOL_RAW'] == 20
+    assert data['현재 기준']['START_TOL_RAW'] == 80

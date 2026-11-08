@@ -20,6 +20,11 @@ POSE_P1 = {'shoulder_pan': 2037, 'shoulder_lift': 1114, 'elbow_flex': 2771, 'wri
 # 홈 자세는 P1과 동일하되 그리퍼는 완전 개방 — ACT 파지 시작 자세이자 수집 에피소드 시작 자세
 POSE_HOME = dict(POSE_P1, gripper=GRIPPER_OPEN)
 
+# 218ep 데이터셋 에피소드 첫 프레임 observation.state 평균(2026-11-08 계산).
+# 수집 시작·끝 기준 자세이자 VLA 시작 자세의 단일 출처 (POSE_HOME 은 다른 시퀀스가 쓰므로 유지)
+RECORD_START_POSE = {'shoulder_pan': 2070, 'shoulder_lift': 1003, 'elbow_flex': 2921,
+                     'wrist_flex': 3036, 'wrist_roll': 2039, 'gripper': GRIPPER_OPEN}
+
 # ─── rad↔raw 변환 (학습 데이터셋 단위 — lerobot 정규화와 별개) ───
 DXL_TICKS_PER_REV = 4096.0   # XL430/XL330 1회전 틱 수 (변환 분모)
 DXL_TICK_CENTER   = 2048.0   # 중립(0 rad) 틱
