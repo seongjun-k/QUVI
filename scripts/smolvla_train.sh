@@ -13,6 +13,9 @@ DATASET=${1:-"Task_1_pick_quvi_MCAP_lerobot_v30"}   # 218 에피소드
 JOB_NAME=${2:-"smolvla_$(date +%m%d_%H%M)"}
 STEPS=${3:-10000}
 BATCH=${4:-16}   # RTX 5070 Laptop(8GB)은 bf16 이어도 batch 32 에서 OOM(2026-10-27 실측 7.49GB) — smolvla_218ep 은 32 로 학습됨
+# 시작 모델(data/models 기준 경로). 데이터가 적으면 학습된 모델에서 이어서 학습:
+#   BASE_MODEL=smolvla_218ep/checkpoints/010000/pretrained_model ./scripts/smolvla_train.sh ...
+BASE_MODEL=${BASE_MODEL:-smolvla_base_2cam}
 
 # 8GB VRAM 을 거의 다 쓴다. QUVI 사이드카(~1GB) 등이 남아 있으면 첫 스텝에서 OOM 난다.
 # 화면(Xorg·gnome-shell 등 그래픽 프로세스)이 쓰는 1GB 남짓은 빼고, 연산 프로세스가 있을 때만 막는다.
@@ -30,8 +33,8 @@ if [ ! -d "${DATA_DIR}/datasets/${DATASET}" ]; then
   echo "데이터셋 없음: ${DATA_DIR}/datasets/${DATASET}"
   exit 1
 fi
-if [ ! -d "${DATA_DIR}/models/smolvla_base_2cam" ]; then
-  echo "베이스 모델 없음: ${DATA_DIR}/models/smolvla_base_2cam"
+if [ ! -d "${DATA_DIR}/models/${BASE_MODEL}" ]; then
+  echo "베이스 모델 없음: ${DATA_DIR}/models/${BASE_MODEL}"
   exit 1
 fi
 if [ -d "${DATA_DIR}/models/${JOB_NAME}" ]; then
@@ -64,7 +67,7 @@ docker run --rm ${TTY_FLAG} --runtime=nvidia --gpus all --ipc=host \
       --dataset.root=/data/datasets/${DATASET} \
       --dataset.video_backend=torchcodec \
       --dataset.image_transforms.enable=true \
-      --policy.path=/data/models/smolvla_base_2cam \
+      --policy.path=/data/models/${BASE_MODEL} \
       --policy.freeze_vision_encoder=true \
       --policy.train_expert_only=true \
       --policy.device=cuda \
