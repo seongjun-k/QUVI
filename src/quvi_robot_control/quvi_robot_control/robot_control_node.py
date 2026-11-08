@@ -82,8 +82,8 @@ from std_srvs.srv import Trigger
 
 import quvi_robot_control.topics as topics
 from quvi_robot_control.act_common import (
-    JOINT_NAMES, GRIPPER_OPEN, GRIPPER_CLOSE, POSE_P1, POSE_HOME,
-    DXL_TICKS_PER_REV, RECORD_STATE_HZ, raw_to_rad, rad_to_raw)
+    JOINT_NAMES, GRIPPER_OPEN, GRIPPER_CLOSE, POSE_P1, POSE_HOME, RECORD_START_POSE,
+    DXL_TICKS_PER_REV, RECORD_STATE_HZ, EPISODE_DURATION_SEC, raw_to_rad, rad_to_raw)
 from quvi_robot_control.utils import decode_compressed
 from quvi_robot_control.teleop_recorder import TeleopRecorder
 
@@ -148,6 +148,11 @@ POSE_SORT_UP   = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 224
 POSE_SORT_DOWN = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}
 POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
+# VLA 시작 자세 — 218ep 학습 데이터셋 에피소드 첫 프레임 observation.state 평균(raw, 2026-11-08 계산).
+# POSE_HOME 과 손목 -221·팔꿈치 +150 raw 가 달라 정책이 학습 분포 밖에서 시작했다. 파지 직전 여기로 옮긴다.
+# Cyclo 경로(prep_inference.sh)가 데이터셋 시작 자세로 먼저 보낸 뒤 추론했던 것과 같은 방식.
+ACT_START_POSE = {j: v for j, v in RECORD_START_POSE.items() if j != 'gripper'}
+ACT_ALIGN_START_POSE = True   # False 면 기존처럼 현재 자세(POSE_HOME)에서 바로 정책 시작
 
 # ─── Dynamixel 프로파일 (⚠️ 시간기반 프로파일 모드) ───
 # omx_follower.configure() 가 Drive_Mode Bit2(시간기반 프로파일)를 설정하므로
@@ -1193,11 +1198,19 @@ class RobotControlNode(Node):
             return self._execute_rule_based_grasp()
 
         try:
+            if ACT_ALIGN_START_POSE and self._use_real_hardware:
+                # 학습 데이터 시작 자세로 먼저 이동(저속 시퀀스 프로파일). 그리퍼는 그대로(열림).
+                self.get_logger().info('VLA 시작 자세(학습 데이터 평균)로 이동')
+                self._move_arm(ACT_START_POSE)
+                if self._act_check_abort('ESTOP 감지 — VLA 시작 자세 이동 후 중단합니다.'):
+                    return False
             # ACT용 프로파일을 명시적으로 설정해 직전 동작(시퀀스=2000ms 등)의
             # 프로파일 누수를 제거한다. 학습 녹화 시 configure() 기본값(50ms)이 적용됐으므로
             # 동일하게 맞춰 학습 동역학과 일치시킨다.
             self._apply_motor_profile(JOINT_NAMES, PROFILE_VELOCITY_ACT, PROFILE_ACCEL_ACT)
-            ACT_GRASP_DURATION = 7.0
+            # 정책 실행 시간 = 수집 에피소드 길이(5.5초). 웹 수집 데이터로 학습한 모델(smolvla_1108_ft3000~)과
+            # 맞춘다. 218ep 등 예전 모델(4.9초 시연을 7.0초로 실행하던 것)을 쓸 때는 짧아진다(2026-11-08 변경).
+            ACT_GRASP_DURATION = EPISODE_DURATION_SEC
             dt = 1.0 / ACT_CONTROL_HZ
             self._act_trace = []
             start = time.time()
@@ -2090,9 +2103,30 @@ class RobotControlNode(Node):
         self._publish_status('텔레오퍼레이션 종료')
         return True
 
+    def _recover_after_usb_loss(self):
+        """USB 허브 끊김으로 텔레옵이 멈춘 뒤: 리더 해제 → 팔로워 포트가 다시 나타나면 재연결(IDLE).
+        재연결은 현재 자세에서 토크만 켜므로 팔이 움직이지 않는다. 텔레옵은 사람이 다시 켠다."""
+        self._stop_teleop()
+        self._publish_status('USB 끊김 — 팔로워 재연결 대기')
+        for _ in range(60):   # 2초 간격, 최대 약 2분
+            time.sleep(2.0)
+            if self._estop_latched:
+                return
+            if self._get_state() not in (RobotState.IDLE, RobotState.ERROR):
+                return   # 그 사이 다른 명령이 시작됨
+            if not os.path.exists(self._dxl_port_name):
+                continue
+            if self._execute_reset():
+                self.get_logger().info('팔로워 자동 재연결 완료 — 텔레옵을 다시 시작하세요')
+                self._publish_status('팔로워 재연결 완료 — 텔레옵 다시 시작')
+                return
+        self.get_logger().error('팔로워 자동 재연결 실패(2분) — 시스템 재시작 필요')
+
     def _teleop_loop(self):
         dt = 1.0 / 50.0
         next_tick = time.perf_counter()
+        io_errors = 0          # 연속 통신 오류 수 — USB 허브가 끊기면 계속 쌓인다
+        usb_lost = False
 
         while self._teleop_running and rclpy.ok():
             if self._should_abort():   # STOP/ESTOP → 루프 종료 (RESET 후 급작동 방지)
@@ -2103,8 +2137,13 @@ class RobotControlNode(Node):
             if self._use_real_hardware and self._leader and self._follower:
                 try:
                     with self._dxl_io_lock:
-                        action = self._leader.get_action()
-                    
+                        try:
+                            action = self._leader.get_action()
+                        except Exception:
+                            # 단발성 패킷 오류(USB 노이즈)로 이번 틱을 건너뛰면 팔로워가 멈칫한다 — 한 번 더 읽는다
+                            self._leader.bus.port_handler.is_using = False
+                            action = self._leader.get_action()
+
                     if self._teleop_offsets:
                         action = dict(action)
                         for joint, offset in self._teleop_offsets.items():
@@ -2114,14 +2153,25 @@ class RobotControlNode(Node):
 
                     action = self._clip_safe_targets(action, is_raw=False)
                     with self._dxl_io_lock:
-                        self._follower.send_action(action)
+                        try:
+                            self._follower.send_action(action)
+                        except Exception:
+                            self._follower.bus.port_handler.is_using = False   # 단발 오류 1회 재시도
+                            self._follower.send_action(action)
                 except Exception as e:
-                    self.get_logger().warn(f'텔레옵 루프 오류: {e}')
+                    self.get_logger().warn(f'텔레옵 루프 오류: {e}', throttle_duration_sec=1.0)
                     if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                         self._follower.bus.port_handler.is_using = False
                     if self._leader and hasattr(self._leader, 'bus') and hasattr(self._leader.bus, 'port_handler'):
                         self._leader.bus.port_handler.is_using = False
+                    io_errors += 1
+                    if io_errors >= 50:   # 1초 연속 실패 = USB 끊김으로 보고 텔레옵을 끝내고 자동 재연결
+                        self.get_logger().error('텔레옵 통신 1초 연속 실패 — USB 끊김 추정, 텔레옵 종료 후 팔로워 자동 재연결')
+                        self._teleop_running = False
+                        usb_lost = True
+                        break
                 else:
+                    io_errors = 0
                     # 녹화 실패가 조작을 막지 않도록 send_action 과 분리한다.
                     now = time.perf_counter()
                     if self._recorder.due(now):
@@ -2138,7 +2188,9 @@ class RobotControlNode(Node):
                 next_tick = time.perf_counter()
 
         self._finish_recording()  # ESTOP·중단으로 루프가 끝나도 녹화분은 저장한다
-        if self._get_state() == RobotState.TELEOPING:
+        if usb_lost:
+            threading.Thread(target=self._recover_after_usb_loss, daemon=True).start()
+        elif self._get_state() == RobotState.TELEOPING:
             # STOP 으로 루프가 끝난 경우 — TELEOPING 에 묶여 재시작이 막히지 않게 리더 해제 후 IDLE
             threading.Thread(target=self._stop_teleop, daemon=True).start()
 
