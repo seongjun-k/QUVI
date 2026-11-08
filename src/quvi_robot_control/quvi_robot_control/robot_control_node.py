@@ -141,15 +141,21 @@ RECORD_MAX_FRAME_AGE_SEC = 0.2   # 이보다 오래된 카메라 프레임은 �
 POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wrist_flex': 3012, 'wrist_roll': 2006, 'gripper': 2100}  # 180도 회전
 # P3/P4: 2026-10-27 턴테이블이 팔 기준 전방 38mm 이설 — URDF 평면 IK 로 높이·공구각 유지한 채 손목을 +38mm 이동
 #   (기존 P3 lift 1760 / elbow 2244 / wrist 3120, P4 lift 1907 / elbow 2464 / wrist 2822)
-POSE_P3 = {'shoulder_pan':   -1, 'shoulder_lift': 1969, 'elbow_flex': 2024, 'wrist_flex': 3131, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
-POSE_P4 = {'shoulder_pan':   16, 'shoulder_lift': 2099, 'elbow_flex': 2229, 'wrist_flex': 2865, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
+# 턴테이블 놓는 위치를 중심 쪽으로 옮기는 값. 50 raw ≈ 15mm(P4 수평거리 197mm).
+#   2026-11-08: -50 은 오른쪽으로 가서 반대라고 확인 → 반대 방향(+)으로 1mm만(3 raw ≈ 0.9mm).
+TURNTABLE_PAN_OFFSET = 3
+# 2026-11-08 사용자 요청으로 전방 +10mm 더(같은 평면 IK, 높이·공구각 유지). 이전 P3 1969/2024/3131, P4 2099/2229/2865
+POSE_P3 = {'shoulder_pan':   -1 + TURNTABLE_PAN_OFFSET, 'shoulder_lift': 2028, 'elbow_flex': 1953, 'wrist_flex': 3143, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
+POSE_P4 = {'shoulder_pan':   16 + TURNTABLE_PAN_OFFSET, 'shoulder_lift': 2150, 'elbow_flex': 2159, 'wrist_flex': 2883, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
 # 분류함 적재 — 턴테이블 이설 전 P3/P4 실측값. 분류함은 옮기지 않았으므로 기존 값을 유지한다.
 POSE_SORT_UP   = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}
 POSE_SORT_DOWN = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}
+# 분류함까지 레일 이동 자세 — SORT_UP 보다 손끝 약 50mm 위(평면 FK 계산, 수평거리 동일).
+#   2026-11-08 실기: 30mm 로는 부족하다고 확인. 손목은 POSE_P1 이 쓰는 3257 까지만 써서 공구각이 6도쯤 기운다.
+POSE_SORT_TRANSIT = {'shoulder_pan': -1, 'shoulder_lift': 1773, 'elbow_flex': 2026, 'wrist_flex': 3257, 'wrist_roll': 2009, 'gripper': 2100}
 POSE_P5 = {'shoulder_pan': 2119, 'shoulder_lift': 1200, 'elbow_flex': 2824, 'wrist_flex': 3168, 'wrist_roll': 2126, 'gripper': 2100}  # 180도 반대 회전 (경유)
 POSE_P6 = {'shoulder_pan': 2110, 'shoulder_lift': 1341, 'elbow_flex': 3016, 'wrist_flex': 2816, 'wrist_roll': 2124, 'gripper': 2100}  # 분류장 위치
-# VLA 시작 자세 — 218ep 학습 데이터셋 에피소드 첫 프레임 observation.state 평균(raw, 2026-11-08 계산).
-# POSE_HOME 과 손목 -221·팔꿈치 +150 raw 가 달라 정책이 학습 분포 밖에서 시작했다. 파지 직전 여기로 옮긴다.
+# VLA 시작 자세 — 현재 학습 데이터 에피소드 첫 프레임 평균(act_common.RECORD_START_POSE). 파지 직전 여기로 옮긴다.
 # Cyclo 경로(prep_inference.sh)가 데이터셋 시작 자세로 먼저 보낸 뒤 추론했던 것과 같은 방식.
 ACT_START_POSE = {j: v for j, v in RECORD_START_POSE.items() if j != 'gripper'}
 ACT_ALIGN_START_POSE = True   # False 면 기존처럼 현재 자세(POSE_HOME)에서 바로 정책 시작
@@ -168,6 +174,13 @@ PROFILE_VELOCITY      = 1200   # 이동시간 ms (부드러운 중속)
 PROFILE_ACCEL         = 400    # 가속시간 ms
 PROFILE_VELOCITY_GRIP = 800    # 그리퍼 이동시간 ms
 PROFILE_ACCEL_GRIP    = 200    # 그리퍼 가속시간 ms
+PROFILE_VELOCITY_GRIP_CLOSE = 1200   # 턴테이블 재파지 때 닫는 시간 ms
+PROFILE_ACCEL_GRIP_CLOSE    = 300    # 턴테이블 재파지 때 가속시간 ms
+GRIPPER_CLOSE_SETTLE_SEC    = 1.6    # 재파지 닫기 대기(닫는 시간보다 길게)
+# 그리퍼 쥐는 힘. Current-based Position 모드라 물체에 닿으면 이 전류까지만 민다(omx_follower 기본 600).
+GRIPPER_GOAL_CURRENT  = 300    # 2026-11-08 "너무 많이 집는다" — 절반으로. 물체가 미끄러지면 올릴 것
+# 정책 실행 중 닫는 속도. 30Hz 1스텝당 이만큼만 닫아 2460→2060 이 약 0.45초 걸린다(기존 약 0.1초).
+ACT_GRIPPER_CLOSE_STEP = 30
 #
 # P1~P6 시퀀스 (물체 파지 중 — 낙하/파손 방지 위해 더 느리게)
 PROFILE_VELOCITY_SEQ  = 2000   # 이동시간 ms (저속 안전 이송)
@@ -288,6 +301,12 @@ class RobotControlNode(Node):
         self._abort_event = threading.Event()
         # ESTOP(True)으로 ERROR 가 됐는지 — 물리 버튼 해제(False) 때만 자동 복귀하기 위한 표시
         self._estop_latched = False
+        # 정책 실행 중 그리퍼를 천천히 닫기 위한 현재 목표와, 닫는 동안 세워 둘 팔 목표
+        self._act_grip_cmd = None
+        self._act_held_arm = None
+        # USB 끊김 자동 재연결 진행 중 표시(중복 실행·텔레옵 재시작 경합 방지)와 대기 중 연속 읽기 실패 수
+        self._usb_recovering = False
+        self._read_io_errors = 0
 
         self._latest_sidecam: Optional[np.ndarray] = None
         self._sidecam_lock = threading.Lock()
@@ -476,6 +495,10 @@ class RobotControlNode(Node):
             self._follower = OmxFollower(follower_config)
             self._follower.connect()
             self._dxl_ready = True
+            try:
+                self._follower.bus.write('Goal_Current', 'gripper', GRIPPER_GOAL_CURRENT, normalize=False)
+            except Exception as e:
+                self.get_logger().warn(f'그리퍼 전류 설정 실패 (기본값 유지): {e}')
             self.get_logger().info(
                 f'OmxFollower 연결 완료 | 포트={self._dxl_port_name} | '
                 f'상대이동캡={self._act_max_rel_target} | '
@@ -1155,8 +1178,27 @@ class RobotControlNode(Node):
         """BGR 프레임 → 정책 입력용 RGB HWC uint8. resize·정규화는 사이드카가 수행."""
         return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-    def _act_send_action_step(self, action) -> None:
-        """ACT 정책 출력 1스텝을 실HW/SIM 으로 전송 (raw 변환·상대이동 캡·클램프 포함)."""
+    def _limit_gripper_closing(self, goal_raw: dict, present: dict) -> bool:
+        """그리퍼를 천천히 닫는다. 닫는 동안은 팔을 직전 목표에 세워 두고 False 를 돌려준다.
+
+        정책은 닫자마자 0.2초 안에 팔을 든다. 그리퍼만 늦추면 닫히기 전에 떠서 놓친다.
+        """
+        want = goal_raw['gripper']
+        cmd = self._act_grip_cmd if self._act_grip_cmd is not None else present.get('gripper', want)
+        if want < cmd - ACT_GRIPPER_CLOSE_STEP:
+            self._act_grip_cmd = cmd - ACT_GRIPPER_CLOSE_STEP
+            goal_raw['gripper'] = self._act_grip_cmd
+            if self._act_held_arm:
+                goal_raw.update(self._act_held_arm)
+            return False
+        self._act_grip_cmd = want
+        self._act_held_arm = {n: v for n, v in goal_raw.items() if n != 'gripper'}
+        return True
+
+    def _act_send_action_step(self, action) -> bool:
+        """ACT 정책 출력 1스텝을 실HW/SIM 으로 전송 (raw 변환·상대이동 캡·클램프 포함).
+
+        반환: 이 액션을 끝까지 반영했으면 True. 그리퍼를 닫는 중이면 False — 같은 액션을 다시 보낸다.."""
         if self._use_real_hardware and self._dxl_ready:
             # 정책 출력은 라디안 — raw = 2048 + rad·4096/2π 로 변환해
             # 직접 전송한다. send_action 정규화(±100/DEGREES) 경로는
@@ -1167,6 +1209,7 @@ class RobotControlNode(Node):
             raw_want = dict(goal_raw)   # 캡·클램프 적용 전 정책 원본 목표 (트레이스용)
             with self._dxl_io_lock:
                 present = self._follower.bus.sync_read('Present_Position', normalize=False)
+                action_done = self._limit_gripper_closing(goal_raw, present)
                 # send_action 의 max_relative_target(정규화 단위) 대체 —
                 # 200 norm = 4096 틱으로 환산해 1스텝 상대이동을 캡.
                 cap = max(1, int(self._act_max_rel_target * 4096.0 / 200.0))
@@ -1183,11 +1226,12 @@ class RobotControlNode(Node):
                         + [raw_want[n] for n in JOINT_NAMES]
                         + [goal_raw[n] for n in JOINT_NAMES]
                         + [present.get(n, '') for n in JOINT_NAMES])
-        else:
-            goal_dict = {
-                name: int(np.clip(rad_to_raw(float(action[j])), 0, DXL_RAW_MAX))
-                for j, name in enumerate(JOINT_NAMES)}
-            self._write_raw_position(goal_dict)
+            return action_done
+        goal_dict = {
+            name: int(np.clip(rad_to_raw(float(action[j])), 0, DXL_RAW_MAX))
+            for j, name in enumerate(JOINT_NAMES)}
+        self._write_raw_position(goal_dict)
+        return True
 
     def _execute_act_grasp(self) -> bool:
         gen = self._cmd_gen
@@ -1213,6 +1257,8 @@ class RobotControlNode(Node):
             ACT_GRASP_DURATION = EPISODE_DURATION_SEC
             dt = 1.0 / ACT_CONTROL_HZ
             self._act_trace = []
+            self._act_grip_cmd = None
+            self._act_held_arm = None
             start = time.time()
             chunk_count = 0
 
@@ -1288,14 +1334,19 @@ class RobotControlNode(Node):
                         return False
 
                     self._act_trace_pos = (chunk_count, i)
-                    self._act_send_action_step(action)
+                    # 그리퍼를 닫는 동안은 같은 액션을 반복한다(팔은 멈춘 채 그리퍼만 닫힘)
+                    while True:
+                        done = self._act_send_action_step(action)
 
-                    next_step_time += dt
-                    sleep_time = next_step_time - time.perf_counter()
-                    if sleep_time > 0:
-                        time.sleep(sleep_time)
-                    else:
-                        next_step_time = time.perf_counter()
+                        next_step_time += dt
+                        sleep_time = next_step_time - time.perf_counter()
+                        if sleep_time > 0:
+                            time.sleep(sleep_time)
+                        else:
+                            next_step_time = time.perf_counter()
+
+                        if done or self._should_abort() or (time.time() - start) >= ACT_GRASP_DURATION:
+                            break
 
             total_time = time.time() - start
             self.get_logger().info(f'ACT 파지 완료 | 총 소요={total_time:.2f}s | 청크 수={chunk_count}')
@@ -1486,8 +1537,10 @@ class RobotControlNode(Node):
         # 물체 파지 중 이송 — 낙하/파손 방지 저속(SEQ) 프로파일
         self._move_arm(POSE_P4)
 
-        self._write_raw_position({'gripper': GRIPPER_CLOSE})
-        self._wait_gripper()
+        self._write_raw_position({'gripper': GRIPPER_CLOSE},
+                                 grip_velocity=PROFILE_VELOCITY_GRIP_CLOSE,
+                                 grip_accel=PROFILE_ACCEL_GRIP_CLOSE)
+        self._wait_gripper(GRIPPER_CLOSE_SETTLE_SEC)
 
         # 재파지도 빈 손으로 분류 적재까지 진행되면 안 되므로 동일하게 판정한다.
         # (중단(None)은 아래 _should_abort 가 이미 실패로 잡는다)
@@ -1496,9 +1549,10 @@ class RobotControlNode(Node):
             self.get_logger().error('검사장 재파지 실패 — 그리퍼가 비어 있음')
 
         # 집은 뒤 P3 로 올라와 턴테이블을 빠져나온 다음, 이설 전과 같은 SORT_UP 자세로 당긴다
-        # — 분류함까지는 이 자세로 레일만 이동한다(38mm 더 뻗은 채 레일을 타지 않도록)
+        # (38mm 더 뻗은 채 레일을 타지 않도록). 분류함까지는 더 높은 TRANSIT 자세로 레일만 이동한다.
         success = self._move_arm(POSE_P3)
         success = success and not self._should_abort() and self._move_arm(POSE_SORT_UP)
+        success = success and not self._should_abort() and self._move_arm(POSE_SORT_TRANSIT)
         success = success and not self._should_abort()   # abort 시 실패로 보고
         success = success and held is not False
         self._pick_chamber_done_pub.publish(Bool(data=success))
@@ -1646,10 +1700,21 @@ class RobotControlNode(Node):
             return None
 
         try:
-            return self._follower.bus.sync_read(
+            pos = self._follower.bus.sync_read(
                 'Present_Position', normalize=False)
+            self._read_io_errors = 0
+            return pos
         except Exception as e:
-            self.get_logger().error(f'lerobot sync_read 오류: {e}')
+            self.get_logger().error(f'lerobot sync_read 오류: {e}', throttle_duration_sec=1.0)
+            if isinstance(e, OSError):
+                # 대기 중 허브 끊김: 포트 핸들이 죽어 EIO 가 계속된다 — 약 2초 이어지면 자동 재연결
+                self._read_io_errors += 1
+                if (self._read_io_errors >= 20 and not self._usb_recovering
+                        and not self._estop_latched
+                        and self._get_state() in (RobotState.IDLE, RobotState.ERROR)):
+                    self.get_logger().error('팔로워 통신 연속 실패 — USB 끊김 추정, 자동 재연결 시작')
+                    self._usb_recovering = True
+                    threading.Thread(target=self._recover_after_usb_loss, daemon=True).start()
             if self._follower and hasattr(self._follower, 'bus') and hasattr(self._follower.bus, 'port_handler'):
                 self._follower.bus.port_handler.is_using = False
             return None
@@ -1836,6 +1901,8 @@ class RobotControlNode(Node):
                 return False
 
             if not self._use_real_hardware or self._dxl_ready:
+                # HMI RESET 으로 복귀한 경우에도 ESTOP 표시를 지운다 — 남아 있으면 USB 자동 재연결이 막힌다
+                self._estop_latched = False
                 self._set_state(RobotState.IDLE)
                 self._publish_status('ACT_READY')
                 self.get_logger().info('로봇 리셋 및 Dynamixel 재연결 완료 -> IDLE 상태 전이')
@@ -1851,7 +1918,7 @@ class RobotControlNode(Node):
         P1~P6 웨이포인트 저속 실행 (시간기반 프로파일 PROFILE_VELOCITY_SEQ=2000ms).
         레일 이동은 오케스트레이터가 이미 처리하므로 팔 동작만 담당.
 
-        순서: (SORT_UP 자세 유지, 레일로 분류함 도착) → SORT_DOWN 내려가기 → 그리퍼 열기 → SORT_UP 올라오기 → P2 접기
+        순서: (SORT_TRANSIT 자세로 레일 이동, 분류함 도착) → SORT_DOWN 내려가기 → 그리퍼 열기 → SORT_UP 올라오기 → P2 접기
         (P1→P4 안착/재파지 구간은 _execute_place_in_chamber /
         _execute_pick_from_chamber 로 이전돼 중복 제거)
         """
@@ -1874,7 +1941,7 @@ class RobotControlNode(Node):
             )
             self._wait_gripper()
 
-        # 재파지 후 SORT_UP 자세 그대로 레일만 분류함으로 이동해 온 상태 — SORT_DOWN 높이로 내려가 놓고 올라온다.
+        # 재파지 후 SORT_TRANSIT 자세로 레일만 분류함으로 이동해 온 상태 — SORT_DOWN 높이로 내려가 놓고 올라온다.
         # SORT_UP/DOWN 은 턴테이블 이설 전 P3/P4 실측값 — 분류함 전용 실측값이 생기면 교체할 것
         if not move_arm(POSE_SORT_DOWN, 'SORT_DOWN: 분류함 내려놓기'):
             return False
@@ -1978,6 +2045,10 @@ class RobotControlNode(Node):
                 return True
             if self._state != RobotState.IDLE:
                 self.get_logger().warn('텔레옵 무시: 현재 로봇이 IDLE 상태가 아님')
+                return False
+            if self._usb_recovering:
+                self.get_logger().warn('텔레옵 무시: USB 끊김 후 팔로워 재연결 중 — 완료 로그 후 다시 시작')
+                self._publish_status('팔로워 재연결 중 — 잠시 후 텔레옵 다시 시작')
                 return False
             self._state = RobotState.TELEOPING   # 체크와 전환을 락 안에서 원자적으로 (동시 진입 선점 방지)
         # 새 명령 수락 → 이전 STOP 중단 해제(_try_acquire_state 와 동일). 안 지우면 루프가 즉시 끝난다.
@@ -2106,6 +2177,14 @@ class RobotControlNode(Node):
     def _recover_after_usb_loss(self):
         """USB 허브 끊김으로 텔레옵이 멈춘 뒤: 리더 해제 → 팔로워 포트가 다시 나타나면 재연결(IDLE).
         재연결은 현재 자세에서 토크만 켜므로 팔이 움직이지 않는다. 텔레옵은 사람이 다시 켠다."""
+        self._usb_recovering = True
+        try:
+            self._recover_loop()
+        finally:
+            self._usb_recovering = False
+            self._read_io_errors = 0
+
+    def _recover_loop(self):
         self._stop_teleop()
         self._publish_status('USB 끊김 — 팔로워 재연결 대기')
         for _ in range(60):   # 2초 간격, 최대 약 2분

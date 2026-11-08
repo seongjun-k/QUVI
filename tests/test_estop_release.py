@@ -79,3 +79,27 @@ def test_robot_release_ignored_when_not_error():
     r = _robot(rc.RobotState.IDLE, latched=True)
     rc.RobotControlNode._estop_cmd_callback(r, Bool(data=False))
     assert not r.done.wait(0.2) and r.resets == 0
+
+
+def test_idle_usb_loss_starts_recovery_once():
+    """대기 중 포트 핸들이 죽어 EIO 가 이어지면 20회째에 한 번만 재연결 스레드를 띄운다."""
+    class _Bus:
+        port_handler = SimpleNamespace(is_using=True)
+
+        def sync_read(self, *_a, **_k):
+            raise OSError(5, 'Input/output error')
+
+    log = SimpleNamespace(error=lambda *_a, **_k: None)
+    started = []
+    r = SimpleNamespace(_use_real_hardware=True, _dxl_ready=True, _dxl_io_lock=threading.Lock(),
+                        _follower=SimpleNamespace(bus=_Bus()), _read_io_errors=0,
+                        _usb_recovering=False, _estop_latched=False,
+                        get_logger=lambda: log, _get_state=lambda: rc.RobotState.IDLE,
+                        _recover_after_usb_loss=lambda: started.append(1))
+    for _ in range(25):
+        assert rc.RobotControlNode._read_raw_positions(r) is None
+    for _ in range(50):
+        if started:
+            break
+        threading.Event().wait(0.01)
+    assert started == [1] and r._usb_recovering

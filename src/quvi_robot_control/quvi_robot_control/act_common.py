@@ -17,13 +17,13 @@ GRIPPER_CLOSE = 1800
 # ─── 자세 (raw Dynamixel 위치값, 0~4095 = 0~360°) ───
 POSE_P1 = {'shoulder_pan': 2037, 'shoulder_lift': 1114, 'elbow_flex': 2771, 'wrist_flex': 3257, 'wrist_roll': 2016, 'gripper': 2077}  # 베드 위 대기 (2026-09-05 HMI 실측으로 상향 조정)
 
-# 홈 자세는 P1과 동일하되 그리퍼는 완전 개방 — ACT 파지 시작 자세이자 수집 에피소드 시작 자세
-POSE_HOME = dict(POSE_P1, gripper=GRIPPER_OPEN)
+# 현재 학습 데이터(20261108_061014_box2, 112개) 에피소드 첫 프레임 평균(2026-11-08 계산).
+# 수집 시작·끝 기준 자세이자 VLA 시작 자세의 단일 출처. 그리퍼도 데이터 평균값(2460)이다.
+RECORD_START_POSE = {'shoulder_pan': 2043, 'shoulder_lift': 1009, 'elbow_flex': 2909,
+                     'wrist_flex': 3043, 'wrist_roll': 2039, 'gripper': 2460}
 
-# 218ep 데이터셋 에피소드 첫 프레임 observation.state 평균(2026-11-08 계산).
-# 수집 시작·끝 기준 자세이자 VLA 시작 자세의 단일 출처 (POSE_HOME 은 다른 시퀀스가 쓰므로 유지)
-RECORD_START_POSE = {'shoulder_pan': 2070, 'shoulder_lift': 1003, 'elbow_flex': 2921,
-                     'wrist_flex': 3036, 'wrist_roll': 2039, 'gripper': GRIPPER_OPEN}
+# 홈 자세 = 학습 원점. 사이클이 끝나면 정책이 학습한 시작 자세로 돌아온다.
+POSE_HOME = dict(RECORD_START_POSE)
 
 # ─── rad↔raw 변환 (학습 데이터셋 단위 — lerobot 정규화와 별개) ───
 DXL_TICKS_PER_REV = 4096.0   # XL430/XL330 1회전 틱 수 (변환 분모)
