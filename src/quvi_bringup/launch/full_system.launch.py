@@ -138,7 +138,7 @@ def generate_launch_description():
         description='베드 온도 수신이 이보다 오래되면 모름으로 취급(초)')
 
     auto_end_macro_arg = DeclareLaunchArgument(
-        'auto_end_macro', default_value='false',
+        'auto_end_macro', default_value='true',
         description='시작 시 END 매크로 자동 실행 여부')
 
     auto_reprint_arg = DeclareLaunchArgument(

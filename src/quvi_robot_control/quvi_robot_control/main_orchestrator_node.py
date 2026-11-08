@@ -89,7 +89,7 @@ class MainOrchestratorNode(Node):
         self.declare_parameter('bed_temp_max_age_sec', 10.0)
         # RESET 명령 시 ESP32 하드 리셋(DTR/RTS 펄스)에 쓰는 시리얼 포트
         self.declare_parameter('esp32_reset_port', '/dev/ttyESP32')
-        self.declare_parameter('auto_end_macro', False)
+        self.declare_parameter('auto_end_macro', True)
         # 불량 판정 사이클이 끝나면 마지막 gcode 를 자동 재출력할지. 실제로 프린터가
         # 출력을 시작하는 동작이라 기본은 꺼둔다(2026-11-02 사용자 결정: 구현만, 비활성).
         self.declare_parameter('auto_reprint_on_fail', False)

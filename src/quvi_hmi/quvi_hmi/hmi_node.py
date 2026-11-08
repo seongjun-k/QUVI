@@ -167,7 +167,7 @@ class HmiNode(Node):
             'inspect_debug': None,
         }
         self._printer_status = {}
-        self._auto_end_macro = False
+        self._auto_end_macro = True   # 오케스트레이터 기본값(launch auto_end_macro=true)과 맞춘다
 
         # ─── ACT 모델 선택 (대시보드) ───
         self._act_models = []       # [{'name','path','step'}]
