@@ -165,8 +165,11 @@ def generate_launch_description():
         name='camera2',
         namespace='camera2',
         prefix=[_CAM_RESOLVE + ' ', LaunchConfiguration('fixed_cam_device')],
+        # 2026-11-08 검사 중 exit -6 으로 죽어 검사 타임아웃. 다시 켜지면 inspect_node 가 전환 상태를 다시 맞춘다
+        respawn=True, respawn_delay=3.0,
         parameters=[{
             'video_device': LaunchConfiguration('fixed_cam_device'),
+            # 2026-11-08 640x480 로 낮춰 3대 동시를 시도했으나 탑뷰가 죽었다(해상도 무관, 실측 재확인)
             'image_width': 1920,
             'image_height': 1080,
             'pixel_format': 'mjpeg2rgb',

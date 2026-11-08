@@ -147,6 +147,8 @@ class InspectNode(Node):
         self._insp_cam_on = False
         self._cam_off_since = None
         self._cam_switching = False
+        # 카메라 노드가 죽었다 다시 켜지면 기본값(스트리밍 ON)으로 뜨므로, 전환 상태를 다시 보내야 한다
+        self._cam_resync = False
         if self._cam_share:
             # 응답 처리가 검사 등 다른 콜백에 막히지 않게 별도 그룹
             from rclpy.callback_groups import ReentrantCallbackGroup
@@ -491,7 +493,9 @@ class InspectNode(Node):
             self._cam_off_since = now
         if self._cam_switching:
             return
-        if want and not self._insp_cam_on:
+        if self._cam_resync:
+            target = want
+        elif want and not self._insp_cam_on:
             target = True
         elif (not want and self._insp_cam_on
               and self._cam_off_since is not None and now - self._cam_off_since >= 2.0):
@@ -513,6 +517,7 @@ class InspectNode(Node):
                 cli = self._cap_clients[cam]
                 if not cli.wait_for_service(timeout_sec=2.0):
                     self.get_logger().warn(f'/{cam}/set_capture 서비스 없음 — 다음 주기에 재시도')
+                    self._cam_resync = True   # 노드가 죽은 것 — 다시 뜨면 상태를 다시 보낸다
                     return
                 fut = cli.call_async(SetBool.Request(data=on))
                 t0 = time.time()
@@ -523,6 +528,7 @@ class InspectNode(Node):
                     return
                 # usb_cam 은 성공해도 success=False('Stop Capturing' 등)를 돌려줘 응답 도착만 본다
             self._insp_cam_on = inspect_on   # 모든 단계 응답이 왔을 때만 갱신 → 실패 시 틱이 재시도
+            self._cam_resync = False
             self.get_logger().info('카메라 전환: ' + ('검사캠 ON / 탑뷰 정지' if inspect_on
                                                       else '검사캠 정지 / 탑뷰 ON'))
         finally:
