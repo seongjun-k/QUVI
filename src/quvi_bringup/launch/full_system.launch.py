@@ -145,6 +145,10 @@ def generate_launch_description():
         'auto_reprint_on_fail', default_value='false',
         description='불량 판정 사이클 종료 후 마지막 gcode 자동 재출력 (프린터가 실제로 출력을 시작한다)')
 
+    force_pass_arg = DeclareLaunchArgument(
+        'force_pass', default_value='false',   # 2026-11-09 사용자 요청: 실제 판정대로 분류. 시연 중 항상 PASS 는 force_pass:=true
+        description='검사 판정과 무관하게 PASS 적재함으로 분류 (시연용)')
+
     # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')
     vision_launch = IncludeLaunchDescription(
@@ -227,6 +231,7 @@ def generate_launch_description():
             'auto_end_macro': LaunchConfiguration('auto_end_macro'),
             'auto_reprint_on_fail': ParameterValue(
                 LaunchConfiguration('auto_reprint_on_fail'), value_type=bool),
+            'force_pass': ParameterValue(LaunchConfiguration('force_pass'), value_type=bool),
             'moonraker_url': LaunchConfiguration('moonraker_url'),
         }],
         output='screen',
@@ -296,6 +301,7 @@ def generate_launch_description():
         bed_temp_max_age_arg,
         auto_end_macro_arg,
         auto_reprint_arg,
+        force_pass_arg,
 
         LogInfo(msg='====== QUVI Full System 시작 ======'),
         LogInfo(msg='  Web HMI: http://localhost:5000'),

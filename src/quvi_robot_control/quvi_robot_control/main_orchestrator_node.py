@@ -93,6 +93,8 @@ class MainOrchestratorNode(Node):
         # 불량 판정 사이클이 끝나면 마지막 gcode 를 자동 재출력할지. 실제로 프린터가
         # 출력을 시작하는 동작이라 기본은 꺼둔다(2026-11-02 사용자 결정: 구현만, 비활성).
         self.declare_parameter('auto_reprint_on_fail', False)
+        # 판정과 무관하게 PASS 로 분류(시연용). 검사 결과가 안 와도 멈추지 않고 PASS 로 진행한다.
+        self.declare_parameter('force_pass', False)
         self.declare_parameter('moonraker_url', 'http://100.122.38.13:7125')
 
         # ─── 파라미터 로드 ───
@@ -108,6 +110,7 @@ class MainOrchestratorNode(Node):
 
         self._auto_end_macro = bool(self.get_parameter('auto_end_macro').value)
         self._auto_reprint_on_fail = bool(self.get_parameter('auto_reprint_on_fail').value)
+        self._force_pass = bool(self.get_parameter('force_pass').value)
         self._moonraker_url = str(self.get_parameter('moonraker_url').value).rstrip('/')
         self._end_macro_triggered = False
         self._printer_pickup_ready = False
@@ -465,7 +468,7 @@ class MainOrchestratorNode(Node):
     def _inspect_result_cb(self, msg: InspectionResult):
         if self._state.value.startswith("INSPECTING_"):
             self.get_logger().info(f'검사 결과 수신: passed={msg.passed}')
-            self._latest_inspection_passed = msg.passed
+            self._latest_inspection_passed = msg.passed or self._force_pass
             self._inspect_done = True
 
     def _robot_node_status_cb(self, msg: String):
@@ -714,6 +717,11 @@ class MainOrchestratorNode(Node):
             if self._inspect_done:
                 # LED OFF — 검사 완료
                 self._led_pub.publish(Bool(data=False))
+                self._state = FsmState.PICKING_CHAMBER_TRIGGER
+            elif self._force_pass and self._state_timer_counter > int(self._inspect_timeout * self._loop_rate):
+                self._led_pub.publish(Bool(data=False))
+                self.get_logger().warn('품질 검사 결과 없음 — force_pass 로 PASS 처리하고 진행')
+                self._latest_inspection_passed = True
                 self._state = FsmState.PICKING_CHAMBER_TRIGGER
             elif self._state_timer_counter > int(self._inspect_timeout * self._loop_rate):
                 self._led_pub.publish(Bool(data=False))
