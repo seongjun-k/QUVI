@@ -124,6 +124,11 @@ def generate_launch_description():
         'fixed_cam_rotate_180', default_value='false',
         description='검사캠을 거꾸로 장착했을 때 true — 검사 프레임을 180° 회전')
 
+    # 재기동마다 HMI에서 품종을 다시 골라야 했다 — 미선택이면 판정 불가로 FAIL 처리된다(2026-11-09)
+    inspection_product_arg = DeclareLaunchArgument(
+        'inspection_product', default_value='box',
+        description="시작 시 자동 선택할 검사 품종 ('' = 미선택으로 시작)")
+
     anomaly_enabled_arg = DeclareLaunchArgument(
         'anomaly_enabled', default_value='true',
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
@@ -223,6 +228,7 @@ def generate_launch_description():
                 'inspection_log_dir': LaunchConfiguration('inspection_log_dir'),
                 'inspection_products_dir': LaunchConfiguration('inspection_products_dir'),
                 'anomaly_enabled': ParameterValue(LaunchConfiguration('anomaly_enabled'), value_type=bool),
+                'default_product': ParameterValue(LaunchConfiguration('inspection_product'), value_type=str),
                 'area_ratio_enabled': ParameterValue(LaunchConfiguration('area_ratio_enabled'), value_type=bool),
                 'fixed_cam_rotate_180': ParameterValue(LaunchConfiguration('fixed_cam_rotate_180'), value_type=bool),
                 'anomaly_model_dir': [LaunchConfiguration('data_dir'), '/models'],
@@ -261,6 +267,7 @@ def generate_launch_description():
         fixed_cam_autoexposure_arg,
         fixed_cam_exposure_arg,
         fixed_cam_rotate_180_arg,
+        inspection_product_arg,
         anomaly_enabled_arg,
         area_ratio_enabled_arg,
 

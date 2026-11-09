@@ -102,6 +102,19 @@ class InspectNode(Node):
         self._led_exposure_sub = self.create_subscription(
             Bool, topics.TOPIC_MOTOR_LED, self._led_exposure_cb, 10)
 
+        # 턴테이블 안착·재파지 과정도 검사캠으로 보이게 — 명령 때 켜고 done 때 끈다
+        # 2026-11-09 사용자 요청: 검사 시작~끝을 모두 보이게 — 베드 파지 성공(grasp_done=True)부터
+        # 분류함 내려놓기 완료(release_done)까지 검사캠을 켜 둔다. 탑뷰(VLA 입력)는 파지 전에 다시 켜진다.
+        for t, on in ((topics.TOPIC_ROBOT_PLACE_CHAMBER_CMD, True), (topics.TOPIC_ROBOT_PICK_CHAMBER_CMD, True)):
+            self.create_subscription(Bool, t, lambda _m, on=on: self._on_chamber_motion(on), 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_GRASP_DONE,
+                                 lambda m: m.data and self._on_chamber_motion(True), 10)
+        self.create_subscription(Bool, topics.TOPIC_ROBOT_RELEASE_DONE,
+                                 lambda _m: self._on_chamber_motion(False), 10)
+        # ESTOP 등으로 release_done 이 빠진 채 다음 파지가 시작돼도 탑뷰가 꺼져 있지 않게 파지 명령에서도 끈다
+        self.create_subscription(GraspGoal, topics.TOPIC_ROBOT_GRASP_CMD,
+                                 lambda _m: self._on_chamber_motion(False), 10)
+
         # 품종 선택/생성 (HMI→inspect_node)
         self._product_select_sub = self.create_subscription(
             String, topics.TOPIC_INSPECTION_PRODUCT_SELECT,
@@ -144,6 +157,8 @@ class InspectNode(Node):
         self.declare_parameter('inspect_cam_time_share', True)
         self._cam_share = bool(self.get_parameter('inspect_cam_time_share').value)
         self._led_on = False
+        # 파지 완료~분류 완료 동안 검사캠을 켜 둘 기한(epoch 초)
+        self._chamber_cam_until = 0.0
         self._insp_cam_on = False
         self._cam_off_since = None
         self._cam_switching = False
@@ -184,6 +199,9 @@ class InspectNode(Node):
         # ─── 품종 목록 스캔 + 최초 발행 (UNSELECTED로 시작, 필수3) ───
         self._publish_products()
         self._publish_current_product()
+        # 재기동마다 품종이 풀려 '품종 미선택'으로 FAIL 처리되던 문제 — 기본 품종이 있으면 바로 로드한다(2026-11-09)
+        if self._default_product:
+            threading.Thread(target=self._reload_product, args=(self._default_product,), daemon=True).start()
 
         self.get_logger().info(
             f'INSPECT_NODE 초기화 완료 | '
@@ -244,6 +262,8 @@ class InspectNode(Node):
             ('anomaly_device',          'cuda',                             '_anomaly_device'),
             # ─── 검사 LED 연동 노출 (흰 출력물 링조명 정반사 과노출 방지, 2026-09-05 실측) ───
             ('inspection_cam_device',   '/dev/fixed_cam',                   '_insp_cam_dev'),
+            # 시작 시 자동 선택할 품종 ('' = 미선택으로 시작)
+            ('default_product',         '',                                 '_default_product'),
             ('led_on_exposure',         3,                                  '_led_on_exp'),
             ('led_on_brightness',       -30,                                '_led_on_bright'),
             ('led_on_gain',             0,                                  '_led_on_gain'),
@@ -482,11 +502,15 @@ class InspectNode(Node):
             self.get_logger().warn(f'검사캠 노출 설정 실패({exc}) — 무시하고 진행')
 
     # ─── 카메라 시분할 ───
+    def _on_chamber_motion(self, start: bool):
+        # done 이 안 와도(ESTOP 등) 120초 뒤 꺼진다 — 파지~분류 한 구간이 60초를 넘을 수 있다
+        self._chamber_cam_until = time.time() + 120.0 if start else 0.0
+
     def _cam_share_tick(self):
         """검사캠이 필요한지 보고 검사캠↔탑뷰 스트리밍을 전환한다(0.2초 주기)."""
-        want = (self._led_on or self._inspection_active
-                or self._ref_capture_active or self._dataset_capture_active)
         now = time.time()
+        want = (self._led_on or self._inspection_active or now < self._chamber_cam_until
+                or self._ref_capture_active or self._dataset_capture_active)
         if want:
             self._cam_off_since = None
         elif self._insp_cam_on and self._cam_off_since is None:
