@@ -110,7 +110,7 @@ def generate_launch_description():
         description='micro-ROS agent 보 레이트')
 
     anomaly_enabled_arg = DeclareLaunchArgument(
-        'anomaly_enabled', default_value='true',
+        'anomaly_enabled', default_value='false',   # 2026-11-09 사용자 요청: 룰 기반 판정만 사용. ML 병행은 anomaly_enabled:=true
         description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
 
     moonraker_url_arg = DeclareLaunchArgument(
