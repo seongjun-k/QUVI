@@ -146,8 +146,9 @@ POSE_P2 = {'shoulder_pan':  -13, 'shoulder_lift': 1126, 'elbow_flex': 2752, 'wri
 TURNTABLE_PAN_OFFSET = 3
 # 2026-11-08 사용자 요청으로 전방 +10mm 더(같은 평면 IK, 높이·공구각 유지). 이전 P3 1969/2024/3131, P4 2099/2229/2865
 POSE_P3 = {'shoulder_pan':   -1 + TURNTABLE_PAN_OFFSET, 'shoulder_lift': 2028, 'elbow_flex': 1953, 'wrist_flex': 3143, 'wrist_roll': 2009, 'gripper': 2100}  # 턴테이블 진입점
-# 2026-11-10 턴테이블 바닥을 긁어 P4만 3mm 올림(같은 평면 IK, 수평거리·공구각 유지). 이전 P4 2150/2159/2883
-POSE_P4 = {'shoulder_pan':   16 + TURNTABLE_PAN_OFFSET, 'shoulder_lift': 2145, 'elbow_flex': 2153, 'wrist_flex': 2894, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
+# 2026-11-10 턴테이블 바닥을 긁어 P4만 올림(같은 평면 IK, 수평거리·공구각 유지). 이전 P4 2150/2159/2883
+#   3mm(2145/2153/2894)로도 계속 부딪혀 원래 대비 8mm 로 올렸다.
+POSE_P4 = {'shoulder_pan':   16 + TURNTABLE_PAN_OFFSET, 'shoulder_lift': 2137, 'elbow_flex': 2143, 'wrist_flex': 2912, 'wrist_roll': 2015, 'gripper': 2100}  # 턴테이블 놓기 지점
 # 분류함 적재 — 턴테이블 이설 전 P3/P4 실측값. 분류함은 옮기지 않았으므로 기존 값을 유지한다.
 POSE_SORT_UP   = {'shoulder_pan':   -1, 'shoulder_lift': 1760, 'elbow_flex': 2244, 'wrist_flex': 3120, 'wrist_roll': 2009, 'gripper': 2100}
 POSE_SORT_DOWN = {'shoulder_pan':   16, 'shoulder_lift': 1907, 'elbow_flex': 2464, 'wrist_flex': 2822, 'wrist_roll': 2015, 'gripper': 2100}
