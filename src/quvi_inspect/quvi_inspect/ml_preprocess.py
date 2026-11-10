@@ -1,7 +1,7 @@
 """
 QUVI ML 전처리 (공유 모듈)
 ──────────────────────
-학습 스크립트(scripts/train_anomaly_bank.py)와 inspect_node ML 추론(섀도우 모드)이
+학습 스크립트(scripts/train_anomaly_bank.py)와 inspect_node ML 추론이
 **동일한 함수**를 공유하여 train/infer skew 를 방지하기 위한 모듈.
 
 주의:

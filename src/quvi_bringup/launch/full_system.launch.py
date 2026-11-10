@@ -110,8 +110,8 @@ def generate_launch_description():
         description='micro-ROS agent 보 레이트')
 
     anomaly_enabled_arg = DeclareLaunchArgument(
-        'anomaly_enabled', default_value='false',   # 2026-11-09 사용자 요청: 룰 기반 판정만 사용. ML 병행은 anomaly_enabled:=true
-        description='ML 이상탐지(PatchCore) 섀도우 모드 활성화 여부 (passed 판정에는 미반영)')
+        'anomaly_enabled', default_value='false',
+        description='PatchCore 이상탐지 하이브리드 판정 활성화 여부 (룰 PASS 라도 ML FAIL 이면 최종 FAIL)')
 
     moonraker_url_arg = DeclareLaunchArgument(
         'moonraker_url', default_value=_dev.get('moonraker_url', 'http://100.122.38.13:7125'),
@@ -146,8 +146,8 @@ def generate_launch_description():
         description='불량 판정 사이클 종료 후 마지막 gcode 자동 재출력 (프린터가 실제로 출력을 시작한다)')
 
     force_pass_arg = DeclareLaunchArgument(
-        'force_pass', default_value='false',   # 2026-11-09 사용자 요청: 실제 판정대로 분류. 시연 중 항상 PASS 는 force_pass:=true
-        description='검사 판정과 무관하게 PASS 적재함으로 분류 (시연용)')
+        'force_pass', default_value='false',
+        description='검사 장치 이상 시 비상 운용용 — 검사 판정과 무관하게 PASS 적재함으로 분류')
 
     # ─── 비전 파이프라인 포함 ───
     bringup_dir = get_package_share_directory('quvi_bringup')

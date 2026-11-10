@@ -103,7 +103,7 @@ class InspectNode(Node):
             Bool, topics.TOPIC_MOTOR_LED, self._led_exposure_cb, 10)
 
         # 턴테이블 안착·재파지 과정도 검사캠으로 보이게 — 명령 때 켜고 done 때 끈다
-        # 2026-11-09 사용자 요청: 검사 시작~끝을 모두 보이게 — 베드 파지 성공(grasp_done=True)부터
+        # 검사 시작~끝을 모두 보이게 — 베드 파지 성공(grasp_done=True)부터
         # 분류함 내려놓기 완료(release_done)까지 검사캠을 켜 둔다. 탑뷰(VLA 입력)는 파지 전에 다시 켜진다.
         for t, on in ((topics.TOPIC_ROBOT_PLACE_CHAMBER_CMD, True), (topics.TOPIC_ROBOT_PICK_CHAMBER_CMD, True)):
             self.create_subscription(Bool, t, lambda _m, on=on: self._on_chamber_motion(on), 10)
@@ -256,7 +256,7 @@ class InspectNode(Node):
             # ─── 데이터셋 촬영 모드 (ML 정상품 수집) ───
             ('dataset_capture_settle_sec', 1.5,                             '_ds_settle_sec'),
             ('dataset_capture_dir',     '/workspace/data/anomaly_dataset/raw', '_ds_dir'),
-            # ─── ML 이상탐지 (섀도우 모드 — passed 판정에는 반영하지 않음) ───
+            # ─── ML 이상탐지 (PatchCore 하이브리드 판정) ───
             ('anomaly_enabled',         False,                              '_anomaly_enabled'),
             ('anomaly_model_dir',       '/workspace/data/models',           '_anomaly_model_dir'),
             ('anomaly_device',          'cuda',                             '_anomaly_device'),
